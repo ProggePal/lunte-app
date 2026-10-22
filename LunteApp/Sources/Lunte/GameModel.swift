@@ -14,6 +14,14 @@ final class GameModel: ObservableObject {
     @Published private(set) var mine = Set(defaults.stringArray(forKey: "Mine") ?? [])
     /// True once the onboarding phrase has reached the log: the hook is wired up.
     @Published private(set) var connected = defaults.bool(forKey: "Connected")
+    /// The last 10 prompts (no onboarding test), for the vibe strip.
+    @Published private(set) var lastTen: [Event] = []
+    @Published private(set) var pluginInstalled = defaults.bool(forKey: "PluginInstalled")
+    @Published private(set) var connecting = false
+    @Published private(set) var connectError: String?
+    /// Boom id → reactions on it, like "🧯 Ola".
+    @Published private(set) var reactions = defaults.dictionary(forKey: "Reactions") as? [String: [String]] ?? [:]
+    @Published private(set) var whySent = Set(defaults.stringArray(forKey: "WhySent") ?? [])
     @Published var soundOn = defaults.object(forKey: "SoundOn") as? Bool ?? true {
         didSet { defaults.set(soundOn, forKey: "SoundOn") }
     }
@@ -42,10 +50,21 @@ final class GameModel: ObservableObject {
 
     // MARK: The menu
 
-    var statusLine: String {
-        if !connected { return "Not connected yet: open a new Claude Code chat and type: this is a test 3 2 1 pow" }
-        if state.boomed, let boom = state.booms.last { return "💥 lit by " + Game.litByText(boom) }
-        return "Fuse \(state.fuse) · \(state.pieces) left"
+    /// One plain sentence about the stick. No numbers to decode.
+    var sentence: String {
+        if state.pieces <= 2 { return "One outburst and it blows." }
+        if state.pieces == state.fuse { return "Fresh stick. Telling it off burns one piece, losing it burns two." }
+        return "\(state.pieces) pieces left. Losing it burns two."
+    }
+
+    func canSayWhy(_ boom: String) -> Bool { club != nil && mine.contains(boom) && !whySent.contains(boom) }
+
+    /// "🧯 2 · 😂 1 from Ola", or nil when nobody reacted yet.
+    func reactionSummary(_ boom: String) -> String? {
+        guard let list = reactions[boom], !list.isEmpty else { return nil }
+        let emoji = list.map { String($0.prefix { $0 != " " }) }, names = Set(list.map { String($0.drop { $0 != " " }.dropFirst()) })
+        let counts = Dictionary(emoji.map { ($0, 1) }, uniquingKeysWith: +).sorted { $0.value > $1.value }
+        return counts.map { "\($0.key) \($0.value)" }.joined(separator: " · ") + " from " + names.sorted().joined(separator: ", ")
     }
 
     /// Your latest Boom that went to the Club, for "Say why…".
@@ -61,6 +80,28 @@ final class GameModel: ObservableObject {
         case "react": return "\(e.emoji ?? "") from \(who)"
         case "why": return "\(who): \(e.text ?? "")"
         default: return e.type
+        }
+    }
+
+    func testBoom() {
+        playBoom()
+        BoomFlash.show()
+    }
+
+    func connect() {
+        guard !translocated(), !connecting else { return }
+        connecting = true
+        connectError = nil
+        Task {
+            let result = await installPlugin()
+            connecting = false
+            if result.ok {
+                pluginInstalled = true
+                defaults.set(true, forKey: "PluginInstalled")
+            } else {
+                connectError = String(result.output.suffix(300))
+            }
+            if connected { Alerts.tell(result.ok ? "Connected to Claude Code" : "Couldn't connect to Claude Code", connectError ?? "") }
         }
     }
 
@@ -104,6 +145,7 @@ final class GameModel: ObservableObject {
         let now = Date().timeIntervalSince1970
         let events = EventLog.read(log)
         state = Game.replay(events, now: now)
+        lastTen = Array(events.filter { $0.burn != .test }.suffix(10))
         onboard(events.filter { $0.burn == .test }, now: now)
         let fresh = state.booms.filter { !announced.contains($0.id) }
         guard !fresh.isEmpty else { return }
@@ -111,6 +153,7 @@ final class GameModel: ObservableObject {
             announced.insert(boom.id)
             guard now - boom.ts < 600 else { continue } // older than 10 minutes: announced silently
             if soundOn { playBoom() }
+            BoomFlash.show()
             if club != nil { post(boom) }
         }
         defaults.set(Array(announced), forKey: "Announced")
@@ -126,7 +169,7 @@ final class GameModel: ObservableObject {
         defaults.set(Array(announced), forKey: "Announced")
         guard fresh.contains(where: { now - $0.ts < 600 }) else { return }
         playBoom()
-        Alerts.tell("💥 We're connected!", "Lunte hears you. Ready.")
+        BoomFlash.show("CONNECTED")
     }
 
     private func post(_ boom: Boom) {
@@ -179,24 +222,25 @@ final class GameModel: ObservableObject {
         club = nil
         mine = []
         secrets = [:]
-        defaults.removeObject(forKey: "Mine")
-        defaults.removeObject(forKey: "Secrets")
+        reactions = [:]
+        whySent = []
+        for key in ["Mine", "Secrets", "Reactions", "WhySent"] { defaults.removeObject(forKey: key) }
         recent = []
         lastSeq = 0
         saveClub()
     }
 
-    func sayWhy() {
-        guard let boom = whyBoom, let secret = secrets[boom.id],
-              let text = Alerts.ask("Say why", "What lit your Boom at \(clock(boom.ts))? Your Club sees it with your name. Up to 140 characters.",
-                                    fields: ["Why"])?.first, !text.isEmpty else { return }
-        Task {
-            do {
-                try await Relay.post(["type": "why", "boom": boom.id, "text": String(text.prefix(140)), "secret": secret])
-                await poll(notify: true)
-            } catch {
-                Alerts.tell("Couldn't send that", error.localizedDescription)
-            }
+    /// Returns an error message to show, or nil when the Club got it.
+    func sayWhy(_ boom: String, _ text: String) async -> String? {
+        guard let secret = secrets[boom], !text.isEmpty else { return "Nothing to send." }
+        do {
+            try await Relay.post(["type": "why", "boom": boom, "text": String(text.prefix(140)), "secret": secret])
+            whySent.insert(boom)
+            defaults.set(Array(whySent), forKey: "WhySent")
+            await poll(notify: true)
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 
@@ -216,6 +260,10 @@ final class GameModel: ObservableObject {
             while true {
                 let page = try await Relay.events(after: lastSeq)
                 for e in page where e.seq > lastSeq {
+                    if e.type == "react", isMine(e), let boom = e.boom {
+                        reactions[boom, default: []].append("\(e.emoji ?? "") \(e.from ?? "Someone")")
+                        defaults.set(reactions, forKey: "Reactions")
+                    }
                     if notify && Date().timeIntervalSince1970 - e.ts < 600 { self.notify(about: e) } // catch-up goes to the feed quietly
                     lastSeq = e.seq
                 }
@@ -247,9 +295,6 @@ final class GameModel: ObservableObject {
         defaults.set(try? JSONEncoder().encode(recent), forKey: "Recent")
     }
 
-    private func clock(_ ts: Double) -> String {
-        Date(timeIntervalSince1970: ts).formatted(date: .omitted, time: .shortened)
-    }
 }
 
 func copyToClipboard(_ s: String) {

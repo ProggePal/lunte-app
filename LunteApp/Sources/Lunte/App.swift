@@ -14,40 +14,12 @@ struct LunteApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            LunteMenu(model: model, updater: updater)
+            PopoverView(model: model, updater: updater)
         } label: {
-            Text(Game.stickText(model.state))
+            Image(nsImage: menuBarImage(model.state, connected: model.connected))
+                .accessibilityLabel(model.connected ? model.sentence : "Lunte, not connected yet")
         }
-    }
-}
-
-struct LunteMenu: View {
-    @ObservedObject var model: GameModel
-    let updater: SPUStandardUpdaterController?
-
-    var body: some View {
-        Text(model.statusLine)
-        if model.whyBoom != nil {
-            Button("Say why…", action: model.sayWhy)
-        }
-        Divider()
-        if let club = model.club {
-            Button("Club \(club) · copy code") { copyToClipboard(club) }
-            ForEach(model.recent.reversed(), id: \.seq) { Text(model.describe($0)) }
-            Button("Leave Club", action: model.leaveClub)
-        } else {
-            Button("Create a Club…", action: model.createClub)
-            Button("Join a Club…", action: model.joinClub)
-        }
-        Divider()
-        Button("Test your Boom", action: model.playBoom)
-        Toggle("Sound", isOn: $model.soundOn)
-        Button("Connect to Claude Code", action: connectToClaude)
-        Button("Feedback & ideas…") { NSWorkspace.shared.open(URL(string: "https://github.com/ProggePal/lunte-app/issues/new")!) }
-        Button("Check for Updates…") { updater?.checkForUpdates(nil) }
-            .disabled(updater == nil)
-        Divider()
-        Button("Quit Lunte") { NSApp.terminate(nil) }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -66,7 +38,6 @@ func linkHook() {
     try? fm.createSymbolicLink(at: link, withDestinationURL: hook)
 }
 
-/// Adds the bundled plugin's marketplace and installs the plugin, finding `claude` through a login shell.
 /// Opened straight from Downloads, macOS runs a temporary copy that vanishes on reboot. Ask to be moved instead.
 @MainActor
 func translocated() -> Bool {
@@ -75,9 +46,8 @@ func translocated() -> Bool {
     return true
 }
 
-@MainActor
-func connectToClaude() {
-    guard !translocated() else { return }
+/// Adds the bundled plugin's marketplace and installs the plugin, finding `claude` through a login shell.
+func installPlugin() async -> (ok: Bool, output: String) {
     let plugin = Bundle.main.resourceURL?.appending(path: "plugin").path ?? ""
     let script = """
     export PATH="$PATH:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin"
@@ -85,26 +55,19 @@ func connectToClaude() {
     ok claude plugin marketplace add "$1"
     ok claude plugin install lunte@lunte
     """
-    Task {
-        let (status, output) = await Task.detached { () -> (Int32, String) in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-lc", script, "zsh", plugin]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            process.standardInput = FileHandle.nullDevice
-            do { try process.run() } catch { return (-1, error.localizedDescription) }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return (process.terminationStatus, String(decoding: data, as: UTF8.self))
-        }.value
-        if status == 0 {
-            Alerts.tell("Almost there", "Open a new Claude Code chat and type:\n\nthis is a test 3 2 1 pow\n\nThat's your first Boom.")
-        } else {
-            Alerts.tell("Couldn't connect to Claude Code", String(output.suffix(800)))
-        }
-    }
+    return await Task.detached { () -> (ok: Bool, output: String) in
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-lc", script, "zsh", plugin]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        process.standardInput = FileHandle.nullDevice
+        do { try process.run() } catch { return (false, error.localizedDescription) }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus == 0, String(decoding: data, as: UTF8.self))
+    }.value
 }
 
 @MainActor
