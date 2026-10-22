@@ -131,7 +131,7 @@ private struct VibeStrip: View {
                             else { Circle().fill(color(e.burn)).frame(width: 12, height: 12) }
                         }
                         .frame(width: cell, height: cell)
-                        .background(hovered == e ? Color.secondary.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                        .background(shown == e ? Color.secondary.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
                         .contentShape(Rectangle())
                         .onHover { if $0 { hovered = e } } // leaving the whole grid clears it, not leaving one dot
                     }
@@ -144,12 +144,17 @@ private struct VibeStrip: View {
         }
     }
 
+    /// The hovered dot, or your latest message when nothing is hovered.
+    private var shown: Event? { hovered ?? model.lastHour.last }
+
     @ViewBuilder private var detail: some View {
-        if let e = hovered {
+        if let e = shown {
             let text = texts[e.ts]
             VStack(alignment: .leading, spacing: 2) {
-                Text(([clock(e.ts), word(e.burn)] + (text.map(Classifier.signals) ?? [])).joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    Text(([ago(e.ts, now: context.date), word(e.burn)] + (text.map(Classifier.signals) ?? [])).joined(separator: " · "))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
                 Text(text.map { "“\($0)”" } ?? (missing.contains(e.ts) ? "Couldn’t find this message in Claude’s history." : "…"))
                     .font(.caption).lineLimit(1).truncationMode(.tail)
             }
@@ -157,8 +162,6 @@ private struct VibeStrip: View {
                 guard texts[e.ts] == nil, !missing.contains(e.ts) else { return }
                 if let found = await model.promptText(e) { texts[e.ts] = found } else { missing.insert(e.ts) }
             }
-        } else {
-            Text("Hover a dot to see the message.").font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -308,6 +311,12 @@ func menuBarImage(_ state: GameState, connected: Bool) -> NSImage {
     let renderer = ImageRenderer(content: view)
     renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
     return renderer.nsImage ?? NSImage()
+}
+
+/// "just now", "4 min ago", "2 h ago".
+func ago(_ ts: Double, now: Date = .now) -> String {
+    let minutes = Int((now.timeIntervalSince1970 - ts) / 60)
+    return minutes < 1 ? "just now" : minutes < 60 ? "\(minutes) min ago" : "\(minutes / 60) h ago"
 }
 
 func clock(_ ts: Double) -> String {
