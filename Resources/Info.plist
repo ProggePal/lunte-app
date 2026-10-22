@@ -2,18 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleIdentifier</key>
-	<string>no.panter.lunte</string>
-	<key>CFBundleName</key>
-	<string>Lunte</string>
 	<key>CFBundleDisplayName</key>
 	<string>Lunte</string>
 	<key>CFBundleExecutable</key>
 	<string>Lunte</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
+	<key>CFBundleIdentifier</key>
+	<string>no.panter.lunte</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Lunte</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
@@ -22,18 +22,18 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>LunteRelayURL</key>
+	<string>https://lunte-relay.pedersensorvik.workers.dev</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Panter AS</string>
 	<key>SUFeedURL</key>
 	<string>https://github.com/ProggePal/lunte-app/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string></string>
-	<key>LunteRelayURL</key>
-	<string>http://localhost:8787</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
 </dict>
 </plist>
