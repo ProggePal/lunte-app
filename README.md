@@ -12,7 +12,7 @@ A Mac menu bar app for Claude Code. It's a prototype, with two players so far.
 - Every Boom makes your next fuse longer, and every calm stretch makes it shorter. Step away for 10 minutes and you get a fresh stick.
 
 ## Privacy
-Everything runs on your Mac. Lunte never stores or sends your prompts. Only your Booms, reactions and the "why" you write go to your Club. Read [the promise](docs/adr/0001-everything-runs-on-your-computer.md).
+Everything runs on your Mac. Lunte never stores or sends your prompts. Only your Booms, reactions and the line you justify a Boom with go to your Club. Read [the promise](docs/adr/0001-everything-runs-on-your-computer.md).
 
 ## Install
 1. Download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
