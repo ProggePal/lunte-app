@@ -18,15 +18,26 @@ function expect(res, status, label) {
   return res.json;
 }
 
-// A Club, two members, one Boom.
-const { club } = expect(await call("POST", "/clubs"), 201, "create club");
+// A named Club, two members, one Boom.
+const created = expect(await call("POST", "/clubs", { body: { name: "  Night Shift  " } }), 201, "create named club");
+const { club } = created;
 assert.match(club, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
+assert.equal(created.name, "Night Shift");
 const events = `/clubs/${club}/events`;
 
 const join = (name, c = club) => call("POST", `/clubs/${c}/join`, { body: { name } });
 const paal = expect(await join("  Paal  "), 200, "paal joins");
 const ola = expect(await join("Ola"), 200, "ola joins");
 assert.ok(paal.member && paal.token && paal.member !== ola.member && paal.token !== ola.token);
+assert.equal(paal.clubName, "Night Shift");
+assert.equal(ola.clubName, "Night Shift");
+
+// Club names are optional and default to the code; they follow the member-name rules.
+const unnamed = expect(await call("POST", "/clubs"), 201, "create club without a body");
+assert.equal(unnamed.name, unnamed.club);
+assert.equal(expect(await join("Kari", unnamed.club), 200, "join unnamed club").clubName, unnamed.club);
+expect(await call("POST", "/clubs", { body: { name: "Night\u200BShift" } }), 400, "zero-width space in club name");
+expect(await call("POST", "/clubs", { body: { name: "x".repeat(25) } }), 400, "club name too long");
 
 // Names are unique after NFKC and lowercasing, and can't hide invisible characters.
 expect(await join("PAAL"), 409, "same name, other case");

@@ -15,13 +15,12 @@ struct PopoverView: View {
             } else if model.state.boomed, let boom = model.state.booms.last {
                 BoomCard(model: model, boom: boom)
             } else {
-                StickView(state: model.state)
+                StickView(model: model)
                 Text(model.sentence).font(.callout)
             }
-            if model.connected { VibeStrip(events: model.lastTen, boomTimes: Set(model.state.booms.map(\.ts))) }
-            if let club = model.club {
+            if model.connected { VibeStrip(model: model) }
+            if model.club != nil, !model.recent.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Label("Club \(club)", systemImage: "person.2").font(.caption).foregroundStyle(.secondary)
                     ForEach(model.recent.suffix(3).reversed(), id: \.seq) { Text(model.describe($0)).font(.caption) }
                 }
             }
@@ -80,20 +79,26 @@ private struct Step<Content: View>: View {
 }
 
 /// The fuse as segments: what's left is filled, what burned is faint. Orange once one outburst would blow it.
+/// Hovering shows the break countdown.
 private struct StickView: View {
-    let state: GameState
+    @ObservedObject var model: GameModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text("🧨").font(.title2)
-            HStack(spacing: 4) {
-                ForEach(0..<max(state.fuse, 1), id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(i < state.pieces ? (state.pieces <= 2 ? Color.orange : Color.primary.opacity(0.7)) : Color.secondary.opacity(0.15))
-                        .frame(height: 10)
+        let state = model.state
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 8) {
+                Text("🧨").font(.title2)
+                HStack(spacing: 4) {
+                    ForEach(0..<max(state.fuse, 1), id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(i < state.pieces ? (state.pieces <= 2 ? Color.orange : Color.primary.opacity(0.7)) : Color.secondary.opacity(0.15))
+                            .frame(height: 10)
+                    }
                 }
+                if state.pieces == 1 { Text("✨") }
             }
-            if state.pieces == 1 { Text("✨") }
+            .contentShape(Rectangle())
+            .help(model.breakLeft(at: context.date).map { "Step away \(countdown($0)) for a fresh stick" } ?? "")
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(state.pieces) of \(state.fuse) pieces of fuse left")
@@ -101,11 +106,15 @@ private struct StickView: View {
 }
 
 /// Your last 10 messages as dots: grey normal, orange told off, red lost it, 💥 where it blew.
+/// Hovering a dot shows its time, kind, signals and the prompt (read from Claude's transcript, never stored).
 private struct VibeStrip: View {
-    let events: [Event]
-    let boomTimes: Set<Double>
+    @ObservedObject var model: GameModel
+    @State private var hovered: Event?
+    @State private var text: String?
 
     var body: some View {
+        let events = model.lastTen
+        let boomTimes = Set(model.state.booms.map(\.ts))
         VStack(alignment: .leading, spacing: 6) {
             Text("Your last 10 messages").font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 6) {
@@ -120,12 +129,25 @@ private struct VibeStrip: View {
                             else { Circle().fill(color(e.burn)) }
                         }
                         .frame(width: 14, height: 14)
-                        .help(clock(e.ts) + " · " + word(e.burn))
+                        .scaleEffect(hovered == e ? 1.3 : 1)
+                        .onHover { inside in
+                            if inside { hovered = e } else if hovered == e { hovered = nil }
+                        }
                     }
                 }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(events.map { word($0.burn) }.joined(separator: ", "))
+            if let e = hovered {
+                VStack(alignment: .leading, spacing: 2) {
+                    let signals = text.map(Classifier.signals) ?? []
+                    Text(([clock(e.ts), word(e.burn)] + signals).joined(separator: " · "))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(text.map { "“\($0)”" } ?? "Couldn’t find this message in Claude’s history.")
+                        .font(.caption).lineLimit(1).truncationMode(.tail)
+                }
+                .task(id: e.ts) { text = await model.promptText(e) }
+            }
         }
     }
 
@@ -146,24 +168,45 @@ private struct VibeStrip: View {
     }
 }
 
+/// After a Boom: how long ago, the message that set it off, the Club's reactions, and the break countdown.
+/// Tapping the top opens Justify.
 private struct BoomCard: View {
     @ObservedObject var model: GameModel
     let boom: Boom
+    @State private var finalBlow: String?
+    @State private var justifying = false
     @State private var why = ""
     @State private var error: String?
     @State private var sending = false
 
     var body: some View {
         VStack(spacing: 8) {
-            Text("💥").font(.system(size: 40))
-            Text("Boom at \(clock(boom.ts))").font(.headline)
-            Text("Lit by: " + Game.litByText(boom)).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Button { if model.canJustify(boom.id) { justifying.toggle() } } label: {
+                VStack(spacing: 4) {
+                    Text("💥").font(.system(size: 40))
+                    TimelineView(.periodic(from: .now, by: 30)) { _ in
+                        Text("Boom " + Date(timeIntervalSince1970: boom.ts).formatted(.relative(presentation: .named)))
+                            .font(.headline)
+                    }
+                    if let finalBlow {
+                        Text("“\(finalBlow)”").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                    }
+                    if model.canJustify(boom.id), !justifying {
+                        Text("Tap to justify").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .task(id: boom.id) { if let last = boom.litBy.last { finalBlow = await model.promptText(last) } }
+
             if let reacted = model.reactionSummary(boom.id) {
                 Text(reacted).font(.callout)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
             }
-            if model.canJustify(boom.id) {
+            if justifying, model.canJustify(boom.id) {
                 HStack {
                     TextField("Justify yourself", text: $why).textFieldStyle(.roundedBorder).onSubmit(send)
                     Button("Justify", action: send).disabled(why.isEmpty || sending)
@@ -172,7 +215,10 @@ private struct BoomCard: View {
             } else if model.whySent.contains(boom.id) {
                 Text("Justified.").font(.caption).foregroundStyle(.secondary)
             }
-            Text("Fresh stick after a 30-minute break.").font(.caption).foregroundStyle(.secondary)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(model.breakLeft(at: context.date).map { $0 > 0 ? "Fresh stick in \(countdown($0))" : "Fresh stick on your next message" } ?? "")
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -183,11 +229,12 @@ private struct BoomCard: View {
         Task {
             error = await model.justify(boom.id, why)
             sending = false
-            if error == nil { why = "" }
+            if error == nil { why = ""; justifying = false }
         }
     }
 }
 
+/// Sound on the left, the Club in the middle (a house and its name), everything else behind the gear.
 private struct Footer: View {
     @ObservedObject var model: GameModel
     let updater: SPUStandardUpdaterController?
@@ -205,7 +252,13 @@ private struct Footer: View {
                     Button("Create a Club…", action: model.createClub)
                     Button("Join a Club…", action: model.joinClub)
                 }
-                Divider()
+            } label: {
+                Label(model.club == nil ? "No Club" : (model.clubName ?? model.club ?? ""), systemImage: "house")
+                    .labelStyle(.titleAndIcon).font(.callout)
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            Spacer()
+            Menu {
                 Button("Test your Boom", action: model.testBoom)
                 Button("Connect to Claude Code", action: model.connect)
                 Button("Feedback and ideas…") { NSWorkspace.shared.open(URL(string: "https://github.com/ProggePal/lunte-app/issues/new")!) }
@@ -248,4 +301,10 @@ func menuBarImage(_ state: GameState, connected: Bool) -> NSImage {
 
 func clock(_ ts: Double) -> String {
     Date(timeIntervalSince1970: ts).formatted(date: .omitted, time: .shortened)
+}
+
+/// 523 seconds → "8:43".
+func countdown(_ seconds: Double) -> String {
+    let s = Int(seconds.rounded(.up))
+    return String(format: "%d:%02d", s / 60, s % 60)
 }

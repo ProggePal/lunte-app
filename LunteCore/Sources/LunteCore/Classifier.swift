@@ -3,11 +3,8 @@ import Foundation
 
 public enum Classifier {
     public static func classify(_ prompt: String) -> Burn {
-        let text = prompt.replacingOccurrences(of: "(?s)```.*?(```|$)", with: " ", options: .regularExpression)
-            .precomposedStringWithCanonicalMapping // so "rått" matches however å was typed
-        if text.range(of: "(?<![0-9])3\\W*2\\W*1\\W*pow(?!\(wordChar))", options: [.regularExpression, .caseInsensitive]) != nil {
-            return .test // the onboarding phrase: "this is a test 3 2 1 pow"
-        }
+        let text = clean(prompt)
+        if has(testPhrase, in: text) { return .test } // the onboarding phrase: "this is a test 3 2 1 pow"
         let happy = has(happyWords, in: text)
         if has(losePhrases, in: text) { return .lose }
         if !happy && (has(swears, in: text) || hasCaps(text) || text.range(of: "!!|\\?!|!\\?", options: .regularExpression) != nil) {
@@ -16,6 +13,33 @@ public enum Classifier {
         if has(tellPhrases, in: text) { return .tell }
         return .none
     }
+
+    /// Why a prompt got its Burn, for display only: ["told off: why did you", "swear", "CAPS"].
+    public static func signals(_ prompt: String) -> [String] {
+        let text = clean(prompt)
+        if has(testPhrase, in: text) { return ["the onboarding phrase"] }
+        let happy = first(happyWords, in: text)
+        let but = happy == nil ? "" : ", but happy"
+        var out: [String] = []
+        if let m = first(losePhrases, in: text) { out.append("lost it: " + m.lowercased()) }
+        if has(swears, in: text) { out.append("swear" + but) }
+        if hasCaps(text) { out.append("CAPS" + but) }
+        if text.range(of: "!!|\\?!|!\\?", options: .regularExpression) != nil { out.append("!!" + but) }
+        if let m = first(tellPhrases, in: text) { out.append("told off: " + m.lowercased()) }
+        if let happy { out.append("happy: " + happy.lowercased()) }
+        return out
+    }
+
+    static func clean(_ prompt: String) -> String {
+        prompt.replacingOccurrences(of: "(?s)```.*?(```|$)", with: " ", options: .regularExpression)
+            .precomposedStringWithCanonicalMapping // so "rått" matches however å was typed
+    }
+
+    static func first(_ pattern: String, in text: String) -> String? {
+        text.range(of: pattern, options: [.regularExpression, .caseInsensitive]).map { String(text[$0]) }
+    }
+
+    static let testPhrase = "(?<![0-9])3\\W*2\\W*1\\W*pow(?!\(wordChar))"
 
     // Pattern mini-language: a space is any whitespace, a trailing * is "any word ending", ' is either apostrophe.
     static let swears = words("fuck* shit* bitch* damn* crap* asshole* bastard* dick piss* bollocks wtf ffs omfg hell faen* helvete hælvete jævl* dritt* satan kuk pikk")

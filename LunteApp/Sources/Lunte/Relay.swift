@@ -39,22 +39,26 @@ enum Relay {
         return URL(string: s) ?? URL(string: "http://localhost:8787")!
     }
 
-    static func createClub() async throws -> String {
+    static var clubName: String? { UserDefaults.standard.string(forKey: "ClubName") }
+
+    static func createClub(named name: String) async throws -> String {
         struct Created: Decodable { var club: String }
-        return try JSONDecoder().decode(Created.self, from: await call("POST", "clubs")).club
+        return try JSONDecoder().decode(Created.self, from: await call("POST", "clubs", body: ["name": name])).club
     }
 
     /// Joins and stores the Club code and token.
     static func join(_ club: String, name: String) async throws {
-        struct Joined: Decodable { var token: String }
+        struct Joined: Decodable { var token: String; var clubName: String? }
         let joined = try JSONDecoder().decode(Joined.self, from: await call("POST", "clubs/\(club)/join", body: ["name": name]))
         UserDefaults.standard.set(club, forKey: "Club")
         UserDefaults.standard.set(joined.token, forKey: "Token")
+        UserDefaults.standard.set(joined.clubName ?? club, forKey: "ClubName")
     }
 
     static func leave() {
         UserDefaults.standard.removeObject(forKey: "Club")
         UserDefaults.standard.removeObject(forKey: "Token")
+        UserDefaults.standard.removeObject(forKey: "ClubName")
     }
 
     /// A boom, react or why. Does nothing outside a Club.

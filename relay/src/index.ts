@@ -16,6 +16,8 @@ const HOUR_MS = 3_600_000;
 const KEEP_EVENTS = 500;
 const PAGE_SIZE = 100;
 
+const NAME_ERROR = "name must be 1-24 visible characters";
+
 const json = (status: number, body: unknown) => Response.json(body, { status });
 const fail = (status: number, error: string) => json(status, { error });
 
@@ -42,7 +44,7 @@ async function route(req: Request, env: Env): Promise<Response> {
     body = text;
   }
 
-  if (code === undefined) return req.method === "POST" ? createClub(env) : fail(404, "not found");
+  if (code === undefined) return req.method === "POST" ? createClub(env, body) : fail(404, "not found");
 
   const club = code.toUpperCase();
   if (!CODE_RE.test(club)) return fail(404, "unknown club");
@@ -55,11 +57,18 @@ async function route(req: Request, env: Env): Promise<Response> {
   return fail(404, "not found");
 }
 
-async function createClub(env: Env): Promise<Response> {
+async function createClub(env: Env, body: string): Promise<Response> {
+  // The body and its name are optional; without a name the Club is named after its code.
+  const fields: Record<string, unknown> | null = body.trim() === "" ? {} : parseObject(body);
+  if (fields === null) return fail(400, "body must be a JSON object");
+  const name = fields.name == null ? null : visibleName(fields.name);
+  if (fields.name != null && name === null) return fail(400, NAME_ERROR);
+
   // ponytail: no rate limit on creating Clubs.
   for (let attempt = 0; attempt < 5; attempt++) {
     const club = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => CODE_ALPHABET[b & 31]).join("");
-    if (await env.CLUBS.get(env.CLUBS.idFromName(club)).create()) return json(201, { club });
+    const clubName = name ?? club;
+    if (await env.CLUBS.get(env.CLUBS.idFromName(club)).create(clubName)) return json(201, { club, name: clubName });
   }
   return fail(500, "no free club code");
 }
@@ -88,10 +97,10 @@ export class Club extends DurableObject<Env> {
   private sql = this.ctx.storage.sql;
 
   /** Claims this code and creates its tables. False if the Club already exists. */
-  create(): boolean {
+  create(name: string): boolean {
     if (this.exists()) return false;
     this.sql.exec(`
-      CREATE TABLE club (created_at INTEGER NOT NULL);
+      CREATE TABLE club (name TEXT NOT NULL, created_at INTEGER NOT NULL);
       CREATE TABLE members (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -114,14 +123,14 @@ export class Club extends DurableObject<Env> {
         from_name TEXT  -- always NULL for booms: Booms are anonymous
       );
     `);
-    this.sql.exec("INSERT INTO club (created_at) VALUES (?)", Date.now());
+    this.sql.exec("INSERT INTO club (name, created_at) VALUES (?, ?)", name, Date.now());
     return true;
   }
 
   async join(body: string): Promise<Response> {
     if (!this.exists()) return fail(404, "unknown club");
-    const name = trimmedText(parseObject(body)?.name, 24);
-    if (name === null || /\p{C}/u.test(name)) return fail(400, "name must be 1-24 visible characters");
+    const name = visibleName(parseObject(body)?.name);
+    if (name === null) return fail(400, NAME_ERROR);
 
     const token = randomHex(32);
     const tokenHash = await sha256Hex(token);
@@ -140,7 +149,8 @@ export class Club extends DurableObject<Env> {
       member, name, nameKey, tokenHash, now,
     );
     this.append({ type: "join", ts: now / 1000, from: name });
-    return json(200, { member, token });
+    const clubName = this.sql.exec<{ name: string }>("SELECT name FROM club").one().name;
+    return json(200, { member, token, clubName });
   }
 
   async post(token: string | null, body: string): Promise<Response> {
@@ -258,6 +268,12 @@ function trimmedText(value: unknown, max: number): string | null {
   const s = value.trim();
   const n = graphemes(s);
   return n >= 1 && n <= max ? s : null;
+}
+
+/** A Club or member name: 1-24 characters after trimming, none of them control or invisible (Unicode category C). */
+function visibleName(value: unknown): string | null {
+  const s = trimmedText(value, 24);
+  return s === null || /\p{C}/u.test(s) ? null : s;
 }
 
 const hex = (bytes: ArrayBuffer | Uint8Array) =>

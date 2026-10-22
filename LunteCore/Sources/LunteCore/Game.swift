@@ -3,7 +3,7 @@ import Foundation
 
 public enum Game {
     public static let minFuse = 2
-    public static let sittingGap: Double = 1800
+    public static let sittingGap: Double = 600 // a 10-minute break gives a fresh stick
 
     public static func replay(_ events: [Event], now: Double) -> GameState {
         var s = GameState(fuse: minFuse, pieces: minFuse, boomed: false, sittingOpen: false, currentBurns: [], booms: [])

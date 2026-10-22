@@ -48,11 +48,11 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(s.pieces, 2)
     }
 
-    func test6GapOf1800StartsNewSitting() {
-        // a Boom makes the fuse 3, a lose takes the next stick to the spark, then a tell 1799 s or 1800 s later
-        let same = Game.replay(log([.lose, .lose, .tell], at: [0, 2000, 3799]), now: t0 + 3800)
+    func test6GapOf600StartsNewSitting() {
+        // a Boom makes the fuse 3, a lose takes the next stick to the spark, then a tell 599 s or 600 s later
+        let same = Game.replay(log([.lose, .lose, .tell], at: [0, 2000, 2599]), now: t0 + 2600)
         XCTAssertEqual(same.fuse, 3) // still the same Sitting
-        let next = Game.replay(log([.lose, .lose, .tell], at: [0, 2000, 3800]), now: t0 + 3801)
+        let next = Game.replay(log([.lose, .lose, .tell], at: [0, 2000, 2600]), now: t0 + 2601)
         XCTAssertEqual(next.fuse, 2) // the calm Sitting closed and shortened the fuse
         XCTAssertEqual(next.pieces, 1)
     }

@@ -9,6 +9,7 @@ private let defaults = UserDefaults.standard
 final class GameModel: ObservableObject {
     @Published private(set) var state = Game.replay([], now: 0)
     @Published private(set) var club = Relay.club
+    @Published private(set) var clubName = Relay.clubName
     @Published private(set) var recent: [ClubEvent] = defaults.data(forKey: "Recent").flatMap { try? JSONDecoder().decode([ClubEvent].self, from: $0) } ?? []
     /// Boom ids this Mac posted to the Club.
     @Published private(set) var mine = Set(defaults.stringArray(forKey: "Mine") ?? [])
@@ -16,6 +17,9 @@ final class GameModel: ObservableObject {
     @Published private(set) var connected = defaults.bool(forKey: "Connected")
     /// The last 10 prompts (no onboarding test), for the vibe strip.
     @Published private(set) var lastTen: [Event] = []
+    /// When you last sent a prompt: a break counts from here.
+    @Published private(set) var lastActivity: Double?
+    private var promptCache: [Double: String] = [:]
     @Published private(set) var pluginInstalled = defaults.bool(forKey: "PluginInstalled")
     @Published private(set) var connecting = false
     @Published private(set) var connectError: String?
@@ -81,6 +85,19 @@ final class GameModel: ObservableObject {
         }
     }
 
+    /// Seconds until a fresh stick if you step away now (a 10-minute break), or nil with no activity yet.
+    func breakLeft(at now: Date) -> Double? {
+        lastActivity.map { max(0, $0 + Game.sittingGap - now.timeIntervalSince1970) }
+    }
+
+    /// The prompt behind an event, read from Claude Code's transcript on demand and kept in memory only.
+    func promptText(_ e: Event) async -> String? {
+        if let cached = promptCache[e.ts] { return cached }
+        let text = await Task.detached { Transcript.prompt(sid: e.sid, ts: e.ts) }.value
+        if let text { promptCache[e.ts] = text }
+        return text
+    }
+
     func testBoom() {
         playBoom()
         BoomFlash.show()
@@ -144,6 +161,7 @@ final class GameModel: ObservableObject {
         let events = EventLog.read(log)
         state = Game.replay(events, now: now)
         lastTen = Array(events.filter { $0.burn != .test }.suffix(10))
+        lastActivity = events.last?.ts
         onboard(events.filter { $0.burn == .test }, now: now)
         let fresh = state.booms.filter { !announced.contains($0.id) }
         guard !fresh.isEmpty else { return }
@@ -186,12 +204,12 @@ final class GameModel: ObservableObject {
     // MARK: The Club
 
     func createClub() {
-        guard let name = Alerts.ask("Create a Club", "Your name, as your Club will see it.", fields: ["Your name"])?.first,
-              !name.isEmpty else { return }
+        guard let f = Alerts.ask("Create a Club", "Name your Club, and say who you are in it.", fields: ["Club name", "Your name"]),
+              !f[0].isEmpty, !f[1].isEmpty else { return }
         Task {
             do {
-                let code = try await Relay.createClub()
-                try await join(code, name)
+                let code = try await Relay.createClub(named: f[0])
+                try await join(code, f[1])
                 copyToClipboard(code)
                 Alerts.tell("Your Club is \(code)", "The code is on your clipboard. Send it to the people you want in.")
             } catch {
@@ -218,6 +236,7 @@ final class GameModel: ObservableObject {
     func leaveClub() {
         Relay.leave()
         club = nil
+        clubName = nil
         mine = []
         secrets = [:]
         reactions = [:]
@@ -245,6 +264,7 @@ final class GameModel: ObservableObject {
     private func join(_ code: String, _ name: String) async throws {
         try await Relay.join(code, name: name)
         club = code
+        clubName = Relay.clubName
         recent = []
         lastSeq = 0
         await poll(notify: false) // catch up on the Club's history without a burst of notifications

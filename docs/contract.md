@@ -75,7 +75,7 @@ These cases must pass:
 
 Pure and deterministic, over the whole log.
 
-- **Sitting:** consecutive events less than 30 minutes (1800 s) apart. A gap of 1800 s or more starts a new Sitting.
+- **Sitting:** consecutive events less than 10 minutes (600 s) apart. A gap of 600 s or more (a break) starts a new Sitting.
 - **Fuse** starts at 2 (`minFuse`). Every Sitting starts a fresh stick with `pieces = fuse`.
 - **`.test` events** count as activity for Sittings but never burn, never Boom and never change the fuse.
 - **Each Burn**, in a Sitting that hasn't Boomed yet. Telling it off burns one piece; losing it burns two.
@@ -83,13 +83,15 @@ Pure and deterministic, over the whole log.
   - `.lose` otherwise: `pieces -= 2`
   - `.tell`: `pieces = max(1, pieces - 1)`, so it never takes the last piece and stays on the spark
 - **After a Boom,** the Sitting can't Boom again.
-- **A Sitting that ends without a Boom** sets `fuse = max(2, fuse - 1)`. A Sitting ends when the next event is 1800 s or more later, or, for the current state, when `now - lastEvent >= 1800`.
+- **A Sitting that ends without a Boom** sets `fuse = max(2, fuse - 1)`. A Sitting ends when the next event is 600 s or more later, or, for the current state, when `now - lastEvent >= 600`.
 - **`Boom`** is `{id, ts, litBy}`. `id = String(Int(ts * 1000))`, so it stays stable across replays. `litBy` holds that Sitting's Burns up to and including the Boom.
 - **`GameState`** is `{fuse, pieces, boomed, sittingOpen, currentBurns, booms}`. With no open Sitting, `pieces == fuse` and `boomed == false`.
 - **`Game.stickText`:**
   - when boomed: `💥`
   - otherwise `🧨` followed by pieces: `🧨━━━` (3), `🧨━━` (2), `🧨✨` (1)
 - **`Game.litByText`:** `10:12 told off · 14:40 lost it`, in local time.
+- **`Classifier.signals(_:)`:** the reasons behind a classification, for display only, such as `["told off: why did you", "swear", "CAPS"]`.
+- **`Transcript.prompt(sid:ts:)`:** the prompt text for an event, read from Claude Code's own transcript (`~/.claude/projects/*/<sid>.jsonl`, the human prompt within 5 s of `ts`). It's used for display only and never stored. Claude Code deletes old transcripts, so it can come back nil.
 
 Fixtures that must pass:
 1. One `lose` on a fresh stick (fuse 2): a Boom, then fuse 3.
@@ -97,17 +99,17 @@ Fixtures that must pass:
 3. `tell`, `lose`: a Boom.
 4. More `lose` after a Boom in the same Sitting: still one Boom.
 5. After a Boom (fuse 3), a calm Sitting followed by a gap: fuse 2, and never below 2.
-6. A gap of 1799 s is the same Sitting; a gap of 1800 s is a new one.
+6. A gap of 599 s is the same Sitting; a gap of 600 s is a new one.
 9. With fuse 4: a `lose` leaves 2, a `tell` leaves 1, and the next `lose` Booms.
-7. Last event 31 minutes before `now`: `sittingOpen == false`, `pieces == fuse`.
+7. Last event 11 minutes before `now`: `sittingOpen == false`, `pieces == fuse`.
 8. Replaying twice gives the same Boom ids.
 
 ## 5. The relay (HTTP + JSON)
 
 Base URL comes from Info.plist `LunteRelayURL`, overridable with `defaults write no.panter.lunte RelayURL http://localhost:8787`. Bodies are at most 2 KB. Errors: 400 for bad input, 401 for a bad token, 403 for a `why` whose secret doesn't match, 404 for an unknown Club or Boom, 409 for a Boom id or name already taken, 413 for a body that's too big, 429 for too many joins. A request to a Club that doesn't exist never creates storage.
 
-- `POST /clubs` → `201 {"club":"K7M2QX"}`: 6 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`.
-- `POST /clubs/{club}/join {"name":"Paal"}` → `200 {"member":"<id>","token":"<secret>"}`.
+- `POST /clubs {"name":"Night Shift"}` → `201 {"club":"K7M2QX","name":"Night Shift"}`: a 6-character code from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. The name follows the member-name rules (1–24 characters, no category C). It's optional and defaults to the code.
+- `POST /clubs/{club}/join {"name":"Paal"}` → `200 {"member":"<id>","token":"<secret>","clubName":"Night Shift"}`.
   - The name is 1–24 characters after trimming, with no control or invisible characters (Unicode category C).
   - Names are unique per Club, compared after NFKC normalisation and lowercasing (409 if taken).
   - A Club has at most 50 members and accepts at most 10 joins an hour (429).
@@ -134,7 +136,19 @@ The app keeps each Boom's secret and its "mine" flag in UserDefaults.
 - After "Connect to Claude Code" succeeds, the alert says the same: open a *new* chat, because Claude Code loads plugins when a session starts.
 - A new `test` event (less than 10 minutes old, not yet announced) plays the Boom and shows "💥 We're connected! Lunte hears you. Ready." It is never posted to the Club.
 
-**The menu:**
+**The popover** replaces a menu:
+- **Before the first Boom:** the onboarding checklist.
+- **The stick** as segments, with one plain sentence. Hovering it shows the break countdown: "Step away 8:41 for a fresh stick". Any prompt restarts the 10 minutes.
+- **The Boom card:**
+  - "💥 Boom 3 minutes ago", live
+  - the prompt that set it off, on one line, truncated with "…"
+  - your Club's reactions
+  - a live countdown, "Fresh stick in 8:41"
+  - tapping the top of the card opens the one-line Justify field
+- **Your last 10 messages** as dots. Hovering one shows a detail line: time, kind, signals and the prompt text (one line, truncated).
+- **The footer:** sound on the left; the Club in the centre (a house icon and its name, or "No Club"), with the Club actions behind it; a gear on the right for the rest.
+
+**The old menu (superseded by the popover):**
 - a status line: `Fuse 3 · 2 left`, or `💥 lit by 10:12 told off · 14:40 lost it`
 - "Justify", a one-line field on the Boom card for your own Boom when you're in a Club (sent as a `why` event)
 - the Club: "Create a Club" (shows the code to share) and "Join a Club…" (code and name), or, once you're in one, the Club code plus its last 5 events
