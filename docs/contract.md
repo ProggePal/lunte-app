@@ -144,11 +144,9 @@ The app keeps each Boom's secret and its "mine" flag in UserDefaults.
   - "💥 Boom 3 minutes ago", live
   - the prompt that set it off, on one line, truncated with "…"
   - your Club's reactions
-  - a live countdown, "Fresh stick in 8:41 · tap to hurry"
-  - each tap shaves 10 s off the break, then 9, 8 … 1, then nothing ("Nice try"), so at most 55 s
-  - when a hurried countdown reaches zero, the app appends a `rest` event, and the stick is fresh
-  - a new prompt restarts the break and resets the taps
-  - tapping the top of the card opens the one-line Justify field
+  - a live countdown, "Fresh stick in 8:41"
+  - **Easter egg, with no UI:** once you've justified, each tap on the 💥 shaves 2 s off the break, at most 60 s. When a hurried countdown reaches zero, the app appends a `rest` event and the stick is fresh. A new prompt restarts the break and resets the shave.
+  - tapping the 💥 opens the Justify field, at most 40 characters
 - **Your last 10 messages** as dots. Hovering one shows a detail line: time, kind, signals and the prompt text (one line, truncated).
 - **The footer:** sound on the left; the Club in the centre (a house icon and its name, or "No Club"), with the Club actions behind it; a gear on the right for the rest.
 

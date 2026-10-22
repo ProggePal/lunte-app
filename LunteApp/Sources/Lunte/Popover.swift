@@ -183,7 +183,7 @@ private struct VibeStrip: View {
 }
 
 /// After a Boom: how long ago, the message that set it off, the Club's reactions, and the break countdown.
-/// Tapping the top opens Justify.
+/// Tapping the 💥 opens Justify. Once you've justified, each tap secretly shaves 2 s off the break (an easter egg).
 private struct BoomCard: View {
     @ObservedObject var model: GameModel
     let boom: Boom
@@ -195,7 +195,10 @@ private struct BoomCard: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Button { if model.canJustify(boom.id) { justifying.toggle() } } label: {
+            Button {
+                if model.canJustify(boom.id) { justifying.toggle() }
+                else if model.whySent.contains(boom.id) { model.hurry() }
+            } label: {
                 VStack(spacing: 4) {
                     Text("💥").font(.system(size: 40))
                     TimelineView(.periodic(from: .now, by: 30)) { _ in
@@ -222,14 +225,18 @@ private struct BoomCard: View {
             }
             if justifying, model.canJustify(boom.id) {
                 HStack {
-                    TextField("Justify yourself", text: $why).textFieldStyle(.roundedBorder).onSubmit(send)
+                    TextField("Justify yourself, short", text: $why).textFieldStyle(.roundedBorder).onSubmit(send)
+                        .onChange(of: why) { _, new in if new.count > GameModel.justifyLimit { why = String(new.prefix(GameModel.justifyLimit)) } }
                     Button("Justify", action: send).disabled(why.isEmpty || sending)
                 }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
             } else if model.whySent.contains(boom.id) {
                 Text("Justified.").font(.caption).foregroundStyle(.secondary)
             }
-            HurryButton(model: model)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(model.breakLeft(at: context.date).map { $0 > 0 ? "Fresh stick in \(countdown($0))" : "Fresh stick any second" } ?? "")
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -241,46 +248,6 @@ private struct BoomCard: View {
             error = await model.justify(boom.id, why)
             sending = false
             if error == nil { why = ""; justifying = false }
-        }
-    }
-}
-
-/// The break countdown. Each tap shaves a little less: −10 s, −9 s … −1 s, then "Nice try".
-private struct HurryButton: View {
-    @ObservedObject var model: GameModel
-    @State private var flash: String?
-    @State private var taps = 0
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            Button(action: tap) {
-                HStack(spacing: 6) {
-                    Text(label(context.date)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    if let flash {
-                        Text(flash).font(.caption.bold()).foregroundStyle(.orange)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Impatient? Each tap shaves a little less.")
-        }
-    }
-
-    private func label(_ now: Date) -> String {
-        guard let left = model.breakLeft(at: now) else { return "" }
-        return left > 0 ? "Fresh stick in \(countdown(left)) · tap to hurry" : "Fresh stick any second"
-    }
-
-    private func tap() {
-        let cut = model.hurry()
-        taps += 1
-        let mine = taps
-        withAnimation(.spring(response: 0.3)) { flash = cut > 0 ? "−\(cut)s" : "Nice try" }
-        Task {
-            try? await Task.sleep(for: .milliseconds(800))
-            if taps == mine { withAnimation { flash = nil } } // only the latest tap clears it
         }
     }
 }

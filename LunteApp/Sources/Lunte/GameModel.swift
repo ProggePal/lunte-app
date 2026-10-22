@@ -23,7 +23,6 @@ final class GameModel: ObservableObject {
     /// Seconds shaved off the current break by tapping the countdown, and which break (last prompt) they belong to.
     @Published private(set) var shaved: Double = 0
     private var shaveKey: Double?
-    private var shaveTaps = 0
     private var breakEnd: Task<Void, Never>?
     @Published private(set) var pluginInstalled = defaults.bool(forKey: "PluginInstalled")
     @Published private(set) var connecting = false
@@ -66,6 +65,8 @@ final class GameModel: ObservableObject {
         return "\(state.pieces) pieces left. Losing it burns two."
     }
 
+    static let justifyLimit = 40 // short and honest
+
     func canJustify(_ boom: String) -> Bool { club != nil && mine.contains(boom) && !whySent.contains(boom) }
 
     /// "🧯 2 · 😂 1 from Ola", or nil when nobody reacted yet.
@@ -96,15 +97,12 @@ final class GameModel: ObservableObject {
         return max(0, last + Game.sittingGap - shaved - now.timeIntervalSince1970)
     }
 
-    /// Tapping the countdown hurries the break: 10 s off, then 9, 8 … 1, then nothing. Returns the seconds shaved.
-    func hurry() -> Int {
-        guard state.sittingOpen, let last = lastActivity else { return 0 }
+    /// Easter egg: once you've justified, each tap on the 💥 shaves 2 s off the break, at most a minute. No UI.
+    func hurry() {
+        guard state.sittingOpen, let last = lastActivity, shaved < 60 else { return }
         shaveKey = last
-        let cut = max(0, 10 - shaveTaps)
-        shaveTaps += 1
-        shaved += Double(cut)
+        shaved += 2
         scheduleBreakEnd()
-        return cut
     }
 
     /// Ends the break on time: a plain reload closes a full 10-minute break, and a hurried one needs a rest event.
@@ -195,7 +193,7 @@ final class GameModel: ObservableObject {
         state = Game.replay(events, now: now)
         lastHour = Array(events.filter { ($0.burn != .test && $0.burn != .rest) && now - $0.ts < 3600 }.suffix(240)) // ponytail: capped for a very busy hour
         lastActivity = events.last { $0.burn != .rest }?.ts
-        if shaveKey != lastActivity { shaveKey = nil; shaveTaps = 0; shaved = 0 } // a new prompt restarts the break
+        if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the break
         onboard(events.filter { $0.burn == .test }, now: now)
         scheduleBreakEnd()
         let fresh = state.booms.filter { !announced.contains($0.id) }
@@ -286,7 +284,7 @@ final class GameModel: ObservableObject {
     func justify(_ boom: String, _ text: String) async -> String? {
         guard let secret = secrets[boom], !text.isEmpty else { return "Nothing to send." }
         do {
-            try await Relay.post(["type": "why", "boom": boom, "text": String(text.prefix(140)), "secret": secret])
+            try await Relay.post(["type": "why", "boom": boom, "text": String(text.prefix(Self.justifyLimit)), "secret": secret])
             whySent.insert(boom)
             defaults.set(Array(whySent), forKey: "WhySent")
             await poll(notify: true)
