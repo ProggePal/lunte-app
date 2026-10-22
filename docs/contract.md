@@ -146,13 +146,13 @@ The app keeps each Boom's secret and its "mine" flag in UserDefaults.
   - your Club's reactions
   - a live countdown, "Fresh stick in 8:41"
   - **Easter egg, with no UI:** once you've justified, each tap on the 💥 shaves 2 s off the break, at most 60 s. When a hurried countdown reaches zero, the app appends a `rest` event and the stick is fresh. A new prompt restarts the break and resets the shave.
-  - tapping the 💥 opens the Justify field, at most 40 characters
+  - tapping the 💥 opens the Justify field, at most 40 characters. Justify always works: the line is saved on the Mac with the Boom and shown on the card. In a Club, it's also sent as a `why` event when the Boom reached the relay.
 - **Your last 10 messages** as dots. Hovering one shows a detail line: time, kind, signals and the prompt text (one line, truncated).
 - **The footer:** sound on the left; the Club in the centre (a house icon and its name, or "No Club"), with the Club actions behind it; a gear on the right for the rest.
 
 **The old menu (superseded by the popover):**
 - a status line: `Fuse 3 · 2 left`, or `💥 lit by 10:12 told off · 14:40 lost it`
-- "Justify", a one-line field on the Boom card for your own Boom when you're in a Club (sent as a `why` event)
+- "Justify", a one-line field on the Boom card, solo or in a Club (in a Club it's also sent as a `why` event)
 - the Club: "Create a Club" (shows the code to share) and "Join a Club…" (code and name), or, once you're in one, the Club code plus its last 5 events
 - "Test your Boom"
 - a sound on/off toggle

@@ -196,8 +196,7 @@ private struct BoomCard: View {
     var body: some View {
         VStack(spacing: 8) {
             Button {
-                if model.canJustify(boom.id) { justifying.toggle() }
-                else if model.whySent.contains(boom.id) { model.hurry() }
+                if model.canJustify(boom.id) { justifying.toggle() } else { model.hurry() }
             } label: {
                 VStack(spacing: 4) {
                     Text("💥").font(.system(size: 40))
@@ -229,10 +228,10 @@ private struct BoomCard: View {
                         .onChange(of: why) { _, new in if new.count > GameModel.justifyLimit { why = String(new.prefix(GameModel.justifyLimit)) } }
                     Button("Justify", action: send).disabled(why.isEmpty || sending)
                 }
-                if let error { Text(error).font(.caption).foregroundStyle(.red) }
-            } else if model.whySent.contains(boom.id) {
-                Text("Justified.").font(.caption).foregroundStyle(.secondary)
+            } else if let line = model.justifications[boom.id] {
+                Text("“\(line)”").font(.callout)
             }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(model.breakLeft(at: context.date).map { $0 > 0 ? "Fresh stick in \(countdown($0))" : "Fresh stick any second" } ?? "")
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
@@ -247,7 +246,8 @@ private struct BoomCard: View {
         Task {
             error = await model.justify(boom.id, why)
             sending = false
-            if error == nil { why = ""; justifying = false }
+            why = ""
+            justifying = false // it's saved either way; error only says the Club missed it
         }
     }
 }

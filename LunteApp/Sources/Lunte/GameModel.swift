@@ -29,7 +29,8 @@ final class GameModel: ObservableObject {
     @Published private(set) var connectError: String?
     /// Boom id → reactions on it, like "🧯 Ola".
     @Published private(set) var reactions = defaults.dictionary(forKey: "Reactions") as? [String: [String]] ?? [:]
-    @Published private(set) var whySent = Set(defaults.stringArray(forKey: "WhySent") ?? [])
+    /// Your justification per Boom id, kept on this Mac. Your own words about a Boom, never a prompt.
+    @Published private(set) var justifications = defaults.dictionary(forKey: "Justifications") as? [String: String] ?? [:]
     @Published var soundOn = defaults.object(forKey: "SoundOn") as? Bool ?? true {
         didSet { defaults.set(soundOn, forKey: "SoundOn") }
     }
@@ -67,7 +68,7 @@ final class GameModel: ObservableObject {
 
     static let justifyLimit = 40 // short and honest
 
-    func canJustify(_ boom: String) -> Bool { club != nil && mine.contains(boom) && !whySent.contains(boom) }
+    func canJustify(_ boom: String) -> Bool { justifications[boom] == nil } // solo too; the Club is a bonus
 
     /// "🧯 2 · 😂 1 from Ola", or nil when nobody reacted yet.
     func reactionSummary(_ boom: String) -> String? {
@@ -273,24 +274,26 @@ final class GameModel: ObservableObject {
         mine = []
         secrets = [:]
         reactions = [:]
-        whySent = []
-        for key in ["Mine", "Secrets", "Reactions", "WhySent"] { defaults.removeObject(forKey: key) }
+        for key in ["Mine", "Secrets", "Reactions"] { defaults.removeObject(forKey: key) } // your justifications stay
         recent = []
         lastSeq = 0
         saveClub()
     }
 
-    /// Justify a Boom (the relay's "why"). Returns an error message to show, or nil when the Club got it.
+    /// Justify a Boom: saved on this Mac, and sent to your Club (the relay's "why") when the Boom reached it.
+    /// Returns a message when the Club couldn't get it, or nil.
     func justify(_ boom: String, _ text: String) async -> String? {
-        guard let secret = secrets[boom], !text.isEmpty else { return "Nothing to send." }
+        let line = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.justifyLimit))
+        guard !line.isEmpty else { return nil }
+        justifications[boom] = line
+        defaults.set(justifications, forKey: "Justifications")
+        guard club != nil, let secret = secrets[boom] else { return nil } // solo, or this Boom never reached the Club
         do {
-            try await Relay.post(["type": "why", "boom": boom, "text": String(text.prefix(Self.justifyLimit)), "secret": secret])
-            whySent.insert(boom)
-            defaults.set(Array(whySent), forKey: "WhySent")
+            try await Relay.post(["type": "why", "boom": boom, "text": line, "secret": secret])
             await poll(notify: true)
             return nil
         } catch {
-            return error.localizedDescription
+            return "Saved, but your Club didn't get it. " + error.localizedDescription
         }
     }
 
