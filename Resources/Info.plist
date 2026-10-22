@@ -17,7 +17,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>202610221751</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
@@ -34,6 +34,6 @@
 	<key>SUFeedURL</key>
 	<string>https://github.com/ProggePal/lunte-app/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string></string>
+	<string>po2upXRTjd2u2IcoAmNorpqCrAyzkxTTn/cgKvydyEA=</string>
 </dict>
 </plist>
