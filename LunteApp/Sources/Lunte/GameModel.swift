@@ -15,8 +15,8 @@ final class GameModel: ObservableObject {
     @Published private(set) var mine = Set(defaults.stringArray(forKey: "Mine") ?? [])
     /// True once the onboarding phrase has reached the log: the hook is wired up.
     @Published private(set) var connected = defaults.bool(forKey: "Connected")
-    /// The last 10 prompts (no onboarding test), for the vibe strip.
-    @Published private(set) var lastTen: [Event] = []
+    /// Your prompts from the last hour (no onboarding test), for the vibe strip.
+    @Published private(set) var lastHour: [Event] = []
     /// When you last sent a prompt: a break counts from here.
     @Published private(set) var lastActivity: Double?
     private var promptCache: [Double: String] = [:]
@@ -160,7 +160,7 @@ final class GameModel: ObservableObject {
         let now = Date().timeIntervalSince1970
         let events = EventLog.read(log)
         state = Game.replay(events, now: now)
-        lastTen = Array(events.filter { $0.burn != .test }.suffix(10))
+        lastHour = Array(events.filter { $0.burn != .test && now - $0.ts < 3600 }.suffix(240)) // ponytail: capped for a very busy hour
         lastActivity = events.last?.ts
         onboard(events.filter { $0.burn == .test }, now: now)
         let fresh = state.booms.filter { !announced.contains($0.id) }

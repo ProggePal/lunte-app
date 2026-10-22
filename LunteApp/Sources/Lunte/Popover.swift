@@ -105,49 +105,60 @@ private struct StickView: View {
     }
 }
 
-/// Your last 10 messages as dots: grey normal, orange told off, red lost it, 💥 where it blew.
-/// Hovering a dot shows its time, kind, signals and the prompt (read from Claude's transcript, never stored).
+/// Your last hour as dots that wrap: grey normal, orange told off, red lost it, 💥 where it blew.
+/// Hovering a dot shows its time, kind, signals and the message (read from Claude's transcript, never stored).
+/// The dots touch (no dead space between them) and the detail area keeps its height, so hovering never jumps.
 private struct VibeStrip: View {
     @ObservedObject var model: GameModel
     @State private var hovered: Event?
-    @State private var text: String?
+    @State private var texts: [Double: String] = [:]
+    @State private var missing: Set<Double> = []
+
+    private let cell: CGFloat = 18
 
     var body: some View {
-        let events = model.lastTen
+        let events = model.lastHour
         let boomTimes = Set(model.state.booms.map(\.ts))
         VStack(alignment: .leading, spacing: 6) {
-            Text("Your last 10 messages").font(.caption).foregroundStyle(.secondary)
-            HStack(spacing: 6) {
-                let pad = 10 - events.count
-                ForEach(0..<10, id: \.self) { i in
-                    if i < pad {
-                        Circle().strokeBorder(Color.secondary.opacity(0.3)).frame(width: 14, height: 14)
-                    } else {
-                        let e = events[i - pad]
+            Text("Your last hour").font(.caption).foregroundStyle(.secondary)
+            if events.isEmpty {
+                Text("Nothing yet. Every message you send Claude shows up here.").font(.caption).foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: cell, maximum: cell), spacing: 0)], alignment: .leading, spacing: 0) {
+                    ForEach(events, id: \.ts) { e in
                         Group {
                             if boomTimes.contains(e.ts) { Text("💥").font(.system(size: 12)) }
-                            else { Circle().fill(color(e.burn)) }
+                            else { Circle().fill(color(e.burn)).frame(width: 12, height: 12) }
                         }
-                        .frame(width: 14, height: 14)
-                        .scaleEffect(hovered == e ? 1.3 : 1)
-                        .onHover { inside in
-                            if inside { hovered = e } else if hovered == e { hovered = nil }
-                        }
+                        .frame(width: cell, height: cell)
+                        .background(hovered == e ? Color.secondary.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                        .contentShape(Rectangle())
+                        .onHover { if $0 { hovered = e } } // leaving the whole grid clears it, not leaving one dot
                     }
                 }
+                .onHover { if !$0 { hovered = nil } }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(events.count) messages in the last hour: " + events.map { word($0.burn) }.joined(separator: ", "))
+                detail.frame(height: 32, alignment: .topLeading)
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(events.map { word($0.burn) }.joined(separator: ", "))
-            if let e = hovered {
-                VStack(alignment: .leading, spacing: 2) {
-                    let signals = text.map(Classifier.signals) ?? []
-                    Text(([clock(e.ts), word(e.burn)] + signals).joined(separator: " · "))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(text.map { "“\($0)”" } ?? "Couldn’t find this message in Claude’s history.")
-                        .font(.caption).lineLimit(1).truncationMode(.tail)
-                }
-                .task(id: e.ts) { text = await model.promptText(e) }
+        }
+    }
+
+    @ViewBuilder private var detail: some View {
+        if let e = hovered {
+            let text = texts[e.ts]
+            VStack(alignment: .leading, spacing: 2) {
+                Text(([clock(e.ts), word(e.burn)] + (text.map(Classifier.signals) ?? [])).joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(text.map { "“\($0)”" } ?? (missing.contains(e.ts) ? "Couldn’t find this message in Claude’s history." : "…"))
+                    .font(.caption).lineLimit(1).truncationMode(.tail)
             }
+            .task(id: e.ts) {
+                guard texts[e.ts] == nil, !missing.contains(e.ts) else { return }
+                if let found = await model.promptText(e) { texts[e.ts] = found } else { missing.insert(e.ts) }
+            }
+        } else {
+            Text("Hover a dot to see the message.").font(.caption).foregroundStyle(.secondary)
         }
     }
 
