@@ -16,13 +16,13 @@ app/
 
 ## 1. The event log
 
-`~/Library/Application Support/Lunte/events.jsonl`. The `LUNTE_LOG` environment variable overrides the path, for tests and development. `lunte-hook` appends one line per prompt; no one else writes it. It never holds prompt text.
+`~/Library/Application Support/Lunte/events.jsonl`. The `LUNTE_LOG` environment variable overrides the path, for tests and development. `lunte-hook` appends one line per prompt. The only other writer is the app, which appends a `rest` line when a hurried break ends (§6). It never holds prompt text.
 
 ```json
 {"v":1,"ts":1792670480.123,"burn":"none","sid":"<Claude Code session_id>"}
 ```
 
-- `burn`: `"none"`, `"tell"` (telling it off), `"lose"` (losing it) or `"test"` (the onboarding phrase, §6).
+- `burn`: `"none"`, `"tell"` (telling it off), `"lose"` (losing it) or `"test"` (the onboarding phrase, §6). `"rest"` is written by the app, never by the hook.
 - `ts`: Unix seconds, as a Double.
 - `sid`: the Claude Code session id, kept as a pointer for a later `lunte why`. It may be `""`.
 - **Writers** append one whole line with a single `write()` under `O_APPEND`.
@@ -78,6 +78,7 @@ Pure and deterministic, over the whole log.
 - **Sitting:** consecutive events less than 10 minutes (600 s) apart. A gap of 600 s or more (a break) starts a new Sitting.
 - **Fuse** starts at 2 (`minFuse`). Every Sitting starts a fresh stick with `pieces = fuse`.
 - **`.test` events** count as activity for Sittings but never burn, never Boom and never change the fuse.
+- **`.rest` events** close the open Sitting on the spot, exactly like a break. The next prompt then starts a fresh Sitting, without counting the empty stretch in between as a calm Sitting.
 - **Each Burn**, in a Sitting that hasn't Boomed yet. Telling it off burns one piece; losing it burns two.
   - `.lose` and `pieces <= 2`: **Boom** (`pieces = 0`, `fuse += 1`)
   - `.lose` otherwise: `pieces -= 2`
@@ -143,7 +144,10 @@ The app keeps each Boom's secret and its "mine" flag in UserDefaults.
   - "💥 Boom 3 minutes ago", live
   - the prompt that set it off, on one line, truncated with "…"
   - your Club's reactions
-  - a live countdown, "Fresh stick in 8:41"
+  - a live countdown, "Fresh stick in 8:41 · tap to hurry"
+  - each tap shaves 10 s off the break, then 9, 8 … 1, then nothing ("Nice try"), so at most 55 s
+  - when a hurried countdown reaches zero, the app appends a `rest` event, and the stick is fresh
+  - a new prompt restarts the break and resets the taps
   - tapping the top of the card opens the one-line Justify field
 - **Your last 10 messages** as dots. Hovering one shows a detail line: time, kind, signals and the prompt text (one line, truncated).
 - **The footer:** sound on the left; the Club in the centre (a house icon and its name, or "No Club"), with the Club actions behind it; a gear on the right for the rest.

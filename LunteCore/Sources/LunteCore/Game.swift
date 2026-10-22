@@ -18,6 +18,11 @@ public enum Game {
         }
 
         for e in events.sorted(by: { $0.ts < $1.ts }) {
+            if e.burn == .rest { // a hurried break ended: close now, and the next prompt starts a fresh Sitting
+                if last != nil { close() }
+                last = nil
+                continue
+            }
             if let last, e.ts - last >= sittingGap { close() }
             last = e.ts
             guard e.burn == .tell || e.burn == .lose else { continue } // .none and .test only keep a Sitting open

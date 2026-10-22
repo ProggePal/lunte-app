@@ -2,7 +2,7 @@
 // Classifier, EventLog and Game live in their own files.
 import Foundation
 
-public enum Burn: String, Codable, Sendable { case none, tell, lose, test } // test: the onboarding phrase, never burns
+public enum Burn: String, Codable, Sendable { case none, tell, lose, test, rest } // test: the onboarding phrase. rest: written by the app when a hurried break ends
 
 /// One line of events.jsonl. Never holds prompt text.
 public struct Event: Codable, Equatable, Sendable {

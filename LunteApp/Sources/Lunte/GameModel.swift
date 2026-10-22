@@ -20,6 +20,11 @@ final class GameModel: ObservableObject {
     /// When you last sent a prompt: a break counts from here.
     @Published private(set) var lastActivity: Double?
     private var promptCache: [Double: String] = [:]
+    /// Seconds shaved off the current break by tapping the countdown, and which break (last prompt) they belong to.
+    @Published private(set) var shaved: Double = 0
+    private var shaveKey: Double?
+    private var shaveTaps = 0
+    private var breakEnd: Task<Void, Never>?
     @Published private(set) var pluginInstalled = defaults.bool(forKey: "PluginInstalled")
     @Published private(set) var connecting = false
     @Published private(set) var connectError: String?
@@ -87,7 +92,35 @@ final class GameModel: ObservableObject {
 
     /// Seconds until a fresh stick if you step away now (a 10-minute break), or nil with no activity yet.
     func breakLeft(at now: Date) -> Double? {
-        lastActivity.map { max(0, $0 + Game.sittingGap - now.timeIntervalSince1970) }
+        guard state.sittingOpen, let last = lastActivity else { return nil }
+        return max(0, last + Game.sittingGap - shaved - now.timeIntervalSince1970)
+    }
+
+    /// Tapping the countdown hurries the break: 10 s off, then 9, 8 … 1, then nothing. Returns the seconds shaved.
+    func hurry() -> Int {
+        guard state.sittingOpen, let last = lastActivity else { return 0 }
+        shaveKey = last
+        let cut = max(0, 10 - shaveTaps)
+        shaveTaps += 1
+        shaved += Double(cut)
+        scheduleBreakEnd()
+        return cut
+    }
+
+    /// Ends the break on time: a plain reload closes a full 10-minute break, and a hurried one needs a rest event.
+    private func scheduleBreakEnd() {
+        breakEnd?.cancel()
+        guard let left = breakLeft(at: .now) else { return }
+        let key = lastActivity
+        breakEnd = Task {
+            try? await Task.sleep(for: .seconds(left + 0.5))
+            guard !Task.isCancelled, lastActivity == key else { return }
+            if shaved > 0 {
+                try? EventLog.append(Event(ts: Date().timeIntervalSince1970, burn: .rest), to: log) // the watcher reloads
+            } else {
+                reload()
+            }
+        }
     }
 
     /// The prompt behind an event, read from Claude Code's transcript on demand and kept in memory only.
@@ -160,9 +193,11 @@ final class GameModel: ObservableObject {
         let now = Date().timeIntervalSince1970
         let events = EventLog.read(log)
         state = Game.replay(events, now: now)
-        lastHour = Array(events.filter { $0.burn != .test && now - $0.ts < 3600 }.suffix(240)) // ponytail: capped for a very busy hour
-        lastActivity = events.last?.ts
+        lastHour = Array(events.filter { ($0.burn != .test && $0.burn != .rest) && now - $0.ts < 3600 }.suffix(240)) // ponytail: capped for a very busy hour
+        lastActivity = events.last { $0.burn != .rest }?.ts
+        if shaveKey != lastActivity { shaveKey = nil; shaveTaps = 0; shaved = 0 } // a new prompt restarts the break
         onboard(events.filter { $0.burn == .test }, now: now)
+        scheduleBreakEnd()
         let fresh = state.booms.filter { !announced.contains($0.id) }
         guard !fresh.isEmpty else { return }
         for boom in fresh {

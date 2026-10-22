@@ -98,3 +98,28 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(Game.litByText(boom), "10:12 told off · 14:40 lost it")
     }
 }
+
+final class RestTests: XCTestCase {
+    let t0 = 1_792_670_480.0
+
+    func testRestEndsABoomedSittingWithoutShorteningTheFuse() {
+        let s = Game.replay([Event(ts: t0, burn: .lose), Event(ts: t0 + 60, burn: .rest)], now: t0 + 61)
+        XCTAssertFalse(s.boomed)
+        XCTAssertFalse(s.sittingOpen)
+        XCTAssertEqual(s.fuse, 3) // the Boom's +1 stays
+        XCTAssertEqual(s.pieces, 3)
+    }
+
+    func testPromptAfterRestStartsFreshWithoutAnExtraCalmSitting() {
+        let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 60, burn: .rest), Event(ts: t0 + 2000, burn: .tell)]
+        let s = Game.replay(events, now: t0 + 2001)
+        XCTAssertEqual(s.fuse, 3) // the empty stretch after the rest isn't a calm Sitting
+        XCTAssertEqual(s.pieces, 2)
+        XCTAssertTrue(s.sittingOpen)
+    }
+
+    func testRestOnACalmSittingShortensLikeABreak() {
+        let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 700, burn: .tell), Event(ts: t0 + 760, burn: .rest)]
+        XCTAssertEqual(Game.replay(events, now: t0 + 761).fuse, 2)
+    }
+}
