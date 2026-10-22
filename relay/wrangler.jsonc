@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lunte-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-15",
+  "observability": { "enabled": true },
+
+  // One Durable Object per Club, addressed with idFromName(club code).
+  "durable_objects": {
+    "bindings": [{ "name": "CLUBS", "class_name": "Club" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Club"] }]
+}

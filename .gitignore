@@ -1,5 +1,10 @@
 .DS_Store
 .build/
+.swiftpm/
 xcuserdata/
 DerivedData/
 *.xcarchive
+dist/
+node_modules/
+.wrangler/
+.dev.vars
