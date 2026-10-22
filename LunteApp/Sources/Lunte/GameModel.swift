@@ -57,7 +57,7 @@ final class GameModel: ObservableObject {
         return "\(state.pieces) pieces left. Losing it burns two."
     }
 
-    func canSayWhy(_ boom: String) -> Bool { club != nil && mine.contains(boom) && !whySent.contains(boom) }
+    func canJustify(_ boom: String) -> Bool { club != nil && mine.contains(boom) && !whySent.contains(boom) }
 
     /// "🧯 2 · 😂 1 from Ola", or nil when nobody reacted yet.
     func reactionSummary(_ boom: String) -> String? {
@@ -67,8 +67,6 @@ final class GameModel: ObservableObject {
         return counts.map { "\($0.key) \($0.value)" }.joined(separator: " · ") + " from " + names.sorted().joined(separator: ", ")
     }
 
-    /// Your latest Boom that went to the Club, for "Say why…".
-    var whyBoom: Boom? { club == nil ? nil : state.booms.last { mine.contains($0.id) } }
 
     private func isMine(_ e: ClubEvent) -> Bool { e.boom.map(mine.contains) ?? false }
 
@@ -230,8 +228,8 @@ final class GameModel: ObservableObject {
         saveClub()
     }
 
-    /// Returns an error message to show, or nil when the Club got it.
-    func sayWhy(_ boom: String, _ text: String) async -> String? {
+    /// Justify a Boom (the relay's "why"). Returns an error message to show, or nil when the Club got it.
+    func justify(_ boom: String, _ text: String) async -> String? {
         guard let secret = secrets[boom], !text.isEmpty else { return "Nothing to send." }
         do {
             try await Relay.post(["type": "why", "boom": boom, "text": String(text.prefix(140)), "secret": secret])
@@ -281,7 +279,7 @@ final class GameModel: ObservableObject {
             Notifier.post("💥 Boom in your Club", "Someone lost it. Throw them something.", boom: e.boom)
         case "react" where isMine(e):
             Notifier.post("\(e.emoji ?? "") from \(who)", "On your Boom")
-        case "why" where !isMine(e): // only a Boom's owner can say why, so a why on your own Boom is yours
+        case "why" where !isMine(e): // only a Boom's owner can justify it, so a why on your own Boom is yours
             Notifier.post("\(who): \(e.text ?? "")")
         case "join":
             Notifier.post("👋 \(who) joined your Club")

@@ -8,7 +8,7 @@ A Mac menu bar app for Claude Code. It's a prototype, with two players so far.
 - A stick of dynamite sits in your menu bar.
 - Tell your AI off ("I said…", "why did you…") and one piece of the fuse burns.
 - Really lose it (a swear at it, CAPS, "!!!") and two pieces burn. If that's the last of your fuse, your laptop goes 💥.
-- Your Club gets the Boom on their Macs and throws you a 🧯, 😂 or 🫂. Tell them why.
+- Your Club gets the Boom on their Macs and throws you a 🧯, 😂 or 🫂. Justify yourself.
 - Every Boom makes your next fuse longer, and every calm stretch makes it shorter. Step away for 30 minutes and you get a fresh stick.
 
 ## Privacy

@@ -136,7 +136,7 @@ The app keeps each Boom's secret and its "mine" flag in UserDefaults.
 
 **The menu:**
 - a status line: `Fuse 3 · 2 left`, or `💥 lit by 10:12 told off · 14:40 lost it`
-- "Say why…", shown for your latest Boom when you're in a Club
+- "Justify", a one-line field on the Boom card for your own Boom when you're in a Club (sent as a `why` event)
 - the Club: "Create a Club" (shows the code to share) and "Join a Club…" (code and name), or, once you're in one, the Club code plus its last 5 events
 - "Test your Boom"
 - a sound on/off toggle

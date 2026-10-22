@@ -17,7 +17,7 @@ struct RelayError: LocalizedError {
     var errorDescription: String? {
         switch status {
         case 401: "The Club didn't recognise you. Leave the Club and join it again."
-        case 403: "That Boom isn't yours, so you can't say why."
+        case 403: "That Boom isn't yours, so you can't justify it."
         case 404: "There's no Club with that code, or that Boom never reached it."
         case 409: "That name is already taken in this Club. Pick another."
         case 429: "Too many people joined this Club in the last hour. Try again later."

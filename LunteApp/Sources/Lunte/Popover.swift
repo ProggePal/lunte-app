@@ -163,14 +163,14 @@ private struct BoomCard: View {
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
             }
-            if model.canSayWhy(boom.id) {
+            if model.canJustify(boom.id) {
                 HStack {
-                    TextField("What lit it?", text: $why).textFieldStyle(.roundedBorder).onSubmit(send)
-                    Button("Say why", action: send).disabled(why.isEmpty || sending)
+                    TextField("Justify yourself", text: $why).textFieldStyle(.roundedBorder).onSubmit(send)
+                    Button("Justify", action: send).disabled(why.isEmpty || sending)
                 }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
             } else if model.whySent.contains(boom.id) {
-                Text("Your Club knows why.").font(.caption).foregroundStyle(.secondary)
+                Text("Justified.").font(.caption).foregroundStyle(.secondary)
             }
             Text("Fresh stick after a 30-minute break.").font(.caption).foregroundStyle(.secondary)
         }
@@ -181,7 +181,7 @@ private struct BoomCard: View {
         guard !why.isEmpty, !sending else { return }
         sending = true
         Task {
-            error = await model.sayWhy(boom.id, why)
+            error = await model.justify(boom.id, why)
             sending = false
             if error == nil { why = "" }
         }
