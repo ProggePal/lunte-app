@@ -34,3 +34,9 @@ Updated 22 Oct 2026 for the game redesign.
 - **Who the Relay can identify:** each Boom gets a random id on the person's machine, so the Relay learns who a Boom belongs to only from a Claim.
 - **Terminal commands, not slash commands.** `lunte why`, `lunte claim` and the Card are terminal commands or app actions, because slash command output goes into the model context and so to Anthropic.
 - **`lunte why` can come up empty.** Claude Code deletes old transcripts (30 days by default), so the pointer goes stale; accept it.
+
+## Amended 23 Oct 2026 (Lunte 0.2.0)
+
+- **Heat is read by Laya on the Mac.** It's no longer opt-in flavour. The model (`FluidInference/laya-coreml`) downloads once from Hugging Face on first launch; that request carries nothing of the person's. The word list is the fallback until the model loads.
+- **The fuse setup prompt is the one exception to "no network call", and the person runs it.** It asks their own AI (Claude Code) to read their recent messages and rate how heated they were. Those messages go to their AI provider, in their own chat, like any other request, and only because they pasted the prompt. Lunte itself still sends nothing; it keeps only message references and 0–3 ratings, never text. Skipping it leaves the fuse untuned.
+- **Open question:** Anthropic's usage policy restricts using Claude to infer a person's emotions. Here it's a person rating their own messages, by choice, but check the policy wording before a public launch, and drop or replace the setup prompt if it doesn't hold.

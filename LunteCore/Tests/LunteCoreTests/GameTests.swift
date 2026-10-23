@@ -14,88 +14,120 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(s.booms.count, 1)
         XCTAssertEqual(s.booms[0].ts, t0)
         XCTAssertEqual(s.booms[0].litBy.count, 1)
-        XCTAssertEqual(s.fuse, 3)
+        XCTAssertEqual(s.fuse, 1.5)
         XCTAssertTrue(s.boomed)
-        XCTAssertEqual(s.pieces, 0)
+        XCTAssertEqual(s.left, 0)
     }
 
     func test2TellTellNoBoom() {
         let s = Game.replay(log([.tell, .tell]), now: t0 + 120)
         XCTAssertTrue(s.booms.isEmpty)
-        XCTAssertEqual(s.pieces, 1)
+        XCTAssertEqual(s.burned, 0.72, accuracy: 1e-9) // telling it off is heat 0.6, so 0.36 each
         XCTAssertEqual(Game.stickText(s), "🧨✨")
     }
 
-    func test3TellThenLoseBooms() {
+    func test3TooMuchHeatBlows() {
         XCTAssertEqual(Game.replay(log([.tell, .lose]), now: t0 + 120).booms.count, 1)
+        XCTAssertEqual(Game.replay(log([.tell, .tell, .tell]), now: t0 + 180).booms.count, 1) // 1.08 of a 1.0 fuse
     }
 
-    func test4OneBoomPerSitting() {
+    func test4OneBoomUntilItCools() {
         let s = Game.replay(log([.lose, .lose, .lose, .lose, .tell]), now: t0 + 300)
         XCTAssertEqual(s.booms.count, 1)
-        XCTAssertEqual(s.fuse, 3)
+        XCTAssertEqual(s.fuse, 1.5)
         XCTAssertEqual(s.currentBurns.count, 5)
     }
 
-    func test5CalmSittingShortensFuseNeverBelowTwo() {
+    func test5CalmSittingShortensFuseNeverBelowOne() {
         let boom = log([.lose, .lose])
-        XCTAssertEqual(Game.replay(boom, now: t0 + 10_000).fuse, 3) // a Booming Sitting doesn't shorten
+        XCTAssertEqual(Game.replay(boom, now: t0 + 10_000).fuse, 1.5) // a Booming Sitting doesn't shorten
         let calm1 = log([.none, .none], at: [4000, 4060])
-        XCTAssertEqual(Game.replay(boom + calm1, now: t0 + 10_000).fuse, 2)
+        XCTAssertEqual(Game.replay(boom + calm1, now: t0 + 10_000).fuse, 1)
         let calm2 = log([.tell], at: [20_000])
         let s = Game.replay(boom + calm1 + calm2, now: t0 + 30_000)
-        XCTAssertEqual(s.fuse, 2)
-        XCTAssertEqual(s.pieces, 2)
+        XCTAssertEqual(s.fuse, 1)
+        XCTAssertEqual(s.burned, 0)
     }
 
     func test6GapOf600StartsNewSitting() {
-        // a Boom makes the fuse 3, a lose takes the next stick to the spark, then a tell 599 s or 600 s later
-        let same = Game.replay(log([.lose, .lose, .tell], at: [0, 2000, 2599]), now: t0 + 2600)
-        XCTAssertEqual(same.fuse, 3) // still the same Sitting
-        let next = Game.replay(log([.lose, .lose, .tell], at: [0, 2000, 2600]), now: t0 + 2601)
-        XCTAssertEqual(next.fuse, 2) // the calm Sitting closed and shortened the fuse
-        XCTAssertEqual(next.pieces, 1)
+        let same = Game.replay(log([.lose, .tell], at: [0, 599]), now: t0 + 600)
+        XCTAssertEqual(same.fuse, 1.5) // still the Booming Sitting
+        XCTAssertTrue(same.boomed)
+        let next = Game.replay(log([.lose, .tell], at: [0, 600]), now: t0 + 601)
+        XCTAssertFalse(next.boomed) // the break gave a fresh stick
+        XCTAssertEqual(next.burned, 0.36, accuracy: 1e-9)
+        XCTAssertEqual(next.sittingStart, t0 + 600)
     }
 
     func test7ClosedByNow() {
         let s = Game.replay(log([.tell]), now: t0 + 31 * 60)
         XCTAssertFalse(s.sittingOpen)
-        XCTAssertEqual(s.pieces, s.fuse)
+        XCTAssertEqual(s.left, 1)
         XCTAssertTrue(s.currentBurns.isEmpty)
         let b = Game.replay(log([.lose, .lose]), now: t0 + 60 + 31 * 60)
         XCTAssertFalse(b.boomed)
-        XCTAssertEqual(b.pieces, 3)
         XCTAssertEqual(Game.stickText(b), "🧨━━━")
         let empty = Game.replay([], now: t0)
-        XCTAssertEqual(empty, GameState(fuse: 2, pieces: 2, boomed: false, sittingOpen: false, currentBurns: [], booms: []))
+        XCTAssertEqual(empty, GameState(fuse: 1, burned: 0, boomed: false, sittingOpen: false, currentBurns: [], booms: []))
     }
 
     func test8StableBoomIds() {
-        // second Sitting has fuse 3, so it takes two loses
-        let events = log([.lose, .lose, .none, .lose, .lose, .lose], at: [0, 1, 2, 5000, 5001, 5002])
+        let events = log([.lose, .lose, .none, .lose, .lose], at: [0, 1, 2, 5000, 5001]) // the second stick is 1.5 long
         let a = Game.replay(events, now: t0 + 9000), b = Game.replay(Array(events.reversed()), now: t0 + 9000)
         XCTAssertEqual(a, b)
         XCTAssertEqual(a.booms.map(\.id), [String(Int(t0 * 1000)), String(Int((t0 + 5001) * 1000))])
     }
 
-    func test9LoseBurnsTwoTellBurnsOne() {
-        // two Booms make the fuse 4; then a lose takes two pieces, a tell one, and the next lose Booms
-        let events = log([.lose, .lose, .lose, .lose, .tell, .lose], at: [0, 2000, 2001, 5000, 5001, 5002])
-        XCTAssertEqual(Game.replay(Array(events.prefix(4)), now: t0 + 5000).pieces, 2)
-        XCTAssertEqual(Game.replay(Array(events.prefix(5)), now: t0 + 5001).pieces, 1)
-        let s = Game.replay(events, now: t0 + 5002)
-        XCTAssertEqual(s.booms.count, 3)
-        XCTAssertEqual(s.fuse, 5)
+    func test9BurnsCoolOffAfter30Minutes() {
+        // three tells would blow it, but the first has cooled off by the third
+        let s = Game.replay(log([.tell, .none, .none, .none, .tell, .none, .none, .none, .tell],
+                                at: [0, 500, 1000, 1500, 1700, 1750, 1790, 1795, 1800]), now: t0 + 1801)
+        XCTAssertTrue(s.booms.isEmpty)
+        XCTAssertEqual(s.currentBurns.count, 2)
+        XCTAssertEqual(s.burned, 0.72, accuracy: 1e-9)
+    }
+
+    func test10BoomHealsAfter30CalmMinutesWithoutABreak() {
+        let chat = (1...7).map { Double($0) * 300 } // a calm message every 5 minutes
+        let events = log([.lose], at: [0]) + log(chat.map { _ in .none }, at: chat)
+        XCTAssertTrue(Game.replay(Array(events.prefix(6)), now: t0 + 1500).boomed)
+        let healed = Game.replay(events, now: t0 + 2100)
+        XCTAssertFalse(healed.boomed)
+        XCTAssertEqual(healed.left, 1)
+        XCTAssertEqual(healed.fuse, 1.5) // the Boom's growth stays; the Sitting isn't over
+    }
+
+    func test11TheModelBeatsTheWordList() {
+        let calmSwear = Event(ts: t0, burn: .lose, heat: 0.2)
+        XCTAssertTrue(Game.replay([calmSwear], now: t0 + 1).booms.isEmpty)
+        let quietRage = Event(ts: t0, burn: .none, heat: 1)
+        XCTAssertEqual(Game.replay([quietRage], now: t0 + 1).booms.count, 1)
+    }
+
+    func test12ARatedMessageWaitsForItsRating() {
+        let pending = Event(ts: t0, burn: .lose, rated: true)
+        XCTAssertTrue(Game.replay([pending], now: t0 + 10).booms.isEmpty)
+        XCTAssertEqual(Game.replay([pending], now: t0 + Game.ratingWait).booms.count, 1) // no rating came: the word list decides
+        XCTAssertTrue(pending.awaitingRating(at: t0 + 10))
+        XCTAssertFalse(pending.awaitingRating(at: t0 + Game.ratingWait))
+        var rated = pending
+        rated.heat = 0.3
+        XCTAssertFalse(rated.awaitingRating(at: t0 + 10))
+    }
+
+    func test13FreshAtIsTheSoonerOfBreakAndCooling() {
+        let s = Game.replay(log([.lose, .none, .none, .none, .none, .none], at: [0, 300, 600, 900, 1200, 1500]), now: t0 + 1600)
+        XCTAssertEqual(s.freshAt, t0 + 1800) // 30 minutes after the burn comes before a break ending at 2100
+        let t = Game.replay(log([.lose, .none], at: [0, 60]), now: t0 + 100)
+        XCTAssertEqual(t.freshAt, t0 + 660)
     }
 
     func testText() {
         var s = Game.replay([], now: t0)
-        XCTAssertEqual(Game.stickText(s), "🧨━━")
+        XCTAssertEqual(Game.stickText(s), "🧨━━━")
         s.boomed = true
         XCTAssertEqual(Game.stickText(s), "💥")
-        let at = { (h: Int, m: Int) in Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: h, minute: m))!.timeIntervalSince1970 }
-        let boom = Boom(id: "x", ts: at(14, 40), litBy: [Event(ts: at(10, 12), burn: .tell), Event(ts: at(14, 40), burn: .lose)])
-        XCTAssertEqual(Game.litByText(boom), "10:12 told off · 14:40 lost it")
+        XCTAssertEqual([0.05, 0.2, 0.5, 0.7, 0.9].map(Game.heatWord), ["cool", "mild", "warm", "hot", "boiling"])
     }
 }
 
@@ -106,20 +138,84 @@ final class RestTests: XCTestCase {
         let s = Game.replay([Event(ts: t0, burn: .lose), Event(ts: t0 + 60, burn: .rest)], now: t0 + 61)
         XCTAssertFalse(s.boomed)
         XCTAssertFalse(s.sittingOpen)
-        XCTAssertEqual(s.fuse, 3) // the Boom's +1 stays
-        XCTAssertEqual(s.pieces, 3)
+        XCTAssertEqual(s.fuse, 1.5) // the Boom's growth stays
+        XCTAssertEqual(s.left, 1)
     }
 
     func testPromptAfterRestStartsFreshWithoutAnExtraCalmSitting() {
         let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 60, burn: .rest), Event(ts: t0 + 2000, burn: .tell)]
         let s = Game.replay(events, now: t0 + 2001)
-        XCTAssertEqual(s.fuse, 3) // the empty stretch after the rest isn't a calm Sitting
-        XCTAssertEqual(s.pieces, 2)
+        XCTAssertEqual(s.fuse, 1.5) // the empty stretch after the rest isn't a calm Sitting
+        XCTAssertEqual(s.burned, 0.36, accuracy: 1e-9)
         XCTAssertTrue(s.sittingOpen)
     }
 
     func testRestOnACalmSittingShortensLikeABreak() {
         let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 700, burn: .tell), Event(ts: t0 + 760, burn: .rest)]
-        XCTAssertEqual(Game.replay(events, now: t0 + 761).fuse, 2)
+        XCTAssertEqual(Game.replay(events, now: t0 + 761).fuse, 1)
+    }
+}
+
+final class VibeTests: XCTestCase {
+    let t0 = 1_792_670_480.0
+
+    func testFirstMatchWins() {
+        func vibe(_ events: [Event], hour: Bool = false) -> String {
+            Vibe.of(Game.replay(events, now: t0 + 100), recent: events, boomedWithinHour: hour, now: t0 + 100).label
+        }
+        XCTAssertEqual(vibe([Event(ts: t0, burn: .lose)]), "Rather explosive")
+        XCTAssertEqual(vibe([Event(ts: t0, burn: .tell), Event(ts: t0 + 1, burn: .tell)]), "Running rather hot") // 0.28 left
+        XCTAssertEqual(vibe([Event(ts: t0, burn: .tell), Event(ts: t0 + 1, burn: .none, heat: 0.75)]), "Barely contained") // 0.08 left
+        XCTAssertEqual(vibe([Event(ts: t0, burn: .tell)]), "Mildly offended")
+        XCTAssertEqual(vibe([Event(ts: t0, burn: .none, heat: 0.4)]), "A little prickly")
+        XCTAssertEqual(vibe([Event(ts: t0, burn: .none)], hour: true), "Remarkably recovered")
+        XCTAssertEqual(vibe([Event(ts: t0, burn: .none, mood: "hyped"), Event(ts: t0 + 1, burn: .none, mood: "grateful")]), "Dangerously enthusiastic")
+        XCTAssertEqual(vibe((0..<30).map { Event(ts: t0 + Double($0), burn: .none) }), "Suspiciously calm")
+        XCTAssertEqual(vibe([Event(ts: t0, burn: .none)]), "Perfectly civil")
+    }
+
+    func testBandsCandidatesAndSummary() {
+        let now = t0 + 100
+        let calm = (0..<6).map { Event(ts: t0 + Double($0), burn: .none, heat: 0.05, mood: "neutral") }
+        XCTAssertEqual(Vibe.band(Game.replay(calm, now: now), recent: calm, now: now), .calm)
+        let warm = calm + [Event(ts: t0 + 10, burn: .none, heat: 0.4, mood: "frustrated")]
+        XCTAssertEqual(Vibe.band(Game.replay(warm, now: now), recent: warm, now: now), .warm)
+        let blown = [Event(ts: t0, burn: .lose)]
+        XCTAssertEqual(Vibe.band(Game.replay(blown, now: now), recent: blown, now: now), .explosive)
+
+        let mine = (0..<5).map { Vibe("🧯", "Mine \($0)", .calm, when: "w", story: "s") } + [Vibe("🔥", "Hot one", .hot, when: "w", story: "s")]
+        let picks = Vibe.candidates(.calm, personal: mine, seed: 7)
+        XCTAssertEqual(picks.count, 6)
+        XCTAssertEqual(picks.prefix(3).map(\.label).allSatisfy { $0.hasPrefix("Mine") }, true) // yours first, at most three
+        XCTAssertTrue(picks.allSatisfy { $0.band == .calm })
+        XCTAssertEqual(Vibe.candidates(.calm, personal: mine, seed: 7), picks) // same moment, same shortlist
+        XCTAssertNotEqual(Vibe.candidates(.calm, personal: mine, seed: 8), picks)
+        XCTAssertEqual(Vibe.candidates(.explosive, personal: [], seed: 3).count, 2)
+
+        let summary = Vibe.summary(Game.replay(warm, now: now), recent: warm, now: now)
+        XCTAssertTrue(summary.hasPrefix("7 messages in 30 minutes"))
+        XCTAssertTrue(summary.contains("moods: neutral 6, frustrated 1"))
+        XCTAssertTrue(summary.contains("% left"))
+    }
+
+    func testTopicVibesOnlyShowWhenTheSessionIsAboutThem() {
+        let design = (0..<5).map { Event(ts: t0 + Double($0), burn: .none, heat: 0.05, mood: "neutral", topic: $0 < 3 ? "design" : "code") }
+        XCTAssertEqual(Vibe.topic(design), "design")
+        XCTAssertNil(Vibe.topic(Array(design.prefix(2)))) // two isn't enough
+        XCTAssertNil(Vibe.topic(design.map { var e = $0; e.topic = "other"; return e }))
+        var pixels = Vibe("🖌️", "Pixel fussing", .calm, when: "small design notes", story: "s")
+        pixels.topic = "design"
+        let general = Vibe("🌙", "Past bedtime", .calm, when: "late", story: "s")
+        XCTAssertEqual(Vibe.candidates(.calm, personal: [pixels, general], seed: 0, topic: "design").first?.label, "Pixel fussing")
+        XCTAssertFalse(Vibe.candidates(.calm, personal: [pixels, general], seed: 0, topic: "code").contains { $0.label == "Pixel fussing" })
+        XCTAssertFalse(Vibe.candidates(.calm, personal: [pixels, general], seed: 0).contains { $0.label == "Pixel fussing" })
+        XCTAssertTrue(Vibe.summary(Game.replay(design, now: t0 + 100), recent: design, now: t0 + 100).contains("topics: design 3, code 2"))
+    }
+
+    func testPersonalVibesFile() throws {
+        let json = #"{"lunte":"fuse-vibes","v":1,"made":"2026-10-23","vibes":[{"emoji":"🧯","label":"Migration grief","band":"hot","when":"the database keeps breaking","story":"It began as a rename."}]}"#
+        let file = try JSONDecoder().decode(FuseVibes.self, from: Data(json.utf8))
+        XCTAssertEqual(file.vibes[0].band, .hot)
+        XCTAssertEqual(file.problems, ["no vibes for: calm, warm, explosive"])
     }
 }

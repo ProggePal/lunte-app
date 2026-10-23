@@ -24,12 +24,23 @@ public enum EventLog {
     }
 
     /// Skips unparseable lines and impossible timestamps (one would crash Boom ids); sorted by ts.
+    /// Heat lines are merged into the prompt with the same ts and dropped; one without its prompt is dropped too.
     public static func read(_ url: URL = defaultURL) -> [Event] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         let decoder = JSONDecoder()
-        return data.split(separator: UInt8(ascii: "\n"))
+        let all = data.split(separator: UInt8(ascii: "\n"))
             .compactMap { try? decoder.decode(Event.self, from: Data($0)) }
             .filter { $0.ts.isFinite && $0.ts > 0 && $0.ts < 1e11 }
+        let ratings = Dictionary(all.filter { $0.burn == .heat }.map { ($0.ts, $0) }) { $1 }
+        return all.filter { $0.burn != .heat }
+            .map { e in
+                guard let r = ratings[e.ts] else { return e }
+                var e = e
+                e.heat = r.heat.map { min(1, max(0, $0)) }
+                e.mood = r.mood
+                e.topic = r.topic
+                return e
+            }
             .sorted { $0.ts < $1.ts }
     }
 }

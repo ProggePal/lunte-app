@@ -26,6 +26,18 @@ final class ClassifierTests: XCTestCase {
         for (prompt, burn) in rows { XCTAssertEqual(Classifier.classify(prompt), burn, prompt) }
     }
 
+    // Machine-made prompts are cut out, so only what you typed can burn. These leaked as Booms on 22 Oct.
+    func testHumanText() {
+        let handback = "Another Claude session sent a message:\n<agent-message from=\"a7d0\">\n[Subagent hand-back] “WHY DID YOU DELETE MY MIGR…” wtf!!\n</agent-message>"
+        XCTAssertEqual(Classifier.human(handback), "")
+        XCTAssertEqual(Classifier.human("<task-notification>\n<task-id>a77d</task-id>\n<summary>why did you</summary>\n</task-notification>"), "")
+        let midTurn = "<system-reminder>\nI SAID DONT TOUCH IT\n</system-reminder>\nmaybe the boom should come from the icon"
+        XCTAssertEqual(Classifier.human(midTurn), "maybe the boom should come from the icon")
+        XCTAssertEqual(Classifier.classify(Classifier.human(midTurn)), .none)
+        XCTAssertEqual(Classifier.human("<agent-message from=\"x\">cut off mid-report, wtf"), "") // unclosed block
+        XCTAssertEqual(Classifier.human("why did you <b>delete</b> it"), "why did you <b>delete</b> it")
+    }
+
     // Word boundaries, Norwegian letters and a few near misses.
     func testEdges() {
         let rows: [(String, Burn)] = [

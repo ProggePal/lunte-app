@@ -16,7 +16,7 @@ struct LunteApp: App {
         MenuBarExtra {
             PopoverView(model: model, updater: updater)
         } label: {
-            Image(nsImage: menuBarImage(model.state, connected: model.connected))
+            Image(nsImage: menuBarImage(model.state, connected: model.connected, fusing: model.fusing, blown: model.testBlown))
                 .accessibilityLabel(model.connected ? model.sentence : "Lunte, not connected yet")
         }
         .menuBarExtraStyle(.window)
@@ -72,6 +72,39 @@ func installPlugin() async -> (ok: Bool, output: String) {
 
 @MainActor
 enum Alerts {
+    /// "Submit a prompt…": your name and your idea, written as the prompt an agent would build it from.
+    /// Returns them trimmed, or nil on Cancel. An empty prompt says so instead of sending nothing.
+    static func submitPrompt() -> (name: String, prompt: String)? {
+        let alert = NSAlert()
+        alert.messageText = "Something you want to see in Lunte?"
+        alert.informativeText = "Write your prompt and your name. Agents will build it, and if it's good, we keep it. Credits in the changelog.\n\nIt opens as a public GitHub issue, ready for you to post."
+        alert.addButton(withTitle: "Submit")
+        alert.addButton(withTitle: "Cancel")
+        let width: CGFloat = 320
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 160))
+        let name = NSTextField(frame: NSRect(x: 0, y: 136, width: width, height: 24))
+        name.placeholderString = "Your name"
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: width, height: 128))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        let text = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
+        text.isRichText = false
+        text.font = .systemFont(ofSize: NSFont.systemFontSize)
+        text.autoresizingMask = [.width]
+        text.isAutomaticQuoteSubstitutionEnabled = false
+        scroll.documentView = text
+        box.addSubview(name)
+        box.addSubview(scroll)
+        name.nextKeyView = text
+        alert.accessoryView = box
+        alert.window.initialFirstResponder = name
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let prompt = text.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { tell("Write a prompt first", "Describe what you'd like Lunte to do, the way you'd ask an agent to build it."); return nil }
+        return (name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), prompt)
+    }
+
     /// An alert with one text field per placeholder. Returns the trimmed values, or nil on Cancel.
     static func ask(_ title: String, _ info: String, fields: [String]) -> [String]? {
         let alert = NSAlert()

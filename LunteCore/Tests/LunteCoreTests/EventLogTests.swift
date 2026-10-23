@@ -33,6 +33,20 @@ final class EventLogTests: XCTestCase {
         XCTAssertEqual(Set(keys.keys), ["v", "ts", "burn", "sid"])
     }
 
+    func testHeatLinesMergeIntoTheirPrompt() throws {
+        let url = dir.appendingPathComponent("heat.jsonl")
+        let ts = 1_792_670_480.123456789
+        try EventLog.append(Event(ts: ts, burn: .lose, sid: "s1", rated: true), to: url)
+        try EventLog.append(Event(ts: ts + 5, burn: .none), to: url)
+        try EventLog.append(Event(ts: ts, burn: .heat, heat: 1.7, mood: "frustrated"), to: url)
+        try EventLog.append(Event(ts: ts + 99, burn: .heat, heat: 0.5), to: url) // its prompt never got logged
+        let events = EventLog.read(url)
+        XCTAssertEqual(events.map(\.ts), [ts, ts + 5])
+        XCTAssertEqual(events[0].heat, 1) // clamped to 0...1
+        XCTAssertEqual(events[0].mood, "frustrated")
+        XCTAssertNil(events[1].heat)
+    }
+
     func testMissingFileReadsEmpty() {
         XCTAssertEqual(EventLog.read(dir.appendingPathComponent("nope.jsonl")), [])
     }
@@ -72,5 +86,28 @@ final class EventLogTests: XCTestCase {
         XCTAssertEqual(event.burn, .lose)
         XCTAssertEqual(event.sid, "s1")
         XCTAssertEqual(event.ts, Date().timeIntervalSince1970, accuracy: 60)
+        XCTAssertNil(event.rated) // nobody listening
+
+        // With the app listening, the hook hands it the text, and the ts survives the trip exactly.
+        let short = URL(fileURLWithPath: "/tmp/lunte-\(UUID().uuidString.prefix(8))") // socket paths max out at 104 bytes
+        defer { try? FileManager.default.removeItem(at: short) }
+        try FileManager.default.createDirectory(at: short, withIntermediateDirectories: true)
+        let rlog = short.appendingPathComponent("events.jsonl")
+        let server = ScorerSocket.listen(at: short.appendingPathComponent("scorer.sock"))
+        XCTAssertGreaterThanOrEqual(server, 0)
+        defer { close(server) }
+        let (s2, o2) = try run(#"{"prompt":"<system-reminder>x</system-reminder>why did you\n```\ncode\n```","session_id":"s2"}"#, log: rlog)
+        XCTAssertEqual(s2, 0)
+        XCTAssertEqual(o2, Data())
+        let conn = accept(server, nil, nil)
+        XCTAssertGreaterThanOrEqual(conn, 0)
+        defer { close(conn) }
+        let got = FileHandle(fileDescriptor: conn).readDataToEndOfFile()
+        let sent = try JSONSerialization.jsonObject(with: got) as! [String: Any]
+        let logged = EventLog.read(rlog)[0]
+        XCTAssertEqual(sent["ts"] as? Double, logged.ts)
+        XCTAssertEqual(sent["text"] as? String, "why did you\n```\ncode\n```") // what you typed, reminder cut out
+        XCTAssertEqual(logged.rated, true)
+        XCTAssertEqual(logged.burn, .tell)
     }
 }

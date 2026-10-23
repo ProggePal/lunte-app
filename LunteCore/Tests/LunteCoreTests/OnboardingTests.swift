@@ -18,7 +18,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(s.booms.count, 1)
         XCTAssertEqual(s.booms[0].litBy.map(\.burn), [.lose])
         let quiet = Game.replay([Event(ts: t0, burn: .test)], now: t0 + 60)
-        XCTAssertEqual(quiet.pieces, Game.minFuse)
+        XCTAssertEqual(quiet.left, 1)
         XCTAssertTrue(quiet.sittingOpen)
     }
 

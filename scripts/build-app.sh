@@ -25,6 +25,7 @@ cp Resources/Info.plist "$app/Contents/Info.plist"
 cp "$app_bin/Lunte" "$core_bin/lunte-hook" "$app/Contents/MacOS/"
 ditto --norsrc --noextattr "$app_bin/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
 cp Resources/boom.wav "$app/Contents/Resources/"
+cp LunteApp/Sources/LayaKit/LICENSE "$app/Contents/Resources/LayaKit-LICENSE.txt" # Apache-2.0 travels with the binary
 ditto --norsrc --noextattr plugin "$app/Contents/Resources/plugin"
 xattr -cr "$app" 2>/dev/null || true
 

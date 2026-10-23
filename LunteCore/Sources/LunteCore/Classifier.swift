@@ -30,6 +30,15 @@ public enum Classifier {
         return out
     }
 
+    /// The part of a prompt a human typed. Claude Code also submits subagent hand-backs, task notifications and
+    /// system reminders as prompts, sometimes glued to a message typed mid-turn; those blocks are cut out.
+    public static func human(_ prompt: String) -> String {
+        prompt.replacingOccurrences(of: "(?s)<(task-notification|agent-message|system-reminder|local-command-\\w+)\\b[^>]*>.*?(</\\1>|$)",
+                                    with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "Another Claude session sent a message:", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func clean(_ prompt: String) -> String {
         prompt.replacingOccurrences(of: "(?s)```.*?(```|$)", with: " ", options: .regularExpression)
             .precomposedStringWithCanonicalMapping // so "rått" matches however å was typed

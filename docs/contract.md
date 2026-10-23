@@ -7,7 +7,7 @@ The shared contract between the pieces. Builders code against this; change it he
 ```
 app/
   LunteCore/    Swift package: LunteCore (logic), lunte-hook (the Claude Code hook), tests
-  LunteApp/     Swift package: Lunte (the menu bar app), depends on ../LunteCore and Sparkle
+  LunteApp/     Swift package: Lunte (the menu bar app), depends on ../LunteCore, Sparkle and LayaKit (vendored)
   relay/        Cloudflare Worker + one Durable Object per Club
   plugin/       Claude Code plugin + marketplace, bundled into the app
   Resources/    boom.wav, Info.plist
@@ -16,13 +16,16 @@ app/
 
 ## 1. The event log
 
-`~/Library/Application Support/Lunte/events.jsonl`. The `LUNTE_LOG` environment variable overrides the path, for tests and development. `lunte-hook` appends one line per prompt. The only other writer is the app, which appends a `rest` line when a hurried break ends (§6). It never holds prompt text.
+`~/Library/Application Support/Lunte/events.jsonl`. The `LUNTE_LOG` environment variable overrides the path, for tests and development. `lunte-hook` appends one line per prompt. The only other writer is the app, which appends a `heat` line when its model has rated a prompt and a `rest` line when a hurried break ends (§6). It never holds prompt text.
 
 ```json
-{"v":1,"ts":1792670480.123,"burn":"none","sid":"<Claude Code session_id>"}
+{"v":1,"ts":1792670480.123,"burn":"none","sid":"<Claude Code session_id>","rated":true}
+{"v":1,"ts":1792670480.123,"burn":"heat","sid":"","heat":0.93,"mood":"frustrated","topic":"code"}
 ```
 
-- `burn`: `"none"`, `"tell"` (telling it off), `"lose"` (losing it) or `"test"` (the onboarding phrase, §6). `"rest"` is written by the app, never by the hook.
+- `burn`: `"none"`, `"tell"` (telling it off), `"lose"` (losing it) or `"test"` (the onboarding phrase, §6). `"heat"` and `"rest"` are written by the app, never by the hook.
+- `rated`: present and `true` when the hook handed the prompt to the app's model (§2), so a `heat` line should follow.
+- `heat` lines: the model's rating, `heat` 0…1, its `mood` choice, and the message's `topic`: one word from `Vibe.topics` (code, design, writing, business, voice, shipping, ideas, other), never text. Readers merge one into the prompt line with the same `ts` and drop it; a heat line without its prompt is dropped.
 - `ts`: Unix seconds, as a Double.
 - `sid`: the Claude Code session id, kept as a pointer for a later `lunte why`. It may be `""`.
 - **Writers** append one whole line with a single `write()` under `O_APPEND`.
@@ -30,9 +33,16 @@ app/
 
 ## 2. The hook
 
-`lunte-hook` reads Claude Code's `UserPromptSubmit` JSON from stdin (`{"prompt": "...", "session_id": "...", ...}`). It classifies the prompt, appends one log line, prints nothing, and exits 0, always, even on errors. It creates the directory if missing and finishes in well under 100 ms.
+`lunte-hook` reads Claude Code's `UserPromptSubmit` JSON from stdin (`{"prompt": "...", "session_id": "...", ...}`). Claude Code also submits machine messages as prompts: subagent hand-backs (`Another Claude session sent a message:` + `<agent-message>`), `<task-notification>`, `<system-reminder>` and `<local-command-…>` blocks, sometimes glued to a message typed mid-turn. `Classifier.human(_:)` cuts those blocks out (an unclosed one runs to the end); if nothing is left, the hook logs nothing. It classifies what's left, hands it to the app's model (below), appends one log line, prints nothing, and exits 0, always, even on errors. It creates the directory if missing and finishes in well under 100 ms.
 
 The plugin lives at `Lunte.app/Contents/Resources/plugin`. Claude Code runs a cached copy of it (`~/.claude/plugins/cache/...`), so the hook can't reach the app by a relative path. Instead the app keeps a link at `~/Library/Application Support/Lunte/lunte-hook` pointing to its own `Contents/MacOS/lunte-hook`, refreshed on every launch, and the hook command is `"$HOME/Library/Application Support/Lunte/lunte-hook"`.
+
+**Commands for fuse setup** (§8). With an argument, `lunte-hook` is a tool for your AI, not the hook, so it may print:
+- `lunte-hook setup` prints the steps for your AI (§8).
+- `lunte-hook messages` prints the messages to rate, one JSON line each: `{"sid", "ts", "text"}`, with `ts` in seconds to the millisecond and the text cut at 300 characters. That's `Fuse.candidates` over `Transcript.all` for the last 60 days, about 20 s on 2 GB of history.
+- `lunte-hook check-fuse` validates `fuse/labels.json` and checks that every rating points at a message it can find. It prints "OK: …" and exits 0, or lists the problems and exits 1.
+
+**Handing a prompt to the model.** `ScorerSocket.send` connects to the Unix socket `scorer.sock` next to the log, without blocking, and writes one JSON line `{"ts", "text"}` (at most 4,000 characters). It succeeds only if the app is listening; then the hook logs `rated: true`. The text goes over the socket only, never to disk.
 
 ## 3. Classifier: `Classifier.classify(_:) -> Burn`
 
@@ -75,35 +85,47 @@ These cases must pass:
 
 Pure and deterministic, over the whole log.
 
-- **Sitting:** consecutive events less than 10 minutes (600 s) apart. A gap of 600 s or more (a break) starts a new Sitting.
-- **Fuse** starts at 2 (`minFuse`). Every Sitting starts a fresh stick with `pieces = fuse`.
+Every message has **heat**, 0…1, and burns heat² of the fuse, so calm messages barely touch it and hot ones eat it. A burn cools off after 30 minutes. Too much heat at once and it blows.
+
+- **Heat** (`Event.heat(at: now)`): the model's rating from the merged `heat` line. Without one, the word list: `tell` 0.6, `lose` 1, anything else 0. A `rated` prompt still waiting for its rating counts as 0 for `ratingWait` (90 s), so the word list can't Boom before the model speaks; after that the word list decides.
+- **Sitting:** consecutive events less than 10 minutes (600 s) apart. A gap of 600 s or more (a break) starts a new Sitting with a fresh stick.
+- **Fuse** is how much heat² the stick takes: 1 (`minFuse`) to start, +0.5 per Boom (`boomGrowth`), −0.5 per Sitting that ends without a Boom, never below 1.
+- **Burning:** a message whose heat² is at least 0.01 joins the Sitting's `currentBurns`. `burned` is the sum of heat² over the burns from the last 30 minutes (`cooling`); older ones drop out.
+- **Boom:** when `burned >= fuse` and the stick isn't already blown. `fuse += 0.5`. More heat while it's blown keeps it blown.
+- **Fresh stick after a Boom:** a 10-minute break, or 30 minutes after the last burn (every burn has cooled off), whichever comes first. `freshAt` is that time for the open Sitting.
 - **`.test` events** count as activity for Sittings but never burn, never Boom and never change the fuse.
 - **`.rest` events** close the open Sitting on the spot, exactly like a break. The next prompt then starts a fresh Sitting, without counting the empty stretch in between as a calm Sitting.
-- **Each Burn**, in a Sitting that hasn't Boomed yet. Telling it off burns one piece; losing it burns two.
-  - `.lose` and `pieces <= 2`: **Boom** (`pieces = 0`, `fuse += 1`)
-  - `.lose` otherwise: `pieces -= 2`
-  - `.tell`: `pieces = max(1, pieces - 1)`, so it never takes the last piece and stays on the spark
-- **After a Boom,** the Sitting can't Boom again.
-- **A Sitting that ends without a Boom** sets `fuse = max(2, fuse - 1)`. A Sitting ends when the next event is 600 s or more later, or, for the current state, when `now - lastEvent >= 600`.
-- **`Boom`** is `{id, ts, litBy}`. `id = String(Int(ts * 1000))`, so it stays stable across replays. `litBy` holds that Sitting's Burns up to and including the Boom.
-- **`GameState`** is `{fuse, pieces, boomed, sittingOpen, currentBurns, booms}`. With no open Sitting, `pieces == fuse` and `boomed == false`.
-- **`Game.stickText`:**
-  - when boomed: `💥`
-  - otherwise `🧨` followed by pieces: `🧨━━━` (3), `🧨━━` (2), `🧨✨` (1)
-- **`Game.litByText`:** `10:12 told off · 14:40 lost it`, in local time.
+- **`Boom`** is `{id, ts, litBy}`. `id = String(Int(ts * 1000))`, so it stays stable across replays. `litBy` holds the burns still burning when it blew, up to and including the Boom.
+- **`GameState`** is `{fuse, burned, boomed, sittingOpen, currentBurns, booms, sittingStart, freshAt}`, and `left` is the share of stick left (0 when blown). With no open Sitting, `burned == 0` and `boomed == false`.
+- **`Game.stickText`:** `💥` when blown, otherwise `🧨` plus one `━` per third left, or `🧨✨` at a third or less.
+- **`Game.heatWord`:** cool (< 0.15), mild (< 0.35), warm (< 0.6), hot (< 0.85), boiling.
+- **The vibe** (`Vibe`): one dry line about the last 30 minutes, shown in the popover only, never sent.
+  - A vibe has an emoji, a label, a band (calm, warm, hot, explosive), a short `when` and a one-line story for hover.
+  - `Vibe.stock` ships with the app, and updates can rotate new ones in. Your AI can add personal ones at fuse setup (§8).
+  - **No vibe** until there are 5 messages (`Vibe.minimumMessages`) in the window: "Reading the room…".
+  - **Band** (`Vibe.band`): explosive when blown; hot at half the fuse or less; warm with any message at heat 0.35 or more; calm otherwise.
+  - **Topic** (`Vibe.topic`): the topic of at least 3 messages and 40% of those with one in the window, ignoring "other"; else none.
+  - **Shortlist** (`Vibe.candidates`): up to 6 vibes from the band. Up to 3 of yours come first, then stock, with no repeated labels. A vibe of yours that's about a topic only makes the list when the session is about that topic, and then it goes first. It rotates by half hour, so the same moment gets the same shortlist.
+  - **Pick:** Laya chooses by label from a text-free summary (`Vibe.summary`): message count, recent heat words, top moods, top topics, fuse left, a recent Boom, weekday and time. Six labels take 38 of the 128 tokens, so the summary fits whole. Without the model, the old rules (`Vibe.of`) pick from the stock vibes.
+  - **When it changes:** only when the band changes or after 3 new messages, so it moves with the session without flickering.
+  - **New vibes:** the first time a vibe ever shows, it gets "✨ new". There's no counter and no list, so vibes are found by playing.
 - **`Classifier.signals(_:)`:** the reasons behind a classification, for display only, such as `["told off: why did you", "swear", "CAPS"]`.
 - **`Transcript.prompt(sid:ts:)`:** the prompt text for an event, read from Claude Code's own transcript (`~/.claude/projects/*/<sid>.jsonl`, the human prompt within 5 s of `ts`). It's used for display only and never stored. Claude Code deletes old transcripts, so it can come back nil.
 
-Fixtures that must pass:
-1. One `lose` on a fresh stick (fuse 2): a Boom, then fuse 3.
-2. `tell`, `tell`: no Boom, pieces 1.
-3. `tell`, `lose`: a Boom.
-4. More `lose` after a Boom in the same Sitting: still one Boom.
-5. After a Boom (fuse 3), a calm Sitting followed by a gap: fuse 2, and never below 2.
-6. A gap of 599 s is the same Sitting; a gap of 600 s is a new one.
-9. With fuse 4: a `lose` leaves 2, a `tell` leaves 1, and the next `lose` Booms.
-7. Last event 11 minutes before `now`: `sittingOpen == false`, `pieces == fuse`.
+Fixtures that must pass (GameTests):
+1. One `lose` on a fresh stick: a Boom, then fuse 1.5.
+2. `tell`, `tell`: no Boom, 0.72 burned.
+3. `tell`, `lose` Booms, and so do three `tell`s.
+4. More heat after a Boom: still one Boom.
+5. A calm Sitting after a Boom shortens the fuse back, never below 1.
+6. A gap of 599 s is the same Sitting; a gap of 600 s is a fresh stick.
+7. Last event 31 minutes before `now`: `sittingOpen == false`, the whole stick left.
 8. Replaying twice gives the same Boom ids.
+9. A burn cools off after 30 minutes, so the third `tell` doesn't Boom when the first has cooled.
+10. A Boom heals after 30 calm minutes of chatting, without a break; the fuse keeps its growth.
+11. The model's heat beats the word list both ways.
+12. A rated prompt waits for its rating, then the word list decides.
+13. `freshAt` is the sooner of the break and the cooling.
 
 ## 5. The relay (HTTP + JSON)
 
@@ -124,42 +146,36 @@ Base URL comes from Info.plist `LunteRelayURL`, overridable with `defaults write
 
 ## 6. The app (`Lunte.app`)
 
-**Basics.** A menu bar-only app (`LSUIElement`) with bundle id `no.panter.lunte`, for macOS 14 and later. The menu bar label is `Game.stickText(state)`.
+**Basics.** A menu bar-only app (`LSUIElement`) with bundle id `no.panter.lunte`, for macOS 14 and later. The menu bar label is 🧨 and three tiny pieces of what's left (orange at half, red near the end), `💥 BOOM` when blown, or `🧨?` before it's connected.
 
 **Watching the log.** It watches `events.jsonl` with a file-system source and a 1 s debounce, reopening the file if it's created or replaced. On every change it replays the log. For a new Boom:
-- **Not yet announced and less than 10 minutes old:** play `boom.wav` (unless the sound is off) and post it to the relay if you're in a Club.
+- **Not yet announced and less than 10 minutes old:** post it to the relay if you're in a Club, and light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from the menu bar icon and the icon shows `🧨✨`. In the last second the screen dims. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` unless the sound is off. With Reduce Motion there's only the wait and the sound. The onboarding test and "Test your Boom" burn for 3 s.
 - **Older:** mark it announced silently.
 
 The app keeps each Boom's secret and its "mine" flag in UserDefaults.
 
-**Onboarding: the first Boom.**
-- Until the log holds a `test` event, the menu's status line reads "Not connected yet: open a new Claude Code chat and type: this is a test 3 2 1 pow".
-- After "Connect to Claude Code" succeeds, the alert says the same: open a *new* chat, because Claude Code loads plugins when a session starts.
-- A new `test` event (less than 10 minutes old, not yet announced) plays the Boom and shows "💥 We're connected! Lunte hears you. Ready." It is never posted to the Club.
+**The model.** `Scorer` rates prompts with Laya on the Neural Engine, untuned for now: heat is its P(frustrated) for one short mood question, "The writer's mood toward their AI assistant?", with six options (frustrated, confused, hyped, grateful, tired, neutral), each with a two-word description.
+- **Runtime:** `LayaKit`, FluidUse's Laya CoreML runtime vendored under Apache-2.0 (`LunteApp/Sources/LayaKit`), running in the app's own process. No Python.
+- **Model:** `FluidInference/laya-coreml`, the 128-token int8 bucket plus `tokenizer.json`, about 470 MB in `~/Library/Application Support/Lunte/laya-coreml`. The app downloads whatever is missing from Hugging Face at launch; that request carries nothing of yours. The first load compiles for the Neural Engine (about 20 s, once). After that it loads in under a second, answers in about 10 ms, and uses about 100 MB.
+- **Fit:** the question takes 49 of the 128 tokens, leaving about 79 for your message; anything longer is cut on the right. Code blocks are removed first.
+- **Socket:** only once the model is loaded does the app listen on `scorer.sock` (mode 0600). Until then, or if the download fails, the hook finds nobody listening, doesn't mark prompts `rated`, and the word list decides. Each rating is appended as a `heat` line and the watcher replays.
 
-**The popover** replaces a menu:
-- **Before the first Boom:** the onboarding checklist.
-- **The stick** as segments, with one plain sentence. Hovering it shows the break countdown: "Step away 8:41 for a fresh stick". Any prompt restarts the 10 minutes.
-- **The Boom card:**
-  - "💥 Boom 3 minutes ago", live
-  - the prompt that set it off, on one line, truncated with "…"
-  - your Club's reactions
-  - a live countdown, "Fresh stick in 8:41"
-  - **Easter egg, with no UI:** once you've justified, each tap on the 💥 shaves 2 s off the break, at most 60 s. When a hurried countdown reaches zero, the app appends a `rest` event and the stick is fresh. A new prompt restarts the break and resets the shave.
-  - tapping the 💥 opens the Justify field, at most 40 characters. Justify always works: the line is saved on the Mac with the Boom and shown on the card. In a Club, it's also sent as a `why` event when the Boom reached the relay.
-- **Your last 10 messages** as dots. Hovering one shows a detail line: time, kind, signals and the prompt text (one line, truncated).
-- **The footer:** sound on the left; the Club in the centre (a house icon and its name, or "No Club"), with the Club actions behind it; a gear on the right for the rest.
+**Onboarding.** Until the log holds a `test` event, the popover shows "Light your first fuse", the line "Lunte hears how you talk to your AI. Lose your temper, and it blows.", and a checklist:
+1. Connect to Claude Code. After it succeeds, the alert says to open a *new* chat, because Claude Code loads plugins when a session starts.
+2. Make Lunte measure the heat in your messages: "Copy prompt" puts `Fuse.setupPrompt` on the clipboard, to paste into a new Claude Code chat (§8). The step shows the tuning progress, or why it failed, and is ticked once tuned.
+3. Light up Lunte. Your AI's last line in the chat tells you to type `3 2 1 pow`. Once you're tuned, the phrase also shows here as a backup, with a copy button.
 
-**The old menu (superseded by the popover):**
-- a status line: `Fuse 3 · 2 left`, or `💥 lit by 10:12 told off · 14:40 lost it`
-- "Justify", a one-line field on the Boom card, solo or in a Club (in a Club it's also sent as a `why` event)
-- the Club: "Create a Club" (shows the code to share) and "Join a Club…" (code and name), or, once you're in one, the Club code plus its last 5 events
-- "Test your Boom"
-- a sound on/off toggle
-- "Connect to Claude Code", which runs `claude plugin marketplace add <bundle>/Contents/Resources/plugin` and then `claude plugin install lunte@lunte`, finding `claude` through a login shell
-- "Feedback & ideas…", which opens `https://github.com/ProggePal/lunte-app/issues/new`
-- "Check for Updates…", through Sparkle
-- "Quit"
+A new `test` event (less than 10 minutes old, not yet announced) lights a 3-second fuse and blows. The popover shows "Your first Boom" and "Everyone heard that. Comment:", with the field already filled in with "it was a test". Commenting shows the comment and "Fresh stick in 0:10"; ten seconds later you're onboarded. The test is never posted to the Club. Macs that were connected before this onboarding count as onboarded. While onboarding shows, the gear offers "Skip onboarding"; after it, "Replay onboarding".
+
+**The popover**, top to bottom. With a Boom showing, the whole sheet gets a red wash from the top, snapping on with no fade.
+- **The stick:** three pieces, lit for each third of fuse left, orange at half, red near the end, ✨ on the last third.
+- **Or the Boom:** a centred 💥, "Boom 2 minutes ago", and one timer, "Fresh stick in 9:12": the sooner of the break and the cooling. Its tooltip: "Keep the heat down for 30 minutes, or take a 10-minute break to cool off." **Easter egg, with no UI:** once you've justified, each tap on the 💥 shaves 2 s off the wait, at most 60 s; when a hurried wait ends, the app appends a `rest` event. A new prompt resets the shave.
+- **One text slot**, two lines and a fixed height: the hovered message, or with nothing hovered, the message that set off the Boom (serif italic, centred), else the hottest one still burning, else your latest. Above it, "19:34 · hot", plus "cooled off" or "set it off". Hovering the vibe line shows its story here instead.
+- **Comment** (the Justify of GAME.md), under a Boom: the field is open from the start, at most 40 characters, with a Comment button, "or stay a mystery" and your Club's reactions beside it. It's saved on the Mac and, in a Club, sent as a `why` when the Boom reached the relay.
+- **The vibe line:** the session's vibe (§4), emoji and label, "✨ new" the first time it ever shows, or "Reading the room…".
+- **Your last 30 minutes** as dots that wrap, oldest first: grey calm (heat under 0.35), orange heated, red boiling (0.85 and up), 💥 where it blew. A message Laya is still rating is a grey dot breathing, and the slot says "rating…". The dots touch, so moving across them never drops the hover.
+- "12 messages from Claude Code", then the Club's latest two events.
+- **The footer:** sound; the Club (a house and its name, or "No Club") with its actions; a gear with Skip onboarding (while it shows) or Replay onboarding, **Vibes** (off by default; off means no vibe line, no vibe picking and no topic question), **Show model ratings** (debug: the slot adds heat %, its source (Laya, or the word list when Laya isn't there or didn't answer in time), what it burns, the mood and the word list's signals; a spinner while Laya is rating), **Submit a prompt…** (a native dialog, "Something you want to see in Lunte?", with your name and a multi-line prompt; Submit opens a prefilled issue on the public repo for you to post, prompt cut at 4,000 characters), Check for updates and Quit.
 
 **The Club.** The app polls every 30 s.
 - **Someone else's Boom:** a notification "💥 Boom in your Club" with 🧯 😂 🫂 actions, each of which posts a react.
@@ -175,7 +191,33 @@ The app keeps each Boom's secret and its "mine" flag in UserDefaults.
 `scripts/build-app.sh [--release]` builds both packages and assembles `dist/Lunte.app`:
 - `Contents/MacOS/{Lunte,lunte-hook}`
 - `Contents/Frameworks/Sparkle.framework`
-- `Contents/Resources/{boom.wav,plugin/}`
+- `Contents/Resources/{boom.wav,LayaKit-LICENSE.txt,plugin/}` (FluidUse's Apache-2.0 licence, which travels with the binary)
 - `Contents/Info.plist`
 
 A dev build is signed ad-hoc. `--release` signs with `Developer ID Application: Panter AS (BF4LY62Q92)` and the hardened runtime. Notarizing and the appcast are a separate release step.
+
+## 8. Your fuse
+
+Your AI rates your past messages once, and Lunte learns how Laya's answers add up to heat for you. Nobody labels anything by hand, and Lunte and your AI never talk directly: they share a folder, `~/Library/Application Support/Lunte/fuse`, and the `lunte-hook` commands.
+
+- **The setup prompt** (`Fuse.setupPrompt`): `Let's set up Lunte. Look at my messages and tune the sensitivity and the vibes. Lunte's setup tool is at "$HOME/Library/Application Support/Lunte/lunte-hook": run it with setup for the steps. Let me know when you're done :)` It never contains the test phrase, so pasting it can't Boom, and it doesn't burn either.
+- **`lunte-hook setup`** prints the steps for your AI (`Fuse.setupText`):
+  1. List the messages (`lunte-hook messages`).
+  2. Rate each 0–3 toward the assistant: 0 calm (including happy swearing), 1 irritated, 2 angry, 3 furious.
+  3. Write `labels.json`.
+  4. Write about 20 personal vibes to `vibes.json`, without showing them.
+  5. Run `lunte-hook check-fuse`, which checks both files.
+  6. Finish with one line in the chat telling you to type `3 2 1 pow`.
+- **`vibes.json`**, written by your AI: `{"lunte": "fuse-vibes", "v": 1, "made", "vibes": [{"emoji", "label", "band", "topic", "when", "story"}]}`. `topic` is one of code, design, writing, business, voice, shipping, ideas, or "any" for vibes about mood, time or habits. A vibe without a topic gets one from Laya's topic question on its label and "when", kept only above 0.5; that fallback is rough, so the AI's own topic is preferred. About 20 personal vibes in Lunte's voice (dry, understated), spread over the bands, about the mood rather than the content: no quotes, no names, nothing private. `lunte-hook setup` tells the AI not to list them to you. `FuseVibes.problems` checks the shape, the lengths, and that every band has at least one vibe. The app reads the file at launch and whenever the folder changes.
+- **`labels.json`**, written by your AI: `{"lunte": "fuse-labels", "v": 1, "rater", "made", "labels": [{"sid", "ts", "rating"}]}`. Message references only, no text. `FuseLabels.problems` lists what's wrong: the wrong `lunte` or `v`, ratings outside 0–3, or fewer than 30 ratings.
+- **Candidates** (`Fuse.candidates`): every message the word list flags, up to a third of 300, plus an even spread of the rest, oldest first.
+- **Tuning.** When `labels.json` is newer than `profile.json` (watched, 1 s debounce, and checked at launch once the model is loaded), the app:
+  1. finds each rated message in the transcripts (same session, within 1 s), and needs at least 30
+  2. asks Laya the 11 probes of `Scorer.probes` (~90 ms per message)
+  3. turns every option's probability into a feature, `log(p + 0.0001)`
+  4. trains `PersonalFuse`: a ridge regression on the 0–3 ratings over the standardised features, with the regularisation picked from 0.01–3 by 5-fold cross-validation
+  5. saves `profile.json`
+
+  `fit` is the held-out AUC of irritated-or-worse against calm. Message text stays in memory only.
+- **`profile.json`**, written by the app: `{v, probes, mean, sd, weights, bias, lambda, trainedOn, fit, rater, made}`. A profile only applies if its `probes` match the app's; otherwise it counts as untuned.
+- **Heat with a profile:** all probes are asked, and heat is the predicted rating divided by 3, clamped to 0…1. So furious is 1 (a Boom on a fresh stick), angry 0.67 and irritated 0.33. Without a profile, heat is P(frustrated) from the mood probe. The mood probe's top label always feeds the vibe line.

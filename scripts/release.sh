@@ -14,6 +14,9 @@ plist=Resources/Info.plist
 repo=ProggePal/lunte-app
 
 [[ -z $(git status --porcelain) ]] || { echo "Commit first: a release is built from what's committed." >&2; exit 1; }
+# The GitHub release notes are this version's section of CHANGELOG.md.
+notes=$(awk -v v="## $version" '$0 == v {found=1; next} /^## / && found {exit} found' CHANGELOG.md)
+[[ -n ${notes//[[:space:]]/} ]] || { echo "Add a \"## $version\" section to CHANGELOG.md first." >&2; exit 1; }
 [[ $(/usr/libexec/PlistBuddy -c "Print :LunteRelayURL" "$plist") != http://localhost* ]] \
   || { echo "Point LunteRelayURL in $plist at the deployed relay first." >&2; exit 1; }
 key=$("$bin/generate_keys" -p 2>/dev/null) || { echo "No Sparkle key yet. Run once: $bin/generate_keys" >&2; exit 1; }
@@ -39,5 +42,5 @@ git commit -qam "Release $version"
 git tag "v$version"
 git push -q origin HEAD "v$version"
 gh release create "v$version" "$zip" dist/appcast/appcast.xml --repo "$repo" --title "Lunte $version" \
-  --notes "Signed and notarized. Lunte updates itself from here on."
+  --notes "$notes"
 echo "Released Lunte $version: https://github.com/$repo/releases/tag/v$version"

@@ -10,13 +10,42 @@ final class GameModel: ObservableObject {
     @Published private(set) var state = Game.replay([], now: 0)
     @Published private(set) var club = Relay.club
     @Published private(set) var clubName = Relay.clubName
-    @Published private(set) var recent: [ClubEvent] = defaults.data(forKey: "Recent").flatMap { try? JSONDecoder().decode([ClubEvent].self, from: $0) } ?? []
+    @Published private(set) var clubFeed: [ClubEvent] = defaults.data(forKey: "Recent").flatMap { try? JSONDecoder().decode([ClubEvent].self, from: $0) } ?? []
     /// Boom ids this Mac posted to the Club.
     @Published private(set) var mine = Set(defaults.stringArray(forKey: "Mine") ?? [])
     /// True once the onboarding phrase has reached the log: the hook is wired up.
     @Published private(set) var connected = defaults.bool(forKey: "Connected")
-    /// Your prompts from the last hour (no onboarding test), for the vibe strip.
-    @Published private(set) var lastHour: [Event] = []
+    /// True once you've owned your first (test) Boom and got a fresh stick. Already-connected Macs count as done.
+    @Published private(set) var onboarded = defaults.object(forKey: "Onboarded") as? Bool ?? defaults.bool(forKey: "Connected")
+    /// Onboarding: what you owned your test Boom with, and when the 10-second fresh stick lands.
+    @Published private(set) var ownedTest: (line: String, freshAt: Date)?
+    /// Your messages from the last 30 minutes (no onboarding test), for the timeline.
+    @Published private(set) var recent: [Event] = []
+    /// The fuse is burning towards a Boom that hasn't gone off yet.
+    @Published private(set) var fusing = false
+    /// A test Boom has blown, so the menu bar says BOOM.
+    @Published private(set) var testBlown = false
+    /// The vibe line, off by default while vibes are still taking shape. Off means no vibe is picked and no topic is
+    /// asked; nothing about vibes runs at all.
+    @Published var vibesOn = defaults.bool(forKey: "VibesOn") {
+        didSet {
+            defaults.set(vibesOn, forKey: "VibesOn")
+            scorer?.topicsOn = vibesOn
+            vibe = nil
+            vibePicked = nil
+            vibesFile = []
+            if vibesOn { loadPersonalVibes(); reload() }
+        }
+    }
+    /// Debug: show the model's numbers when hovering a message.
+    @Published var showRatings = defaults.bool(forKey: "ShowRatings") {
+        didSet { defaults.set(showRatings, forKey: "ShowRatings") }
+    }
+    private var scorer: Scorer?
+    /// Your personal fuse: untuned, tuning, tuned (with its fit), or why it failed.
+    @Published private(set) var fuse: Scorer.Status = .untuned
+    private var fuseSource: DispatchSourceFileSystemObject?
+    private var fuseDebounce: Task<Void, Never>?
     /// When you last sent a prompt: a break counts from here.
     @Published private(set) var lastActivity: Double?
     private var promptCache: [Double: String] = [:]
@@ -51,7 +80,22 @@ final class GameModel: ObservableObject {
         linkHook()
         let dir = log.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        dirSource = watch(dir.path, [.write]) // fires when events.jsonl is created, replaced or removed
+        dirSource = watch(dir.path, [.write]) { [weak self] in self?.changed() } // events.jsonl created, replaced or removed
+        // The fuse folder, where your AI saves labels.json and vibes.json (`lunte-hook setup` tells it how).
+        try? FileManager.default.createDirectory(at: Fuse.dir, withIntermediateDirectories: true)
+        scorer = Scorer(log: log) { [weak self] in self?.fuse = $0 }
+        scorer?.topicsOn = vibesOn
+        loadPersonalVibes()
+        fuseSource = watch(Fuse.dir.path, [.write]) { [weak self] in
+            guard let self else { return }
+            fuseDebounce?.cancel()
+            fuseDebounce = Task {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                self.scorer?.labelsChanged()
+                self.loadPersonalVibes()
+            }
+        }
         reload()
         Task { while true { try? await Task.sleep(for: .seconds(60)); reload() } } // closes a Sitting on time with no new events
         Task { while true { await poll(notify: true); try? await Task.sleep(for: .seconds(30)) } }
@@ -59,11 +103,64 @@ final class GameModel: ObservableObject {
 
     // MARK: The menu
 
-    /// One plain sentence about the stick. No numbers to decode.
+    /// For VoiceOver: the vibe, and how much stick is left.
     var sentence: String {
-        if state.pieces <= 2 { return "One outburst and it blows." }
-        if state.pieces == state.fuse { return "Fresh stick. Telling it off burns one piece, losing it burns two." }
-        return "\(state.pieces) pieces left. Losing it burns two."
+        let vibe = self.vibe.map { $0.label + ". " } ?? ""
+        return state.boomed ? "Boom. " + vibe : vibe + "\(Int((state.left * 100).rounded()))% of the fuse left."
+    }
+
+    // MARK: The vibe
+
+    /// This session's vibe, once you've sent 5 or more messages in 30 minutes; nil until then ("Reading the room…").
+    @Published private(set) var vibe: Vibe?
+    /// The first time this vibe has ever shown up. No counter, no list: vibes are found by playing.
+    @Published private(set) var vibeIsNew = false
+    private var personalVibes: [Vibe] = []
+    private var seenVibes = Set(defaults.stringArray(forKey: "SeenVibes") ?? [])
+    /// The band and newest message when the vibe was last picked.
+    private var vibePicked: (band: Vibe.Band, newest: Double)?
+
+    /// Your AI's vibes from fuse setup, if any, read again whenever the fuse folder changes. Each is then tagged with
+    /// its topic by Laya, once per change, so a vibe about design only shows when you're working on design.
+    private var vibesFile: [Vibe] = []
+    private func loadPersonalVibes() {
+        guard vibesOn else { return }
+        let file = (try? Data(contentsOf: Fuse.vibesURL)).flatMap { try? JSONDecoder().decode(FuseVibes.self, from: $0) }
+        let vibes = file?.vibes.filter { !$0.label.isEmpty && !$0.emoji.isEmpty } ?? []
+        guard vibes != vibesFile else { return }
+        vibesFile = vibes
+        let given = vibes.map { var v = $0; if v.topic == "any" { v.topic = "" }; return v } // "" = any topic, set by your AI
+        guard given.contains(where: { $0.topic == nil }) else { return useVibes(given) }
+        personalVibes = given.filter { $0.topic != nil } // the rest wait for Laya to tag them
+        Task {
+            guard let tagged = await scorer?.tagTopics(given), vibesFile == vibes else { return }
+            useVibes(tagged)
+        }
+    }
+
+    private func useVibes(_ vibes: [Vibe]) {
+        personalVibes = vibes.map { var v = $0; if v.topic == "" { v.topic = nil }; return v }
+        vibePicked = nil
+    }
+
+    /// Picks again when your band changes or after 3 new messages, so the vibe moves with the session without flickering.
+    /// Laya chooses from a shortlist (yours first, then stock) by a text-free summary; without the model, the rules do.
+    private func updateVibe(_ now: Double) {
+        guard vibesOn, recent.count >= Vibe.minimumMessages, let newest = recent.last?.ts else { vibe = nil; vibePicked = nil; return }
+        let band = Vibe.band(state, recent: recent, now: now)
+        if let p = vibePicked, p.band == band, recent.filter({ $0.ts > p.newest }).count < 3 { return }
+        vibePicked = (band, newest)
+        let shortlist = Vibe.candidates(band, personal: personalVibes, seed: Int(now / 1800), topic: Vibe.topic(recent)) // fresh each half hour
+        let summary = Vibe.summary(state, recent: recent, now: now)
+        let rules = Vibe.of(state, recent: recent, boomedWithinHour: state.booms.last.map { now - $0.ts < 3600 } ?? false, now: now)
+        Task {
+            let picked = await scorer?.pickVibe(shortlist, summary: summary) ?? rules
+            guard picked != vibe else { return }
+            vibeIsNew = !seenVibes.contains(picked.label)
+            seenVibes.insert(picked.label)
+            defaults.set(Array(seenVibes), forKey: "SeenVibes")
+            vibe = picked
+        }
     }
 
     static let justifyLimit = 40 // short and honest
@@ -92,24 +189,23 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// Seconds until a fresh stick if you step away now (a 10-minute break), or nil with no activity yet.
-    func breakLeft(at now: Date) -> Double? {
-        guard state.sittingOpen, let last = lastActivity else { return nil }
-        return max(0, last + Game.sittingGap - shaved - now.timeIntervalSince1970)
+    /// After a Boom: seconds until a fresh stick, whichever comes first of 10 quiet minutes or 30 minutes without heat.
+    func freshLeft(at now: Date) -> Double? {
+        state.freshAt.map { max(0, $0 - shaved - now.timeIntervalSince1970) }
     }
 
-    /// Easter egg: once you've justified, each tap on the 💥 shaves 2 s off the break, at most a minute. No UI.
+    /// Easter egg: once you've justified, each tap on the 💥 shaves 2 s off the wait, at most a minute. No UI.
     func hurry() {
-        guard state.sittingOpen, let last = lastActivity, shaved < 60 else { return }
+        guard state.freshAt != nil, let last = lastActivity, shaved < 60 else { return }
         shaveKey = last
         shaved += 2
         scheduleBreakEnd()
     }
 
-    /// Ends the break on time: a plain reload closes a full 10-minute break, and a hurried one needs a rest event.
+    /// Ends the wait on time: a plain reload brings the fresh stick, and a hurried one needs a rest event.
     private func scheduleBreakEnd() {
         breakEnd?.cancel()
-        guard let left = breakLeft(at: .now) else { return }
+        guard let left = freshLeft(at: .now) else { return }
         let key = lastActivity
         breakEnd = Task {
             try? await Task.sleep(for: .seconds(left + 0.5))
@@ -130,9 +226,45 @@ final class GameModel: ObservableObject {
         return text
     }
 
-    func testBoom() {
-        playBoom()
-        BoomFlash.show()
+    /// Your idea as a prefilled issue on the public repo, where you post it. Nothing leaves until you press Submit on GitHub.
+    func submitPrompt() {
+        guard let (name, prompt) = Alerts.submitPrompt() else { return }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let body = "**Prompt**\n\n\(prompt.prefix(4000))\n\n**Name for the changelog:** \(name.isEmpty ? "anonymous" : name)\n\n_Sent from Lunte \(version)_"
+        var url = URLComponents(string: "https://github.com/ProggePal/lunte-app/issues/new")!
+        url.queryItems = [URLQueryItem(name: "title", value: "Prompt request: " + prompt.prefix(60).replacingOccurrences(of: "\n", with: " ")),
+                          URLQueryItem(name: "body", value: body)]
+        url.percentEncodedQuery = url.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B") // a "+" would arrive as a space
+        if let link = url.url { NSWorkspace.shared.open(link) }
+    }
+
+    /// The one prompt that has your AI set up your fuse (contract §8).
+    func copySetupPrompt() { copyToClipboard(Fuse.setupPrompt) }
+
+    /// "Tuning your fuse… 40 of 212", or why it failed; nil when untuned or tuned.
+    var fuseLine: String? {
+        switch fuse {
+        case .untuned, .tuned: return nil
+        case .tuning(let done, let of): return "Tuning your fuse… \(done) of \(of)"
+        case .failed(let why): return "Couldn’t tune your fuse: " + why
+        }
+    }
+
+    /// A random wait between your outburst and the bang, so the room has to guess who it was (GAME.md).
+    static let boomDelay = 5.0...60.0
+
+    /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon, with the sound.
+    /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
+    private func light(_ seconds: Double, sound: Bool, test: Bool = false) {
+        fusing = true
+        Blast.run(fuse: seconds) { [weak self] in
+            guard let self else { return }
+            fusing = false
+            if sound { playBoom() }
+            guard test else { return }
+            testBlown = true
+            if onboarded { Task { try? await Task.sleep(for: .seconds(10)); self.testBlown = false } }
+        }
     }
 
     func connect() {
@@ -160,11 +292,11 @@ final class GameModel: ObservableObject {
 
     // MARK: Watching the log
 
-    private func watch(_ path: String, _ mask: DispatchSource.FileSystemEvent) -> DispatchSourceFileSystemObject? {
+    private func watch(_ path: String, _ mask: DispatchSource.FileSystemEvent, _ action: @escaping @MainActor () -> Void) -> DispatchSourceFileSystemObject? {
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else { return nil }
         let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: mask, queue: .main)
-        source.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.changed() } }
+        source.setEventHandler { MainActor.assumeIsolated { action() } }
         source.setCancelHandler { close(fd) }
         source.resume()
         return source
@@ -175,7 +307,7 @@ final class GameModel: ObservableObject {
         let inode = (try? FileManager.default.attributesOfItem(atPath: log.path))?[.systemFileNumber] as? Int
         guard inode != watchedInode else { return }
         fileSource?.cancel()
-        fileSource = inode == nil ? nil : watch(log.path, [.write, .extend, .delete, .rename])
+        fileSource = inode == nil ? nil : watch(log.path, [.write, .extend, .delete, .rename]) { [weak self] in self?.changed() }
         watchedInode = fileSource == nil ? nil : inode
     }
 
@@ -192,7 +324,8 @@ final class GameModel: ObservableObject {
         let now = Date().timeIntervalSince1970
         let events = EventLog.read(log)
         state = Game.replay(events, now: now)
-        lastHour = Array(events.filter { ($0.burn != .test && $0.burn != .rest) && now - $0.ts < 3600 }.suffix(240)) // ponytail: capped for a very busy hour
+        recent = Array(events.filter { $0.burn != .test && $0.burn != .rest && now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
+        updateVibe(now)
         lastActivity = events.last { $0.burn != .rest }?.ts
         if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the break
         onboard(events.filter { $0.burn == .test }, now: now)
@@ -202,9 +335,8 @@ final class GameModel: ObservableObject {
         for boom in fresh {
             announced.insert(boom.id)
             guard now - boom.ts < 600 else { continue } // older than 10 minutes: announced silently
-            if soundOn { playBoom() }
-            BoomFlash.show()
-            if club != nil { post(boom) }
+            light(.random(in: Self.boomDelay), sound: soundOn)
+            if club != nil { post(boom) } // anonymous, and the Club polls every 30 s, so posting now gives nothing away
         }
         defaults.set(Array(announced), forKey: "Announced")
     }
@@ -218,8 +350,37 @@ final class GameModel: ObservableObject {
         defaults.set(true, forKey: "Connected")
         defaults.set(Array(announced), forKey: "Announced")
         guard fresh.contains(where: { now - $0.ts < 600 }) else { return }
-        playBoom()
-        BoomFlash.show("CONNECTED")
+        light(3, sound: true, test: true)
+    }
+
+    /// Onboarding: you own the test Boom, and 10 seconds later you get your first fresh stick. Kept on this Mac only.
+    func ownTest(_ line: String) {
+        ownedTest = (line, Date().addingTimeInterval(10))
+        Task {
+            try? await Task.sleep(for: .seconds(10))
+            ownedTest = nil
+            testBlown = false
+            onboarded = true
+            defaults.set(true, forKey: "Onboarded")
+        }
+    }
+
+    /// Tucked away in the gear while onboarding shows: straight to the game, as if you'd finished it.
+    func skipOnboarding() {
+        ownedTest = nil
+        testBlown = false
+        connected = true
+        onboarded = true
+        defaults.set(true, forKey: "Connected")
+        defaults.set(true, forKey: "Onboarded")
+    }
+
+    /// Start the onboarding over, from the checklist.
+    func replayOnboarding() {
+        connected = false
+        onboarded = false
+        defaults.set(false, forKey: "Connected")
+        defaults.set(false, forKey: "Onboarded")
     }
 
     private func post(_ boom: Boom) {
@@ -275,7 +436,7 @@ final class GameModel: ObservableObject {
         secrets = [:]
         reactions = [:]
         for key in ["Mine", "Secrets", "Reactions"] { defaults.removeObject(forKey: key) } // your justifications stay
-        recent = []
+        clubFeed = []
         lastSeq = 0
         saveClub()
     }
@@ -301,7 +462,7 @@ final class GameModel: ObservableObject {
         try await Relay.join(code, name: name)
         club = code
         clubName = Relay.clubName
-        recent = []
+        clubFeed = []
         lastSeq = 0
         await poll(notify: false) // catch up on the Club's history without a burst of notifications
     }
@@ -321,7 +482,7 @@ final class GameModel: ObservableObject {
                     if notify && Date().timeIntervalSince1970 - e.ts < 600 { self.notify(about: e) } // catch-up goes to the feed quietly
                     lastSeq = e.seq
                 }
-                recent = Array((recent + page).suffix(5))
+                clubFeed = Array((clubFeed + page).suffix(5))
                 if page.count < 100 { break }
             }
         } catch {} // ponytail: offline or relay down; the next poll tries again
@@ -346,7 +507,7 @@ final class GameModel: ObservableObject {
 
     private func saveClub() {
         defaults.set(lastSeq, forKey: "LastSeq")
-        defaults.set(try? JSONEncoder().encode(recent), forKey: "Recent")
+        defaults.set(try? JSONEncoder().encode(clubFeed), forKey: "Recent")
     }
 
 }
