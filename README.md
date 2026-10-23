@@ -16,20 +16,20 @@ During setup, Lunte gives you one prompt for Claude Code. Your AI reads your rec
 
 ## Privacy
 Everything Lunte does runs on your Mac. Lunte never stores or sends your prompts. Only your Booms, reactions and comments go to your Club.
-- Lunte reads heat with a small model on your Mac. It downloads once from Hugging Face on first launch (about 470 MB).
+- Lunte reads heat with a small model on your Mac, the Heat Detector. The first screen asks before downloading it, once, from Hugging Face (483 MB).
 - The setup prompt asks your own AI to read your recent messages, so they go to your AI provider like any other chat. Lunte keeps only the ratings.
 
 Read [the promise](docs/adr/0001-everything-runs-on-your-computer.md).
 
 ## Install
 1. Download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
-2. Open it, click the 🧨 in your menu bar, and follow the three steps: listen for new messages, activate the heat detector, and turn the heat up.
+2. Open it, click the 🧨 in your menu bar, and install the Heat Detector (483 MB, once). Then follow the three steps: listen for new messages, activate the heat detector, and turn the heat up.
 3. Join a Club with its six-letter code, or create one, from the house at the bottom of the popover.
 
 You need a Mac with Apple Silicon, and Claude Code.
 
 ## Ideas
-Something you want to see in Lunte? Choose Submit a prompt… in Lunte's settings, or open an issue here with the prompt you'd want an agent to run to build it. If it's good, we keep it, and you're credited in the [changelog](CHANGELOG.md).
+Something you want to see in Lunte? Choose Submit a prompt… in Lunte's settings and it comes straight to us, or open an issue here with the prompt you'd want an agent to run to build it. If it's good, we keep it, and you're credited in the [changelog](CHANGELOG.md).
 
 ## Credits
 Heat is read by [Laya](https://huggingface.co/convaiinnovations/laya-multilingual) (Apache-2.0), running on your Mac through FluidInference's [CoreML build](https://huggingface.co/FluidInference/laya-coreml) and the [FluidUse](https://github.com/FluidInference/FluidUse) runtime (Apache-2.0).

@@ -61,6 +61,12 @@ enum Relay {
         UserDefaults.standard.removeObject(forKey: "ClubName")
     }
 
+    /// Your idea for Lunte, to the relay's prompt inbox. No Club or account needed.
+    static func submitPrompt(name: String, prompt: String) async throws {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        _ = try await call("POST", "prompts", body: ["name": name, "prompt": String(prompt.prefix(4000)), "version": version])
+    }
+
     /// A boom, react or why. Does nothing outside a Club.
     static func post(_ event: [String: Any]) async throws {
         guard let club else { return }

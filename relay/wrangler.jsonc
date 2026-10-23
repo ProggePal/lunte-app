@@ -6,8 +6,15 @@
   "observability": { "enabled": true },
 
   // One Durable Object per Club, addressed with idFromName(club code).
+  // One more for the prompt inbox, addressed with idFromName("prompts").
   "durable_objects": {
-    "bindings": [{ "name": "CLUBS", "class_name": "Club" }]
+    "bindings": [
+      { "name": "CLUBS", "class_name": "Club" },
+      { "name": "INBOX", "class_name": "Inbox" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Club"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Club"] },
+    { "tag": "v2", "new_sqlite_classes": ["Inbox"] }
+  ]
 }

@@ -37,6 +37,7 @@ Updated 22 Oct 2026 for the game redesign.
 
 ## Amended 23 Oct 2026 (Lunte 0.2.0)
 
-- **Heat is read by Laya on the Mac.** It's no longer opt-in flavour. The model (`FluidInference/laya-coreml`) downloads once from Hugging Face on first launch; that request carries nothing of the person's. The word list is the fallback until the model loads.
+- **Heat is read by Laya on the Mac.** It's no longer opt-in flavour. The model (`FluidInference/laya-coreml`, "the Heat Detector", 483 MB) downloads once from Hugging Face, only when the person presses Download on the first screen. That request carries nothing of theirs, and every file is checked against a pinned SHA-256. The word list is the fallback until the model loads.
 - **The fuse setup prompt is the one exception to "no network call", and the person runs it.** It asks their own AI (Claude Code) to read their recent messages and rate how heated they were. Those messages go to their AI provider, in their own chat, like any other request, and only because they pasted the prompt. Lunte itself still sends nothing; it keeps only message references and 0–3 ratings, never text. Skipping it leaves the fuse untuned.
+- **Prompts you submit** (Submit a prompt in Settings) go to the relay's inbox: your idea, the name you give, and the Lunte version. The relay keeps a hash of your IP for a day to limit spam, never with the prompt.
 - **Open question:** Anthropic's usage policy restricts using Claude to infer a person's emotions. Here it's a person rating their own messages, by choice, but check the policy wording before a public launch, and drop or replace the setup prompt if it doesn't hold.

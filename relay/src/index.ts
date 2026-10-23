@@ -1,8 +1,12 @@
-// Lunte relay: Club members share Booms, reactions and a short "why". See docs/contract.md §5.
+// Lunte relay: Club members share Booms, reactions and a short "why", and anyone can submit a prompt for
+// Lunte itself. See docs/contract.md §5.
 import { DurableObject } from "cloudflare:workers";
 
 interface Env {
   CLUBS: DurableObjectNamespace<Club>;
+  INBOX: DurableObjectNamespace<Inbox>;
+  /** Reads the prompt inbox. Set with `wrangler secret put ADMIN_TOKEN`; locally in .dev.vars. */
+  ADMIN_TOKEN?: string;
 }
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 characters, so `byte & 31` picks one without bias
@@ -15,6 +19,10 @@ const JOINS_PER_HOUR = 10;
 const HOUR_MS = 3_600_000;
 const KEEP_EVENTS = 500;
 const PAGE_SIZE = 100;
+const MAX_PROMPT_BODY = 16_384; // a prompt is up to 4,000 characters, far more than a Club event
+const PROMPTS_PER_HOUR = 10; // per sender
+const PROMPTS_PER_DAY = 500; // from everyone, so a flood can't fill the inbox
+const DAY_MS = 24 * HOUR_MS;
 
 const NAME_ERROR = "name must be 1-24 visible characters";
 
@@ -35,6 +43,7 @@ export default {
 async function route(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const [root, code, action, ...rest] = url.pathname.split("/").filter(Boolean);
+  if (root === "prompts" && code === undefined) return prompts(req, env);
   if (root !== "clubs" || rest.length > 0) return fail(404, "not found");
 
   let body = "";
@@ -73,12 +82,33 @@ async function createClub(env: Env, body: string): Promise<Response> {
   return fail(500, "no free club code");
 }
 
-/** The body as text, or null when it is over 2 KB. */
-async function readBody(req: Request): Promise<string | null> {
-  if (Number(req.headers.get("content-length")) > MAX_BODY) return null;
+/** The body as text, or null when it is over `max` bytes (2 KB unless said otherwise). */
+async function readBody(req: Request, max = MAX_BODY): Promise<string | null> {
+  if (Number(req.headers.get("content-length")) > max) return null;
   // ponytail: a body without Content-Length is buffered before the check; Cloudflare's request limit bounds it.
   const buf = await req.arrayBuffer();
-  return buf.byteLength > MAX_BODY ? null : new TextDecoder().decode(buf);
+  return buf.byteLength > max ? null : new TextDecoder().decode(buf);
+}
+
+/** POST /prompts submits one (no account needed); GET /prompts lists them for whoever holds ADMIN_TOKEN. */
+async function prompts(req: Request, env: Env): Promise<Response> {
+  const inbox = env.INBOX.get(env.INBOX.idFromName("prompts"));
+  if (req.method === "GET") {
+    const token = req.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
+    if (!env.ADMIN_TOKEN || !(await sameSecret(token, env.ADMIN_TOKEN))) return fail(401, "bad token");
+    return inbox.list();
+  }
+  if (req.method !== "POST") return fail(404, "not found");
+  const body = await readBody(req, MAX_PROMPT_BODY);
+  if (body === null) return fail(413, "body is over 16 KB");
+  // The sender is a hash of their IP, kept a day for the rate limit and never with the prompt.
+  return inbox.submit(body, await sha256Hex("lunte-prompt:" + (req.headers.get("cf-connecting-ip") ?? "local")));
+}
+
+/** Compares two secrets in constant time, by their hashes so the lengths match. */
+async function sameSecret(a: string, b: string): Promise<boolean> {
+  const [x, y] = await Promise.all([a, b].map((s) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))));
+  return crypto.subtle.timingSafeEqual(x, y);
 }
 
 type EventRow = {
@@ -245,6 +275,57 @@ export class Club extends DurableObject<Env> {
     const hash = await sha256Hex(token);
     const row = this.sql.exec<{ name: string }>("SELECT name FROM members WHERE token_hash = ?", hash).toArray()[0];
     return row?.name ?? null;
+  }
+}
+
+/** The prompt inbox: one instance, addressed by idFromName("prompts"). */
+export class Inbox extends DurableObject<Env> {
+  private sql = this.ctx.storage.sql;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS prompts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts INTEGER NOT NULL,   -- ms
+        name TEXT,             -- for the changelog credit; may be empty
+        prompt TEXT NOT NULL,
+        version TEXT           -- the Lunte version it came from
+      );
+      -- a day of rate-limit hashes, nothing else
+      CREATE TABLE IF NOT EXISTS senders (hash TEXT NOT NULL, ts INTEGER NOT NULL);
+    `);
+  }
+
+  submit(body: string, sender: string): Response {
+    const p = parseObject(body);
+    if (p === null) return fail(400, "body must be a JSON object");
+    const prompt = trimmedText(p.prompt, 4000);
+    if (prompt === null) return fail(400, "prompt must be 1-4000 characters");
+    const named = typeof p.name === "string" && p.name.trim() !== "";
+    const name = named ? trimmedText(p.name, 40) : null;
+    if (named && (name === null || /\p{C}/u.test(name))) return fail(400, "name must be at most 40 visible characters");
+    const version = typeof p.version === "string" ? p.version.slice(0, 20) : null;
+
+    // No await from here on, so two submissions can't both slip under a limit.
+    const now = Date.now();
+    this.sql.exec("DELETE FROM senders WHERE ts < ?", now - DAY_MS);
+    const count = (q: string, ...params: unknown[]) => this.sql.exec<{ n: number }>(q, ...params).one().n;
+    if (count("SELECT COUNT(*) AS n FROM senders WHERE hash = ? AND ts > ?", sender, now - HOUR_MS) >= PROMPTS_PER_HOUR) {
+      return fail(429, "too many prompts this hour");
+    }
+    if (count("SELECT COUNT(*) AS n FROM senders") >= PROMPTS_PER_DAY) return fail(429, "the inbox is full for today");
+    this.sql.exec("INSERT INTO senders (hash, ts) VALUES (?, ?)", sender, now);
+    const { id } = this.sql
+      .exec<{ id: number }>("INSERT INTO prompts (ts, name, prompt, version) VALUES (?, ?, ?, ?) RETURNING id", now, name, prompt, version)
+      .one();
+    return json(201, { id });
+  }
+
+  /** Newest first, at most 500. */
+  list(): Response {
+    const rows = this.sql.exec("SELECT id, ts, name, prompt, version FROM prompts ORDER BY id DESC LIMIT 500").toArray();
+    return json(200, { prompts: rows });
   }
 }
 

@@ -2,6 +2,15 @@
 
 What changed for you in each version of Lunte.
 
+## 0.2.1
+
+### Improvements
+- **Install the Heat Detector, on your terms.** A new Mac starts with one screen that explains it runs on your computer, so your messages stay there, and a Download button with its size. Nothing downloads until you press it, and you can watch the progress at the bottom of Lunte while you carry on.
+- **Submit a prompt sends straight from Lunte.** No GitHub account or browser needed: write your idea and your name, press Submit, and it's with us.
+
+### Fixes
+- The Heat Detector download is checked file by file, so a broken or interrupted download is never used.
+
 ## 0.2.0
 
 ### Improvements

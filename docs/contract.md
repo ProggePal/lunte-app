@@ -142,6 +142,13 @@ Base URL comes from Info.plist `LunteRelayURL`, overridable with `defaults write
   - `{"type":"boom","boom":"<id>","ts":<s>,"proof":"<sha256 hex of a local secret>"}`. Stored **without** the member, because Booms are anonymous. Boom ids are unique per Club (409 on a repeat), and Booms with their proofs live in their own table that is never trimmed.
   - `{"type":"react","boom":"<id>","emoji":"🧯"}`: a single grapheme, at most 16 bytes. Stored with `from` set to the member's name.
   - `{"type":"why","boom":"<id>","text":"...","secret":"<local secret>"}`: 1–140 characters. Accepted only if `sha256(secret)` matches the Boom's proof, so you can only explain your own Boom: 404 if the Boom is unknown, 403 if the secret doesn't match. Stored with `from` set to the member's name. The proof and the secret are never returned.
+- `POST /prompts {"name", "prompt", "version"}` → `201 {"id": n}`: an idea for Lunte, from Submit a prompt. No account needed.
+  - The prompt is 1–4,000 characters, and the name is optional, at most 40 visible characters. Bodies here can be up to 16 KB.
+  - Each sender gets 10 an hour, and the inbox takes 500 a day in all (429).
+  - The sender is a hash of their IP, kept a day for the limit and never stored with the prompt.
+- `GET /prompts` with `Authorization: Bearer <ADMIN_TOKEN>` → `200 {"prompts": [{id, ts, name, prompt, version}]}`, newest first, at most 500; 401 otherwise.
+  - The token is a Worker secret (`wrangler secret put ADMIN_TOKEN`), `dev-admin` in `relay/.dev.vars` locally.
+  - On the release Mac it's in the keychain as `lunte-admin`, and `npm run prompts` in `relay/` reads the inbox with it.
 - `GET /clubs/{club}/events?after=<seq>` (Bearer) → `200 {"events":[...]}`: oldest first, at most 100 per call, and only the last 500 kept. Each event is `{seq, type, boom?, ts, emoji?, text?, from?}`, where `type` is `boom`, `react`, `why` or `join`. Boom events never carry `from`.
 
 ## 6. The app (`Lunte.app`)
@@ -156,9 +163,19 @@ The app keeps each Boom's secret and its "mine" flag in UserDefaults.
 
 **The model.** `Scorer` rates prompts with Laya on the Neural Engine, untuned for now: heat is its P(frustrated) for one short mood question, "The writer's mood toward their AI assistant?", with six options (frustrated, confused, hyped, grateful, tired, neutral), each with a two-word description.
 - **Runtime:** `LayaKit`, FluidUse's Laya CoreML runtime vendored under Apache-2.0 (`LunteApp/Sources/LayaKit`), running in the app's own process. No Python.
-- **Model:** `FluidInference/laya-coreml`, the 128-token int8 bucket plus `tokenizer.json`, about 470 MB in `~/Library/Application Support/Lunte/laya-coreml`. The app downloads whatever is missing from Hugging Face at launch; that request carries nothing of yours. The first load compiles for the Neural Engine (about 20 s, once). After that it loads in under a second, answers in about 10 ms, and uses about 100 MB.
+- **Model, the Heat Detector** (`HeatDetector`): `FluidInference/laya-coreml`, the 128-token int8 bucket plus `tokenizer.json`, in `~/Library/Application Support/Lunte/laya-coreml`.
+  - It's 5 files and 482,843,099 bytes ("483 MB"), pinned to revision `7b8d7a2b…`.
+  - Nothing downloads until you press Download. Each file arrives as `.part` and moves in only when its size and SHA-256 match; one that doesn't is deleted.
+  - The request carries nothing of yours.
+  - The first load compiles for the Neural Engine (about 20 s, once). After that it loads in under a second, answers in about 10 ms, and uses about 100 MB.
 - **Fit:** the question takes 49 of the 128 tokens, leaving about 79 for your message; anything longer is cut on the right. Code blocks are removed first.
 - **Socket:** only once the model is loaded does the app listen on `scorer.sock` (mode 0600). Until then, or if the download fails, the hook finds nobody listening, doesn't mark prompts `rated`, and the word list decides. Each rating is appended as a `heat` line and the watcher replays.
+
+**The first screen** on a Mac without the Heat Detector fills the popover:
+- 🧨, "Install the Heat Detector", and "Lunte reads the heat in your messages with a small model that runs on this Mac, so your messages stay on this computer."
+- **Download · 483 MB**, and a small **Not now**.
+
+Pressing Download moves on to onboarding. Until the detector is ready, the Club's place in the footer shows the download: a progress bar with a percentage, then "Setting up…" during the first compile, or **Retry download** if it failed. After Not now, that place offers **Get the Heat Detector**. Without the detector, the word list rates your messages.
 
 **Onboarding.** Until the log holds a `test` event, the popover shows "Light your first fuse", the line "Lunte hears how you talk to your AI. Lose your temper, and it blows.", and a checklist:
 1. Connect to Claude Code. After it succeeds, the alert says to open a *new* chat, because Claude Code loads plugins when a session starts.
@@ -175,7 +192,7 @@ A new `test` event (less than 10 minutes old, not yet announced) lights a 3-seco
 - **The vibe line:** the session's vibe (§4), emoji and label, "✨ new" the first time it ever shows, or "Reading the room…".
 - **Your last 30 minutes** as dots that wrap, oldest first: grey calm (heat under 0.35), orange heated, red boiling (0.85 and up), 💥 where it blew. A message Laya is still rating is a grey dot breathing, and the slot says "rating…". The dots touch, so moving across them never drops the hover.
 - "12 messages from Claude Code", then the Club's latest two events.
-- **The footer:** sound; the Club (a house and its name, or "No Club") with its actions; a gear with Skip onboarding (while it shows) or Replay onboarding, **Vibes** (off by default; off means no vibe line, no vibe picking and no topic question), **Show model ratings** (debug: the slot adds heat %, its source (Laya, or the word list when Laya isn't there or didn't answer in time), what it burns, the mood and the word list's signals; a spinner while Laya is rating), **Submit a prompt…** (a native dialog, "Something you want to see in Lunte?", with your name and a multi-line prompt; Submit opens a prefilled issue on the public repo for you to post, prompt cut at 4,000 characters), Check for updates and Quit.
+- **The footer:** sound; the Club (a house and its name, or "No Club") with its actions; a gear with Skip onboarding (while it shows) or Replay onboarding, **Vibes** (off by default; off means no vibe line, no vibe picking and no topic question), **Show model ratings** (debug: the slot adds heat %, its source (Laya, or the word list when Laya isn't there or didn't answer in time), what it burns, the mood and the word list's signals; a spinner while Laya is rating), **Submit a prompt…** (a native dialog, "Something you want to see in Lunte?", with your name and a multi-line prompt; Submit sends it to the relay's prompt inbox (§5) and says "Thanks, it's in", or why it couldn't, prompt cut at 4,000 characters), Check for updates and Quit.
 
 **The Club.** The app polls every 30 s.
 - **Someone else's Boom:** a notification "💥 Boom in your Club" with 🧯 😂 🫂 actions, each of which posts a react.

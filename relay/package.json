@@ -5,7 +5,8 @@
     "dev": "wrangler dev --local --port 8787",
     "smoke": "node scripts/smoke.mjs",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "prompts": "curl -s -H \"Authorization: Bearer $(security find-generic-password -s lunte-admin -w)\" https://lunte-relay.pedersensorvik.workers.dev/prompts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261022.1",

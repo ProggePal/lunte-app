@@ -77,7 +77,7 @@ enum Alerts {
     static func submitPrompt() -> (name: String, prompt: String)? {
         let alert = NSAlert()
         alert.messageText = "Something you want to see in Lunte?"
-        alert.informativeText = "Write your prompt and your name. Agents will build it, and if it's good, we keep it. Credits in the changelog.\n\nIt opens as a public GitHub issue, ready for you to post."
+        alert.informativeText = "Write your prompt and your name. Agents will build it, and if it's good, we keep it. Credits in the changelog."
         alert.addButton(withTitle: "Submit")
         alert.addButton(withTitle: "Cancel")
         let width: CGFloat = 320

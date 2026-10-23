@@ -150,4 +150,27 @@ const { club: club2 } = expect(await call("POST", "/clubs"), 201, "create second
 for (let i = 1; i <= 10; i++) expect(await join(`member ${i}`, club2), 200, `join ${i} of 10`);
 expect(await join("member 11", club2), 429, "11th join this hour");
 
+// The prompt inbox: anyone can submit, only ADMIN_TOKEN can read, 10 per sender per hour.
+const ADMIN = process.env.LUNTE_ADMIN ?? "dev-admin"; // matches relay/.dev.vars locally
+const idea = { name: "Paal", prompt: "Make the Boom purple on Fridays", version: "0.2.1" };
+const { id } = expect(await call("POST", "/prompts", { body: idea }), 201, "submit a prompt");
+assert.ok(Number.isInteger(id));
+expect(await call("POST", "/prompts", { body: { prompt: "  " } }), 400, "empty prompt");
+expect(await call("POST", "/prompts", { body: { prompt: "x".repeat(4001) } }), 400, "prompt too long");
+expect(await call("POST", "/prompts", { body: { prompt: "ok", name: "n".repeat(41) } }), 400, "name too long");
+expect(await call("POST", "/prompts", { raw: JSON.stringify({ prompt: "y".repeat(17000) }) }), 413, "body over 16 KB");
+expect(await call("GET", "/prompts"), 401, "read without the admin token");
+expect(await call("GET", "/prompts", { token: "wrong" }), 401, "read with the wrong token");
+const inbox = expect(await call("GET", "/prompts", { token: ADMIN }), 200, "read the inbox");
+const mine = inbox.prompts.find((p) => p.id === id);
+assert.equal(mine.prompt, idea.prompt);
+assert.equal(mine.name, "Paal");
+assert.equal(mine.version, "0.2.1");
+assert.ok(!("sender" in mine) && !("hash" in mine), "no sender is returned");
+expect(await call("POST", "/prompts", { body: { prompt: "no name is fine" } }), 201, "submit without a name");
+let status = 201;
+for (let i = 0; i < 10 && status === 201; i++) status = (await call("POST", "/prompts", { body: { prompt: `idea ${i}` } })).status;
+assert.equal(status, 429, "the 11th prompt in an hour from one sender");
+checks++;
+
 console.log(`smoke: ${checks} checks passed against ${BASE} (club ${club})`);

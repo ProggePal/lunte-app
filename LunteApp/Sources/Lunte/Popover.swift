@@ -15,7 +15,9 @@ struct PopoverView: View {
         let boom = model.state.boomed ? model.state.booms.last : nil
         let firstBoom = model.connected && !model.onboarded
         VStack(alignment: .leading, spacing: 12) {
-            if !model.connected {
+            if model.detector == .notInstalled && !model.detectorLater {
+                DetectorLanding(model: model) // a new Mac starts here
+            } else if !model.connected {
                 OnboardingView(model: model)
             } else if firstBoom {
                 FirstBoomCard(model: model)
@@ -49,6 +51,52 @@ struct PopoverView: View {
 private struct BoomTint: View {
     var body: some View {
         LinearGradient(colors: [Color.red.opacity(0.17), Color.red.opacity(0.05)], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.6))
+    }
+}
+
+/// The first screen on a new Mac: what the Heat Detector is, that your messages stay here, and one button.
+private struct DetectorLanding: View {
+    @ObservedObject var model: GameModel
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("🧨").font(.system(size: 40))
+            Text("Install the Heat Detector").font(.headline)
+            Text("Lunte reads the heat in your messages with a small model that runs on this Mac, so your messages stay on this computer.")
+                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: model.installDetector) {
+                Text("Download · " + ByteCountFormatter.string(fromByteCount: HeatDetector.totalBytes, countStyle: .file))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+            Button("Not now", action: model.detectorNotNow).buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+    }
+}
+
+/// Where the Club sits in the footer, while the Heat Detector isn't ready: the download's progress, or a way to start it.
+private struct DetectorStatus: View {
+    @ObservedObject var model: GameModel
+
+    var body: some View {
+        switch model.detector {
+        case .downloading(let share):
+            HStack(spacing: 6) {
+                ProgressView(value: share).frame(width: 90)
+                Text("\(Int((share * 100).rounded()))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            .help("Downloading the Heat Detector")
+        case .settingUp:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Setting up…").font(.caption).foregroundStyle(.secondary) }
+                .help("Getting the Heat Detector ready on this Mac. Only the first time.")
+        case .failed(let why):
+            Button("Retry download", action: model.installDetector).buttonStyle(.borderless).font(.callout).help(why)
+        default:
+            Button("Get the Heat Detector", action: model.installDetector).buttonStyle(.borderless).font(.callout)
+        }
     }
 }
 
@@ -362,6 +410,9 @@ private struct Footer: View {
             Button { model.soundOn.toggle() } label: { Image(systemName: model.soundOn ? "speaker.wave.2" : "speaker.slash") }
                 .buttonStyle(.borderless).help(model.soundOn ? "Sound on" : "Sound off")
             Spacer()
+            if model.detector != .ready {
+                DetectorStatus(model: model)
+            } else {
             Menu {
                 if let club = model.club {
                     Button("Copy Club code \(club)") { copyToClipboard(club) }
@@ -375,6 +426,7 @@ private struct Footer: View {
                     .labelStyle(.titleAndIcon).font(.callout)
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            }
             Spacer()
             Menu {
                 // Testing your Boom, connecting and tuning all live in onboarding, so the gear only starts or skips it.

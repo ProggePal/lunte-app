@@ -6,8 +6,8 @@ import LunteCore
 /// and every rating lands in the log as a heat line.
 /// - Untuned: heat is Laya's P(frustrated) for the mood probe.
 /// - Tuned: every probe is asked (~90 ms), and your personal fuse (fuse/profile.json) turns the answers into heat.
-/// The model (about 470 MB) lives in ~/Library/Application Support/Lunte/laya-coreml and downloads from Hugging Face
-/// the first time. Until it's loaded nothing listens on the socket, so the hook doesn't wait and the word list decides.
+/// The model is the Heat Detector (`HeatDetector`, 483 MB), installed only when you press Download. Until it's loaded
+/// nothing listens on the socket, so the hook doesn't wait and the word list decides.
 @MainActor
 final class Scorer {
     enum Status: Equatable {
@@ -64,19 +64,20 @@ final class Scorer {
         profile = (try? Data(contentsOf: Fuse.profileURL)).flatMap { try? JSONDecoder().decode(PersonalFuse.self, from: $0) }
             .flatMap { $0.probes == Self.probes.map(\.name) ? $0 : nil } // trained on other probes: tune again
         report(profile.map(Status.tuned) ?? .untuned)
-        Task { await start() }
     }
 
-    private func start() async {
+    /// Loads the installed Heat Detector and starts listening. The first load compiles it for the Neural Engine
+    /// (~20 s, once). Never downloads. False when it isn't installed or won't load.
+    func loadModel() async -> Bool {
+        if laya != nil { return true }
+        guard HeatDetector.isInstalled() else { return false }
         do {
-            // Downloads only what's missing. The first load also compiles for the Neural Engine (~20 s, once).
-            let dir = try await LayaModelStore.ensure(lengths: [128], precision: "e8", cacheDirectory: log.deletingLastPathComponent())
-            laya = try await LayaManager.load(from: dir, configuration: .init(lengths: [128], precision: "e8"))
+            laya = try await LayaManager.load(from: HeatDetector.dir, configuration: .init(lengths: [128], precision: "e8"))
         } catch {
-            return // ponytail: offline on first launch or a bad download; the word list decides until the next launch
+            return false
         }
         let fd = ScorerSocket.listen()
-        guard fd >= 0 else { return }
+        guard fd >= 0 else { return true }
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         source.setEventHandler { [weak self] in
             let conn = accept(fd, nil, nil)
@@ -90,6 +91,7 @@ final class Scorer {
         source.resume()
         listener = source
         if labelsAreNewer() { tune() }
+        return true
     }
 
     private func rate(_ line: Data) {

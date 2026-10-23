@@ -42,6 +42,12 @@ final class GameModel: ObservableObject {
         didSet { defaults.set(showRatings, forKey: "ShowRatings") }
     }
     private var scorer: Scorer?
+    /// The Heat Detector model on this Mac (contract §6). Nothing downloads until you press Download.
+    enum Detector: Equatable { case notInstalled, downloading(Double), settingUp, ready, failed(String) }
+    @Published private(set) var detector: Detector = .notInstalled
+    /// You chose "Not now" on the first screen, so the footer offers the download instead.
+    @Published private(set) var detectorLater = defaults.bool(forKey: "DetectorLater")
+
     /// Your personal fuse: untuned, tuning, tuned (with its fit), or why it failed.
     @Published private(set) var fuse: Scorer.Status = .untuned
     private var fuseSource: DispatchSourceFileSystemObject?
@@ -85,6 +91,7 @@ final class GameModel: ObservableObject {
         try? FileManager.default.createDirectory(at: Fuse.dir, withIntermediateDirectories: true)
         scorer = Scorer(log: log) { [weak self] in self?.fuse = $0 }
         scorer?.topicsOn = vibesOn
+        if HeatDetector.isInstalled() { setUpDetector() }
         loadPersonalVibes()
         fuseSource = watch(Fuse.dir.path, [.write]) { [weak self] in
             guard let self else { return }
@@ -226,16 +233,56 @@ final class GameModel: ObservableObject {
         return text
     }
 
-    /// Your idea as a prefilled issue on the public repo, where you post it. Nothing leaves until you press Submit on GitHub.
+    /// Your idea, straight to the Lunte team's inbox on the relay.
     func submitPrompt() {
         guard let (name, prompt) = Alerts.submitPrompt() else { return }
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-        let body = "**Prompt**\n\n\(prompt.prefix(4000))\n\n**Name for the changelog:** \(name.isEmpty ? "anonymous" : name)\n\n_Sent from Lunte \(version)_"
-        var url = URLComponents(string: "https://github.com/ProggePal/lunte-app/issues/new")!
-        url.queryItems = [URLQueryItem(name: "title", value: "Prompt request: " + prompt.prefix(60).replacingOccurrences(of: "\n", with: " ")),
-                          URLQueryItem(name: "body", value: body)]
-        url.percentEncodedQuery = url.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B") // a "+" would arrive as a space
-        if let link = url.url { NSWorkspace.shared.open(link) }
+        Task {
+            do {
+                try await Relay.submitPrompt(name: name, prompt: prompt)
+                Alerts.tell("Thanks, it's in", "If we build it, you're credited in the changelog.")
+            } catch let error as RelayError where error.status == 429 {
+                Alerts.tell("That's a lot of ideas", "You've sent the most we take in an hour. Try again a bit later.")
+            } catch {
+                Alerts.tell("Couldn't send your prompt", "Check your connection and try again. " + error.localizedDescription)
+            }
+        }
+    }
+
+    // MARK: The Heat Detector
+
+    /// Downloads the Heat Detector (483 MB, checked file by file), then loads it. Progress shows in the footer.
+    func installDetector() {
+        switch detector {
+        case .notInstalled, .failed: break
+        default: return
+        }
+        detector = .downloading(0)
+        Task {
+            do {
+                try await HeatDetector.install { share in
+                    Task { @MainActor in // every half percent is plenty for a progress bar
+                        guard case .downloading(let shown) = self.detector, share - shown >= 0.005 || share == 1 else { return }
+                        self.detector = .downloading(share)
+                    }
+                }
+                setUpDetector()
+            } catch {
+                detector = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    func detectorNotNow() {
+        detectorLater = true
+        defaults.set(true, forKey: "DetectorLater")
+    }
+
+    private func setUpDetector() {
+        detector = .settingUp
+        Task {
+            let loaded = await scorer?.loadModel() == true
+            detector = loaded ? .ready : .failed("The Heat Detector wouldn't start. Try downloading it again.")
+        }
     }
 
     /// The one prompt that has your AI set up your fuse (contract §8).
