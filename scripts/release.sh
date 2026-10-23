@@ -29,11 +29,15 @@ xcrun notarytool history --keychain-profile "$profile" >/dev/null 2>&1 \
 scripts/build-app.sh --release
 
 zip=dist/Lunte-$version.zip
-rm -rf dist/appcast "$zip" && mkdir -p dist/appcast
-ditto -c -k --keepParent dist/Lunte.app "$zip"
+# No xattrs in the zip: macOS tags Sparkle's symlinks with com.apple.provenance, ditto stores that as ._ files, and
+# Archive Utility (double-click) leaves those inside the framework, so Gatekeeper says "could not verify" (0.1.0–0.2.1).
+pack() { rm -f "$zip" && ditto -c -k --norsrc --noextattr --keepParent dist/Lunte.app "$zip"; }
+rm -rf dist/appcast && mkdir -p dist/appcast
+pack
 xcrun notarytool submit "$zip" --keychain-profile "$profile" --wait
 xcrun stapler staple dist/Lunte.app
-rm "$zip" && ditto -c -k --keepParent dist/Lunte.app "$zip" # re-zip with the notarization ticket inside
+pack # re-zip with the notarization ticket inside
+if zipinfo -1 "$zip" | grep '/\._' >/dev/null; then echo "$zip has ._ files; a double-click unzip would break the signature." >&2; exit 1; fi
 
 cp "$zip" dist/appcast/
 "$bin/generate_appcast" --download-url-prefix "https://github.com/$repo/releases/download/v$version/" dist/appcast

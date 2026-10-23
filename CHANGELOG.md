@@ -2,6 +2,11 @@
 
 What changed for you in each version of Lunte.
 
+## 0.2.2
+
+### Fixes
+- **Lunte opens on a new Mac.** Unzipping the download with a double-click left it looking tampered with, so macOS said it "could not verify Lunte is free of malware" and offered the Trash. It's signed and notarized by Apple, and now it stays that way when you unzip it.
+
 ## 0.2.1
 
 ### Improvements
