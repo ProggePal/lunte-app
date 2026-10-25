@@ -114,3 +114,9 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Principle:** The peak-end rule. We remember an experience by its peak and its end, so the summary ends on the recovery and what it earned. A session closes after you've left, so its summary is a memory device, there when you next look.
 - **Evidence:** strong, though in a meta-analysis the plain average predicted about as well.
 - **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x)
+
+## history-not-a-score
+- **Rule:** History lists your past sessions by day, each with its line and aura, and opens any one's summary again. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions.
+- **Principle:** Being watched doesn't help. Across 94 samples, electronic performance monitoring didn't improve performance and went with more stress. Hours added up would turn Lunte into a work monitor, for you or for a boss.
+- **Evidence:** mixed: a meta-analysis, with small effects that vary with how the monitoring is done.
+- **Source:** [Ravid et al. 2023](https://doi.org/10.1111/peps.12514)

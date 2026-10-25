@@ -40,6 +40,7 @@ struct PopoverView: View {
                         .font(.caption2).foregroundStyle(.tertiary)
                 }
                 ForEach(model.clubFeed.suffix(2).reversed(), id: \.seq) { Text(model.describe($0)).font(.caption).foregroundStyle(.secondary) }
+                if !model.past.isEmpty { History(sessions: model.past, events: model.messages(in:), club: model.clubLabel) }
             }
             Divider()
             Footer(model: model, updater: updater)

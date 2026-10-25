@@ -75,3 +75,75 @@ private struct Trace: Shape {
         }
     }
 }
+
+/// Your past sessions by day, newest first: "Today · 2 sessions · 4 aura", then each session's start and line. Click
+/// one to see its summary again. It's read from the log on this Mac and never sent, and it never adds up how long you
+/// worked.
+// Why: your history is yours, never a score of your work (docs/why.md#history-not-a-score)
+struct History: View {
+    let sessions: [Sitting] // oldest first
+    let events: (Sitting) -> [Event]
+    let club: String?
+    @State private var open = false
+    @State private var picked: Double? // the start of the session whose summary shows
+    @State private var height: CGFloat = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { open.toggle() } label: { Label("History", systemImage: open ? "chevron.down" : "chevron.right") }
+                .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
+            if open {
+                // ponytail: every session in the log, built at once; page it once that's slow
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(days, id: \.day) { day in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(header(day.day, day.sessions)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                ForEach(day.sessions, id: \.start) { row($0) }
+                            }
+                        }
+                    }
+                    .padding(.trailing, 8) // room for the scroller
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+                }
+                .frame(height: min(height, 240)) // as tall as the list, up to 240 points
+            }
+        }
+    }
+
+    /// Newest day first, and newest session first within it.
+    private var days: [(day: Date, sessions: [Sitting])] {
+        Dictionary(grouping: sessions.reversed()) { Calendar.current.startOfDay(for: Date(timeIntervalSince1970: $0.start)) }
+            .sorted { $0.key > $1.key }
+            .map { ($0.key, $0.value) }
+    }
+
+    /// "Today · 2 sessions · 4 aura": how many sessions and what they earned, never how long they ran.
+    private func header(_ day: Date, _ sessions: [Sitting]) -> String {
+        let calendar = Calendar.current, aura = sessions.map(Game.aura).reduce(0, +)
+        let name = calendar.isDateInToday(day) ? "Today" : calendar.isDateInYesterday(day) ? "Yesterday"
+            : day.formatted(.dateTime.weekday(.wide).day().month())
+        return ([name, sessions.count == 1 ? "1 session" : "\(sessions.count) sessions"] + (aura > 0 ? ["\(aura) aura"] : []))
+            .joined(separator: " · ")
+    }
+
+    @ViewBuilder private func row(_ s: Sitting) -> some View {
+        let aura = Game.aura(s)
+        Button { picked = picked == s.start ? nil : s.start } label: {
+            HStack(spacing: 6) {
+                Text(clock(s.start)).monospacedDigit().foregroundStyle(.secondary)
+                Text(Game.sessionLine(s)).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 0)
+                if aura > 0 { Text("+\(aura)").foregroundStyle(.secondary) }
+            }
+            .font(.caption)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(Game.sessionLine(s))
+        if picked == s.start {
+            SummaryCard(sitting: s, events: events(s), club: club)
+                .padding(8).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+}
