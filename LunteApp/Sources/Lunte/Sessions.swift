@@ -8,7 +8,6 @@ struct SummaryCard: View {
     var title: String?
     let sitting: Sitting
     let events: [Event]
-    let club: String?
 
     var body: some View {
         let aura = Game.aura(sitting)
@@ -20,7 +19,8 @@ struct SummaryCard: View {
             }
             HeatLine(events: events).frame(height: 24)
             Text(Game.sessionLine(sitting)).font(.system(.callout, design: .serif)).fixedSize(horizontal: false, vertical: true)
-            if aura > 0 { Text("+\(aura) aura" + (club.map { " for \($0)" } ?? "")).font(.callout.weight(.medium)) }
+            // ponytail: no Club named, since nothing sends aura there yet; that comes with Leagues
+            if aura > 0 { Text("+\(aura) aura").font(.callout.weight(.medium)) }
         }
     }
 }
@@ -83,7 +83,6 @@ private struct Trace: Shape {
 struct History: View {
     let sessions: [Sitting] // oldest first
     let events: (Sitting) -> [Event]
-    let club: String?
     @State private var open = false
     @State private var picked: Double? // the start of the session whose summary shows
     @State private var height: CGFloat = 0
@@ -142,7 +141,7 @@ struct History: View {
         .buttonStyle(.plain)
         .help(Game.sessionLine(s))
         if picked == s.start {
-            SummaryCard(sitting: s, events: events(s), club: club)
+            SummaryCard(sitting: s, events: events(s))
                 .padding(8).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
         }
     }

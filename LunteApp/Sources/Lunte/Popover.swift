@@ -30,7 +30,7 @@ struct PopoverView: View {
                     if model.heldTogether { HeldLine() }
                 }
                 if let summary = model.summary, model.state.sitting == nil {
-                    SummaryCard(title: "Your last session", sitting: summary, events: model.messages(in: summary), club: model.clubLabel)
+                    SummaryCard(title: "Your last session", sitting: summary, events: model.messages(in: summary))
                         .onAppear(perform: model.summaryShown)
                 } else {
                     MessageSlot(model: model, event: hovered.flatMap { ts in model.session.first { $0.ts == ts } } ?? fallback(boom), boom: boom, vibe: vibeHovered ? model.vibe : nil)
@@ -41,7 +41,7 @@ struct PopoverView: View {
                         .font(.caption2).foregroundStyle(.tertiary)
                 }
                 ForEach(model.clubFeed.suffix(2).reversed(), id: \.seq) { Text(model.describe($0)).font(.caption).foregroundStyle(.secondary) }
-                if !model.past.isEmpty { History(sessions: model.past, events: model.messages(in:), club: model.clubLabel) }
+                if !model.past.isEmpty { History(sessions: model.past, events: model.messages(in:)) }
             }
             Divider()
             Footer(model: model, updater: updater)
