@@ -12,6 +12,8 @@ final class GameModel: ObservableObject {
     @Published private(set) var club = Relay.club
     @Published private(set) var clubName = Relay.clubName
     @Published private(set) var clubFeed: [ClubEvent] = defaults.data(forKey: "Recent").flatMap { try? JSONDecoder().decode([ClubEvent].self, from: $0) } ?? []
+    /// Everyone who's joined the Club since you did, and before, as far as its history goes. The relay has no list.
+    @Published private(set) var members = defaults.stringArray(forKey: "Members") ?? []
     /// Boom ids this Mac posted to the Club.
     @Published private(set) var mine = Set(defaults.stringArray(forKey: "Mine") ?? [])
     /// True once the onboarding phrase has reached the log: the hook is wired up.
@@ -54,9 +56,13 @@ final class GameModel: ObservableObject {
     }
     private var scorer: Scorer?
     /// The Heat Detector model on this Mac (contract §6). Nothing downloads until you press Download.
-    enum Detector: Equatable { case notInstalled, downloading(Double), settingUp, ready, failed(String) }
+    enum Detector: Equatable {
+        case notInstalled, downloading(Double), settingUp, ready, failed(String)
+        /// How far the download is, while it's downloading.
+        var share: Double? { if case .downloading(let share) = self { share } else { nil } }
+    }
     @Published private(set) var detector: Detector = .notInstalled
-    /// You chose "Not now" on the first screen, so the footer offers the download instead.
+    /// You chose "Not now" for the Heat Detector in onboarding, so its row offers the download instead.
     @Published private(set) var detectorLater = defaults.bool(forKey: "DetectorLater")
 
     /// Your personal fuse: untuned, tuning, tuned (with its fit), or why it failed.
@@ -90,6 +96,8 @@ final class GameModel: ObservableObject {
     private var burning: [String: String] = [:]
     private var secrets = defaults.dictionary(forKey: "Secrets") as? [String: String] ?? [:] // ponytail: UserDefaults, not the Keychain
     private var lastSeq = defaults.integer(forKey: "LastSeq")
+    /// The newest Club event you've seen in the Club's window.
+    @Published private var clubSeenSeq = defaults.integer(forKey: "ClubSeen")
 
     private let log = EventLog.defaultURL
     private var dirSource: DispatchSourceFileSystemObject?
@@ -124,6 +132,45 @@ final class GameModel: ObservableObject {
         Task { while true { try? await Task.sleep(for: .seconds(60)); reload() } } // closes a Sitting on time with no new events
         Task { while true { await poll(notify: true); try? await Task.sleep(for: .seconds(30)) } }
     }
+
+    #if DEBUG
+    /// For previews: the game these events make, now, with their prompts' text. Nothing is watched, polled, sent or saved.
+    init(preview events: [Event], texts: [Double: String], club: String? = "Antler", feed: [ClubEvent] = [],
+         line: String? = nil, reactions: [String] = [], summary: Bool = false, members: [String] = [], mine: Set<String> = []) {
+        connected = true
+        onboarded = true
+        detector = .ready
+        state = Game.replay(events, now: Date().timeIntervalSince1970)
+        messages = events
+        session = state.sittingStart.map { start in events.filter { $0.ts >= start } } ?? []
+        past = state.sittings.filter { !$0.isOpen }
+        self.summary = summary ? past.last : nil
+        promptCache = texts
+        self.club = club.map { _ in "PREVIEW" }
+        clubName = club
+        clubFeed = feed
+        self.members = members
+        self.mine = mine
+        clubSeenSeq = 0
+        if let boom = state.booms.last {
+            justifications = line.map { [boom.id: $0] } ?? [:]
+            self.reactions = [boom.id: reactions]
+        }
+    }
+
+    /// A Mac partway through onboarding: which step it's on, as the previews show it.
+    convenience init(onboarding detector: Detector, plugin: Bool = false, fuse: Scorer.Status = .untuned, connected: Bool = false,
+                     owned: String? = nil) {
+        self.init(preview: [], texts: [:], club: nil)
+        self.detector = detector
+        detectorLater = false
+        pluginInstalled = plugin
+        self.fuse = fuse
+        self.connected = connected
+        onboarded = false
+        ownedTest = owned.map { ($0, Date().addingTimeInterval(10)) }
+    }
+    #endif
 
     // MARK: The menu
 
@@ -261,7 +308,24 @@ final class GameModel: ObservableObject {
     }
 
 
-    private func isMine(_ e: ClubEvent) -> Bool { e.boom.map(mine.contains) ?? false }
+    func isMine(_ e: ClubEvent) -> Bool { e.boom.map(mine.contains) ?? false }
+
+    /// Something happened in the Club since you last opened its window: someone else's Boom, line or join, or a
+    /// reaction to yours.
+    var clubNews: Bool { clubFeed.contains { $0.seq > clubSeenSeq && ($0.type == "react") == isMine($0) } }
+
+    func clubSeen() {
+        clubSeenSeq = clubFeed.last?.seq ?? clubSeenSeq
+        defaults.set(clubSeenSeq, forKey: "ClubSeen")
+    }
+
+    /// 🧯, 😂, 🫂 or any emoji on someone else's Boom, from the Club's window.
+    func react(_ boom: String, _ emoji: String) {
+        Task {
+            try? await Relay.post(["type": "react", "boom": boom, "emoji": emoji]) // ponytail: a failed react is dropped
+            await poll(notify: false)
+        }
+    }
 
     func describe(_ e: ClubEvent) -> String {
         let who = e.from ?? "Someone"
@@ -311,6 +375,9 @@ final class GameModel: ObservableObject {
         if let text { promptCache[e.ts] = text }
         return text
     }
+
+    /// The prompt behind an event, if it's been read already.
+    func cachedPrompt(_ e: Event) -> String? { promptCache[e.ts] }
 
     /// Your idea, straight to the Lunte team's inbox on the relay.
     func submitPrompt() {
@@ -493,7 +560,7 @@ final class GameModel: ObservableObject {
         return lit[key] ?? burning[key] ?? boom.id
     }
 
-    /// The first Boom is the onboarding: "this is a test 3 2 1 pow" proves the hook reaches the app. Never posted to the Club.
+    /// The first Boom is the onboarding: "3 2 1 boom" proves the hook reaches the app. Never posted to the Club.
     private func onboard(_ tests: [Event], now: Double) {
         let fresh = tests.filter { !announced.contains(String(Int($0.ts * 1000))) }
         guard !fresh.isEmpty else { return }
@@ -593,7 +660,9 @@ final class GameModel: ObservableObject {
         reactions = [:]
         for key in ["Mine", "Secrets", "Reactions"] { defaults.removeObject(forKey: key) } // your justifications stay
         clubFeed = []
+        members = []
         lastSeq = 0
+        clubSeenSeq = 0
         saveClub()
     }
 
@@ -619,7 +688,9 @@ final class GameModel: ObservableObject {
         club = code
         clubName = Relay.clubName
         clubFeed = []
+        members = []
         lastSeq = 0
+        clubSeenSeq = 0
         await poll(notify: false) // catch up on the Club's history without a burst of notifications
     }
 
@@ -638,7 +709,8 @@ final class GameModel: ObservableObject {
                     if notify && Date().timeIntervalSince1970 - e.ts < 600 { self.notify(about: e) } // catch-up goes to the feed quietly
                     lastSeq = e.seq
                 }
-                clubFeed = Array((clubFeed + page).suffix(5))
+                for e in page where e.type == "join" { if let who = e.from, !members.contains(who) { members.append(who) } }
+                clubFeed = Array((clubFeed + page).suffix(100)) // ponytail: the window's history; page it if a Club outgrows it
                 if page.count < 100 { break }
             }
         } catch {} // ponytail: offline or relay down; the next poll tries again
@@ -663,6 +735,7 @@ final class GameModel: ObservableObject {
     private func saveClub() {
         defaults.set(lastSeq, forKey: "LastSeq")
         defaults.set(try? JSONEncoder().encode(clubFeed), forKey: "Recent")
+        defaults.set(members, forKey: "Members")
     }
 
 }
