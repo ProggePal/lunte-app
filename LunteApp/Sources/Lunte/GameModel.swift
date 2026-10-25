@@ -19,8 +19,12 @@ final class GameModel: ObservableObject {
     @Published private(set) var onboarded = defaults.object(forKey: "Onboarded") as? Bool ?? defaults.bool(forKey: "Connected")
     /// Onboarding: what you owned your test Boom with, and when the 10-second fresh stick lands.
     @Published private(set) var ownedTest: (line: String, freshAt: Date)?
-    /// Your messages from the last 30 minutes (no onboarding test), for the timeline.
+    /// Your messages from the last 30 minutes (no onboarding test), for the vibe.
     @Published private(set) var recent: [Event] = []
+    /// Every message in the log (no onboarding test, no rest), oldest first, for heat lines.
+    @Published private(set) var messages: [Event] = []
+    /// The open session's messages, oldest first: the dots.
+    @Published private(set) var session: [Event] = []
     /// The fuse is burning towards a Boom that hasn't gone off yet.
     @Published private(set) var fusing = false
     /// A test Boom has blown, so the menu bar says BOOM.
@@ -366,7 +370,9 @@ final class GameModel: ObservableObject {
         let now = Date().timeIntervalSince1970
         let events = EventLog.read(log)
         state = Game.replay(events, now: now)
-        recent = Array(events.filter { $0.burn != .test && $0.burn != .rest && now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
+        messages = events.filter { $0.burn != .test && $0.burn != .rest }
+        session = state.sittingStart.map { start in messages.filter { $0.ts >= start } } ?? []
+        recent = Array(messages.filter { now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
         updateVibe(now)
         lastActivity = events.last { $0.burn != .rest }?.ts
         if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the break

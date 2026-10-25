@@ -96,3 +96,9 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Principle:** A broken streak lowers later engagement, more so when people blame themselves, and nudges to recover mostly don't help.
 - **Evidence:** mixed: field data and experiments, from one paper.
 - **Source:** [Silverman & Barasch 2023](https://doi.org/10.1093/jcr/ucac029)
+
+## whole-session-dots
+- **Rule:** The popover's dots cover the whole open session, not just the last 30 minutes. Past four rows, the oldest fold into a thin heat line, so a long session never grows the popover.
+- **Principle:** Persistence. Game feel leaves traces, such as skid marks, trails and debris, that encode the past in what's on screen now, so you can rebuild what happened after you missed it.
+- **Evidence:** weak: craft knowledge, collected in a survey.
+- **Source:** [Pichlmair & Johansen 2020](https://arxiv.org/abs/2011.09201)
