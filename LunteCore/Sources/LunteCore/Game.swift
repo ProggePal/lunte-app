@@ -1,7 +1,7 @@
 // The fuse game (contract §4): a pure replay of the whole log.
 // Every message has heat and cool. Heat burns heat² of the fuse and cool mends some of it back, so calm messages
 // barely touch it, and a burn cools off after 30 minutes. Too much heat at once and it blows: once per Sitting, and
-// more heat after that escalates the same Boom.
+// more heat soon after escalates the same Boom.
 import Foundation
 
 public enum Game {
@@ -13,7 +13,10 @@ public enum Game {
     public static let cooling: Double = 1800    // a burn counts for 30 minutes
     // Why: humour as reappraisal (docs/why.md#cool-mends)
     public static let coolMend = 0.5            // a cool prompt mends coolMend × cool² of what's burning
+    // Why: venting feeds anger; tiers are for the same outburst, so most Booms stay plain (docs/why.md#tiers-flavour-not-volume)
     public static let maxTier = 3               // Boom, Chain reaction, Meltdown
+    public static let escalationStep = 0.5      // each further half of the stick that blew is one tier up
+    public static let escalationWindow: Double = 1800 // only within 30 minutes of the Boom; after that it stays blown
     // Why: competence, and relief right after the act (docs/why.md#close-call)
     public static let closeCallLeft = 1.0 / 3   // a close call dips into the last third of the stick
     static let epsilon = 1e-9                   // float slack: a heat-1 burn on a 1.5 stick leaves 0.33333333333333337
@@ -49,8 +52,8 @@ public enum Game {
         var today: Range<Double>?   // the local day of the last prompt
         var boomedToday = false
         var sitting: Sitting?       // the one being replayed
-        var burning: [Event] = []   // what burns or mends, from the last 30 minutes, since the Boom or its last tier
-        var stick = minFuse         // the stick that blew: each tier fills it again
+        var burning: [Event] = []   // what burns or mends, from the last 30 minutes, and since the Boom
+        var stick = minFuse         // the stick that blew: each further half of it is a tier
         var dip: Double?            // when the stick got into its last third
 
         // Each message in turn adds its burn, never below 0, so cool can't be banked before the heat. A dip into the
@@ -136,15 +139,17 @@ public enum Game {
                 s.fuse = thermostat
                 sitting!.boom = Boom(id: String(Int(e.ts * 1000)), ts: e.ts, litBy: s.currentBurns)
                 s.booms.append(sitting!.boom!)
-            } else if s.boomed, sitting!.tier < maxTier, s.burned >= stick {
-                sitting!.boom!.escalations.append(e.ts)
-                s.booms[s.booms.count - 1] = sitting!.boom!
-            } else {
-                continue
+                burning = [] // the burn starts again from zero, toward the tiers
+                s.burned = 0
+                dip = nil
+            } else if s.boomed, var boom = sitting!.boom, e.ts - boom.ts < escalationWindow {
+                // Why: tiers in flavour, and only for the same outburst (docs/why.md#tiers-flavour-not-volume)
+                let tier = min(maxTier, 1 + Int((s.burned + epsilon) / (escalationStep * stick)))
+                guard tier > boom.tier else { continue }
+                boom.escalations += Array(repeating: e.ts, count: tier - boom.tier) // one prompt can step up two
+                sitting!.boom = boom
+                s.booms[s.booms.count - 1] = boom
             }
-            burning = [] // the burn starts again from zero, toward the next tier
-            s.burned = 0
-            dip = nil
         }
 
         if let open = sitting, now - open.end < sittingGap {

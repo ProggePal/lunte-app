@@ -38,9 +38,9 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Source:** [Kjærvik & Bushman 2024](https://doi.org/10.1016/j.cpr.2024.102414)
 
 ## tiers-flavour-not-volume
-- **Rule:** The tiers (💥 Boom, 💥💥 Chain reaction, ☢️ Meltdown) escalate in flavour, a name and an emoji, not in loudness or juice.
+- **Rule:** The tiers (💥 Boom, 💥💥 Chain reaction, ☢️ Meltdown) escalate in flavour, a name and an emoji, not in loudness or juice. After a Boom, each further half a stick of heat within 30 minutes steps it up one tier, so most Booms stay plain and a Meltdown is rare.
 - **Principle:** Venting feeds anger. Louder tiers would put the most juice on continued rage, and they'd point at whoever is still raging.
-- **Evidence:** strong that venting fails; how a tier should sound is craft.
+- **Evidence:** strong that venting fails; how a tier should sound is craft. Tuned on a replay of 13 weeks of one player's real prompts: this gives 62–79% Booms, 14–38% Chain reactions and 0–7% Meltdowns. A whole stick per tier left 93–100% of Booms plain. Counting the whole session made up to 31% Meltdowns, because half the heat after a Boom lands more than 30 minutes later, and stepping up on every further hot prompt made 87% of them Meltdowns.
 - **Source:** [Kjærvik & Bushman 2024](https://doi.org/10.1016/j.cpr.2024.102414)
 
 ## heat-not-volume

@@ -39,9 +39,9 @@ final class SittingTests: XCTestCase {
     }
 
     func testSessionLineNamesTheTopTier() {
-        XCTAssertEqual(line([at(40, .lose), at(63, .lose)]), "Chain reaction at 15:03.")
-        XCTAssertEqual(line([at(40, .lose), at(63, .lose), at(80), at(95)]), "Chain reaction at 15:03. Cooled off by 15:33.")
-        XCTAssertEqual(line([at(40, .lose), at(50, .lose), at(79, .lose)]), "Meltdown at 15:19.")
+        XCTAssertEqual(line([at(40, .lose), at(63, heat: 0.8)]), "Chain reaction at 15:03.")
+        XCTAssertEqual(line([at(40, .lose), at(63, heat: 0.8), at(80), at(95)]), "Chain reaction at 15:03. Cooled off by 15:33.")
+        XCTAssertEqual(line([at(40, .lose), at(50, .tell), at(65, .tell), at(69, .lose)]), "Meltdown at 15:09.")
     }
 
     func testAuraForCoolSessionsAndCloseCalls() {

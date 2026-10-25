@@ -165,20 +165,40 @@ final class GameTests: XCTestCase {
 
     /// Guards docs/why.md#one-boom-per-session.
     func testOneBoomPerSessionEscalatesTiers() {
-        let s = Game.replay(log([.lose, .tell, .lose, .tell, .tell, .tell, .lose, .lose], at: [0, 60, 120, 180, 240, 300, 360, 420]),
-                            now: t0 + 500)
+        let s = Game.replay(log([.lose, .tell, .tell, .tell, .lose, .lose]), now: t0 + 400)
         XCTAssertEqual(s.booms.count, 1)
         XCTAssertEqual(s.booms[0].ts, t0)
-        // after the Boom the burn starts again from zero: 0.36 doesn't escalate, 1.36 fills the stick that blew (1) again
-        XCTAssertEqual(s.booms[0].escalations, [t0 + 120, t0 + 300])
+        // after the Boom the burn starts again from zero: 0.36 doesn't escalate, 0.72 is half the stick, 1.08 a whole one
+        XCTAssertEqual(s.booms[0].escalations, [t0 + 120, t0 + 180])
         XCTAssertEqual(s.booms[0].tier, 3)
         XCTAssertEqual(Game.tiers[s.booms[0].tier - 1].name, "Meltdown")
         XCTAssertEqual(s.sitting?.boom, s.booms[0])
         XCTAssertEqual(s.sitting?.tier, 3) // capped: two more loses change nothing
         XCTAssertEqual(s.fuse, 1.75) // one Boom, one growth
-        let chain = Game.replay(log([.lose, .lose]), now: t0 + 120)
-        XCTAssertEqual(chain.booms.map(\.tier), [2])
-        XCTAssertEqual(chain.burned, 0) // and the burn starts from zero again
+    }
+
+    /// Guards docs/why.md#tiers-flavour-not-volume: each further half of the stick that blew is a tier.
+    func testEscalatesEveryHalfStick() {
+        let chain = Game.replay(log([.lose, .tell, .tell]), now: t0 + 180)
+        XCTAssertEqual(chain.booms.map(\.escalations), [[t0 + 120]]) // 0.72 of a 1.0 stick
+        XCTAssertEqual(chain.burned, 0.72, accuracy: 1e-9) // it keeps counting toward Meltdown
+        let melt = Game.replay(log([.lose, .lose]), now: t0 + 120)
+        XCTAssertEqual(melt.booms.map(\.escalations), [[t0 + 60, t0 + 60]]) // a whole stick at once: two tiers
+        // half of the stick that blew (1.75 after an earlier Boom), not of a fresh one
+        let long = log([.lose]) + log([.lose, .lose, .tell, .tell, .tell], at: [4000, 4060, 4120, 4180, 4240])
+        XCTAssertEqual(Game.replay(long, now: t0 + 4300).booms.map(\.escalations), [[], [t0 + 4240]]) // 1.08 ≥ 0.875
+    }
+
+    /// Guards docs/why.md#tiers-flavour-not-volume: only the same outburst escalates, within 30 minutes of the Boom.
+    func testEscalatesOnlyWithin30Minutes() {
+        let blown = log([.lose, .none, .none], at: [0, 600, 1200])
+        let soon = Game.replay(blown + log([.lose], at: [1799]), now: t0 + 1801)
+        XCTAssertEqual(soon.booms[0].tier, 3)
+        let later = Game.replay(blown + log([.lose], at: [1800]), now: t0 + 1801)
+        XCTAssertEqual(later.booms[0].tier, 1)
+        XCTAssertTrue(later.boomed) // still blown until the Sitting closes
+        let spread = Game.replay(blown + log([.tell, .tell], at: [1500, 1900]), now: t0 + 2000)
+        XCTAssertEqual(spread.booms[0].tier, 1) // 0.72 in all, but only 0.36 of it in time
     }
 
     /// Guards docs/why.md#close-call.

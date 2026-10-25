@@ -50,7 +50,8 @@ public struct Boom: Equatable, Sendable {
     public var id: String       // String(Int(ts * 1000))
     public var ts: Double
     public var litBy: [Event]   // the burns still burning when it blew, up to and including the Boom
-    /// When more heat in the same Sitting filled the stick again: Chain reaction, then Meltdown. Still one Boom.
+    /// When more heat stepped it up a tier: each further half of the stick that blew, within 30 minutes of the Boom,
+    /// is Chain reaction, then Meltdown. A prompt that steps up two tiers is here twice. Still one Boom.
     public var escalations: [Double] = []
 
     /// 1 Boom, 2 Chain reaction, 3 Meltdown (`Game.tiers`).
@@ -96,7 +97,7 @@ public struct GameState: Equatable, Sendable {
     /// keeps its stick; after a Boom, or with no Sitting open, it's the next one.
     public var fuse: Double
     /// What's burning in this Sitting: heat² from the last 30 minutes, less what cool mended, never below 0. After a
-    /// Boom it starts again from 0 and counts toward the next tier.
+    /// Boom it starts again from 0 and counts toward the tiers.
     public var burned: Double
     /// Blown: the Sitting has Boomed, and stays blown until it closes.
     public var boomed: Bool
