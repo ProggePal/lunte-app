@@ -5,7 +5,7 @@ import SwiftUI
 public struct FuseLook: Equatable {
     public enum Phase: Equatable { case offline, lit, fusing, blown }
     public var phase = Phase.lit
-    /// The share of the stick that's left, 0...1, while lit.
+    /// The share of a fresh stick that's left while lit, 0...`FuseScene.full`: past 1 is what cool grew.
     public var left = 1.0
     /// The latest prompt, whether the model is still rating it, and the share of the stick its heat burnt. One prompt
     /// can burn the tip and feed new fuse in at the start at once, when it's cool too; `left` only has the difference.
@@ -33,8 +33,8 @@ public struct FuseLook: Equatable {
 /// - Heat lights the tip and burns it away, right to left: the flame flares and runs, sparks fly, the coils spring
 ///   apart, and what burnt chars and falls as ash. In the last third it crawls: it creeps, stops, gutters and creeps on,
 ///   so you can't tell if it'll stop in time. The flame burns on a few seconds, then goes out in a puff.
-/// - Cool feeds new fuse in at the start, left to right, green and twinkling, squeezing the coils together. One prompt
-///   can do both.
+/// - Cool feeds new fuse in at the start, left to right, green and twinkling, squeezing the coils together, and past a
+///   fresh fuse up to full, three tight coils. One prompt can do both.
 /// - A crawl into the last third dims the screen a little; the Boom's own burn takes it all the way dark.
 /// - The Boom's own burn starts slow and races faster and faster to the end, where the flame dies in a puff. Then
 ///   nothing, for a second or a few, and then it blows: a flash, a shockwave, sparks, smoke and a jolt, easing in from a
@@ -46,6 +46,10 @@ public struct FuseLook: Equatable {
 /// Coordinates are points, y up, measured from the right edge (x ≤ 0), since a menu bar item grows to the left.
 public struct FuseScene {
     public static let fuseWidth = 36.0
+    /// How far cool grows a session's fuse, as LunteCore's `Game.full`. The fuse is drawn as a share of it, so full is
+    /// three tight coils and a fresh fuse a little looser.
+    // Why: a head start and room to grow (docs/why.md#cool-grows)
+    public static let full = 1.25
     /// How long the Boom's own burn takes, racing to the end. The silence after it is the game's to choose.
     public static let raceFor = 1.6
     /// How long the light takes to come back after the bang.
@@ -635,6 +639,7 @@ public struct FuseScene {
     /// Where the bit of fuse at `s` sits when the fuse runs from `head` to `tail`, at rest. Three coils to a stick. Each
     /// coil keeps its own small quirks as it moves, since they belong to the fuse, not to the spot.
     static func restingPoint(_ s: Double, head: Double, tail: Double, spring: Double = 0) -> CGPoint {
+        let s = s / full, head = head / full, tail = tail / full // as a share of full
         let reach = pitch * (1 + stretch * (1 - min(1, max(0, tail - head)))) * (1 + spring)
         let r = radius * (1 + 0.11 * quirk(s, 1)), angle = 6 * .pi * s + 0.22 * quirk(s, 2)
         return CGPoint(x: start + reach * (s - head) + r * sin(angle), y: 9.5 - r * cos(angle) + 0.4 * quirk(s, 3))
@@ -870,6 +875,8 @@ public final class FuseView: NSView {
 public struct FusePreviews: View {
     static let states: [(String, FuseLook)] = [
         ("Not connected", FuseLook(phase: .offline)),
+        ("Full", FuseLook(left: FuseScene.full)),
+        ("Grown", FuseLook(left: 1.12)),
         ("Fresh", FuseLook()),
         ("Warm", FuseLook(left: 0.7)),
         ("Past half", FuseLook(left: 0.45)),
@@ -887,6 +894,7 @@ public struct FusePreviews: View {
         ("Rated: nothing", FuseLook(prompt: 1, rating: true), FuseLook(prompt: 1), 1.5),
         ("Rated: heat", FuseLook(left: 0.8, prompt: 1, rating: true), FuseLook(left: 0.55, prompt: 1, bite: 0.25), 5),
         ("Rated: cool", FuseLook(left: 0.45, prompt: 1, rating: true), FuseLook(left: 0.75, prompt: 1), 2.4),
+        ("Grows past fresh", FuseLook(left: 1, prompt: 1, rating: true), FuseLook(left: 1.15, prompt: 1), 2.4),
         ("Rated: both", FuseLook(left: 0.7, prompt: 1, rating: true), FuseLook(left: 0.6, prompt: 1, bite: 0.35), 5),
         ("Close call", FuseLook(left: 0.45), FuseLook(left: 0.08, prompt: 1, bite: 0.37), 10),
         ("Held it together", FuseLook(left: 0.2), FuseLook(left: 0.55), 2.4),
@@ -906,9 +914,9 @@ public struct FusePreviews: View {
         (2.5, FuseLook()),
         (1.2, FuseLook(prompt: 1, rating: true)), (2, FuseLook(prompt: 1)), // nothing
         (1.2, FuseLook(prompt: 2, rating: true)), (4.5, FuseLook(left: 0.75, prompt: 2, bite: 0.25)), // heat
-        (1.2, FuseLook(left: 0.75, prompt: 3, rating: true)), (3, FuseLook(left: 0.95, prompt: 3)), // cool
-        (1.2, FuseLook(left: 0.95, prompt: 4, rating: true)), (5, FuseLook(left: 0.6, prompt: 4, bite: 0.5)), // both
-        (1.2, FuseLook(left: 0.6, prompt: 5, rating: true)), (10, FuseLook(left: 0.1, prompt: 5, bite: 0.5)), // a close call
+        (1.2, FuseLook(left: 0.75, prompt: 3, rating: true)), (3, FuseLook(left: 1.1, prompt: 3)), // cool, past fresh
+        (1.2, FuseLook(left: 1.1, prompt: 4, rating: true)), (5, FuseLook(left: 0.75, prompt: 4, bite: 0.5)), // both
+        (1.2, FuseLook(left: 0.75, prompt: 5, rating: true)), (10, FuseLook(left: 0.1, prompt: 5, bite: 0.65)), // a close call
         (1.2, FuseLook(left: 0.1, prompt: 6, rating: true)), (3.5, FuseLook(left: 0.45, prompt: 6)), // held it together
         (1.2, FuseLook(left: 0.45, prompt: 7, rating: true)), (4.6, FuseLook(phase: .fusing, left: 0)), // it blows
         (8, FuseLook(phase: .blown)), (5, FuseLook(phase: .blown, heat: 0.6)),
@@ -988,7 +996,7 @@ struct FusePlayground: View {
             }
             HStack {
                 Button("Heat") { go { $0.phase == .lit ? ($0.left = max(0, $0.left - 0.22)) : ($0.heat = min(1, $0.heat + 0.3)) } }
-                Button("Cool") { go { $0.phase == .lit ? ($0.left = min(1, $0.left + 0.22)) : ($0.heat = max(0, $0.heat - 0.3)) } }
+                Button("Cool") { go { $0.phase == .lit ? ($0.left = min(FuseScene.full, $0.left + 0.22)) : ($0.heat = max(0, $0.heat - 0.3)) } }
                 Button("Both") { go { $0.prompt = ($0.prompt ?? 0) + 1; $0.bite = 0.3; $0.left = max(0.05, $0.left - 0.1) } }
                 Button("Burn out") { go { $0 = FuseLook(phase: .fusing, left: 0) } }
                 Button("Bang") { go { $0 = FuseLook(phase: .blown) } }

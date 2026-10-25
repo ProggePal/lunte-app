@@ -173,11 +173,35 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(Game.replay([tell, bud], now: t0 + 61).burned, 0)
         let early = Event(ts: t0 - 60, burn: .none, heat: 0, cool: 1)
         XCTAssertEqual(Game.replay([early, tell], now: t0 + 1).burned, 0.36, accuracy: 1e-9) // cool can't be banked
+        XCTAssertEqual(Game.replay([early, tell], now: t0 + 1).left, Game.full - 0.36, accuracy: 1e-9) // it grew the stick
         let roast = Event(ts: t0, burn: .lose, heat: 1, cool: 1) // hot and cool at once: 1 − 0.5
         XCTAssertEqual(Game.burn(roast, at: t0), 0.5, accuracy: 1e-9)
         XCTAssertTrue(Game.replay([roast], now: t0 + 1).booms.isEmpty) // the same heat alone Booms (test 11)
         XCTAssertEqual(Game.burn(Event(ts: t0, burn: .none, heat: 0.05, cool: 0.05), at: t0), 0) // too faint to count
         XCTAssertEqual(Game.burn(Event(ts: t0, burn: .tell), at: t0), 0.36, accuracy: 1e-9) // no cool is 0
+    }
+
+    /// Guards docs/why.md#cool-grows: what's left after each prompt, in made-up sessions.
+    func testCoolGrowsTheStick() {
+        func left(_ prompts: [(heat: Double, cool: Double)], every gap: Double = 60) -> [Double] {
+            var events: [Event] = []
+            return prompts.enumerated().map { i, p in
+                events.append(Event(ts: t0 + Double(i) * gap, burn: .none, heat: p.heat, cool: p.cool))
+                return Game.replay(events, now: events.last!.ts + 1, timeZone: utc).left
+            }
+        }
+        let furious = (heat: 1.0, cool: 0.0), tell = (heat: 0.6, cool: 0.0), calm = (heat: 0.0, cool: 0.0)
+        let banter = (heat: 0.0, cool: 0.67), mild = (heat: 0.0, cool: 0.4), bud = (heat: 0.0, cool: 1.0)
+        XCTAssertEqual(left([calm, furious]), [1, 0]) // a fresh stick still Booms on one furious prompt
+        XCTAssertEqual(left([banter, banter, furious]).last!, 0.2245, accuracy: 1e-3) // banter first: a close shave
+        XCTAssertEqual(left(Array(repeating: mild, count: 6)).last!, 1.24, accuracy: 1e-9) // mild cool: 4 % a prompt
+        XCTAssertEqual(left(Array(repeating: mild, count: 8)).last!, Game.full) // and no further than full
+        XCTAssertEqual(left([bud]), [Game.full]) // one perfect prompt fills it
+        XCTAssertEqual(left([tell, tell, tell]).last!, 0) // three tellings-off Boom a fresh stick
+        XCTAssertEqual(left([banter, banter, tell, tell, tell]).last!, 0.1445, accuracy: 1e-3) // but not a grown one
+        let later = left([banter, banter] + Array(repeating: calm, count: 40) + [furious]).last!
+        XCTAssertEqual(later, 0.2245, accuracy: 1e-3) // burns heal and growth stays, 40 minutes on
+        XCTAssertEqual(left([bud, calm], every: Game.sittingGap).last!, 1) // until the session closes
     }
 
     /// Guards docs/why.md#one-boom-per-session.

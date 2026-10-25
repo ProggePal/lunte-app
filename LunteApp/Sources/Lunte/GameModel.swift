@@ -151,6 +151,7 @@ final class GameModel: ObservableObject {
 
     /// What the menu bar fuse shows. After a Boom, its heat is how far the burn has got toward the next tier.
     var fuseLook: FuseLook {
+        assert(FuseScene.full == Game.full) // the menu bar draws the game's full
         guard connected else { return FuseLook(phase: .offline) }
         if fusing { return FuseLook(phase: .fusing, left: 0) }
         if testBlown { return FuseLook(phase: .blown, name: tier(1).name) } // the test Boom has no tier

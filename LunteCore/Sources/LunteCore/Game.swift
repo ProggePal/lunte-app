@@ -13,6 +13,9 @@ public enum Game {
     public static let cooling: Double = 1800    // a burn counts for 30 minutes
     // Why: humour as reappraisal (docs/why.md#cool-mends)
     public static let coolMend = 0.5            // a cool prompt mends coolMend × cool² of what's burning
+    // Why: a head start and room to grow, so a session has something to be proud of (docs/why.md#cool-grows)
+    public static let full = 1.25               // cool grows a Sitting's stick up to a quarter past whole
+    public static let growRate = 0.5            // the share of a cool prompt's spare mend that grows it
     // Why: venting feeds anger; tiers are for the same outburst, so most Booms stay plain (docs/why.md#tiers-flavour-not-volume)
     public static let maxTier = 3               // Boom, Chain reaction, Meltdown
     public static let escalationStep = 0.5      // each further half of the stick that blew is one tier up
@@ -63,8 +66,8 @@ public enum Game {
         var stick = minFuse         // the stick that blew: each further half of it is a tier
         var dip: Double?            // when the stick got into its last third
 
-        // Each message in turn adds its burn, never below 0, so cool can't be banked before the heat. A dip into the
-        // last third that climbs back out without a Boom is a close call.
+        // Each message in turn adds its burn, never below 0, so cool can't be banked against heat to come: what it has
+        // spare grows the stick instead. A dip into the last third that climbs back out without a Boom is a close call.
         func settle(at t: Double) {
             s.burned = burning.reduce(0) { max(0, $0 + burn($1, at: now)) }
             guard !s.boomed else { return }
@@ -109,6 +112,7 @@ public enum Game {
             burning = []
             dip = nil
             s.burned = 0
+            s.grown = 0
             s.boomed = false
             s.currentBurns = []
             s.sittingStart = nil
@@ -142,10 +146,14 @@ public enum Game {
                 sitting!.lastBurn = e.ts
             }
             guard burn(e, at: now) != 0 else { continue }
+            // Why: cool with nothing left to mend grows this Sitting's stick, up to full, until it closes; burns heal,
+            // growth stays, so there's nothing to keep alive (docs/why.md#cool-grows)
+            let spare = -(s.burned + burn(e, at: now))
+            if spare > 0, !s.boomed { s.grown = min(full - 1, s.grown + growRate * spare / s.fuse) }
             burning.append(e)
             settle(at: e.ts)
             // Why: venting feeds anger, so more heat escalates the one Boom (docs/why.md#one-boom-per-session)
-            if !s.boomed, s.burned >= s.fuse {
+            if !s.boomed, s.burned >= s.fuse * (1 + s.grown) {
                 stick = s.fuse
                 s.boomed = true
                 boomedToday = true
@@ -155,6 +163,7 @@ public enum Game {
                 s.booms.append(sitting!.boom!)
                 burning = [] // the burn starts again from zero, toward the tiers
                 s.burned = 0
+                s.grown = 0
                 dip = nil
             } else if s.boomed, var boom = sitting!.boom, e.ts - boom.ts < escalationWindow {
                 // Why: tiers in flavour, and only for the same outburst (docs/why.md#tiers-flavour-not-volume)

@@ -52,7 +52,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Hutto & Gilbert 2014](https://doi.org/10.1609/icwsm.v8i1.14550)
 
 ## cool-mends
-- **Rule:** Cool grows the fuse back. A cool prompt mends some of what's burning, never below zero, and a prompt that's hot and cool at once, roasting your agent live, burns less than the heat alone.
+- **Rule:** Cool grows the fuse back. A cool prompt mends some of what's burning, never below zero, and a prompt that's hot and cool at once, roasting your agent live, burns less than the heat alone. What it has spare grows the stick ([cool-grows](#cool-grows)).
 - **Principle:** Humour as reappraisal. Good-natured humour lowered negative feeling more than mean humour did. Lunte rewards what you do with the anger, not the anger.
 - **Evidence:** mixed: small samples.
 - **Source:** [Samson & Gross 2012](https://doi.org/10.1080/02699931.2011.585069)
@@ -62,6 +62,13 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Principle:** Competence and relief. "I held it together" feeds competence, one of the needs that predicts enjoyment, and a reward works best right after the act.
 - **Evidence:** strong for competence, mostly correlational. Tuned on a replay of 13 weeks of one player's real prompts: the last third gives 1.3 close calls a week (2 in the hot last month), about 1.3 per Boom, rare enough to mean something and common enough to happen. The last quarter gave 0.9 a week, and the last half 3.2, which is too cheap.
 - **Source:** [Ryan, Rigby & Przybylski 2006](https://doi.org/10.1007/s11031-006-9051-8)
+
+## cool-grows
+- **Rule:** Every session starts at 100 %, with room to grow. Cool with nothing left to mend grows the session's fuse by half its spare mend, up to 125 %, which is drawn as the whole fuse: three tight coils. Burns heal after 30 minutes as before; growth stays until the session closes or Booms. The fuse moves by exactly what each prompt did, and the only marks are where a rule changes: the last third, 100 % and full.
+- **Principle:** Endowed progress and the goal gradient. A head start toward a visible goal raises completion, and effort speeds up near it. A session that could only lose fuse had nothing to be proud of; growth gives it a gain. Growth stays, so there's nothing to keep alive ([no-streaks](#no-streaks)), and it's capped feedback, never points ([aura-not-work](#aura-not-work)).
+- **Evidence:** mixed for endowed progress, strong for the goal gradient. Not yet replayed: the history has no cool ratings. Cool players will Boom less (two banter prompts turn one furious prompt into a close shave), so replay it once setup has rated cool, before tuning `full` or `growRate`.
+- **Tried:** two coils at 100 % and three at 150 % (today's look, the one people know, is better as full); full at 115 % (you can't see it grew); growth at the full mend (two banter prompts fill it, so there's no climb).
+- **Source:** [Nunes & Drèze 2006](https://doi.org/10.1086/500480)
 
 ## peak-end
 - **Rule:** A session's line is built from facts only and ends on the recovery when there is one: "Boomed at 14:12. Cooled off by 14:40."

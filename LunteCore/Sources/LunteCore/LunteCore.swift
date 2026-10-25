@@ -114,9 +114,12 @@ public struct GameState: Equatable, Sendable {
     public var freshAt: Double?
     /// Every Sitting, oldest first: the closed ones, then the open one.
     public var sittings: [Sitting] = []
+    /// How far cool has grown the open Sitting's stick past whole, 0...`Game.full` − 1. Burns heal; this stays until
+    /// the Sitting closes or Booms.
+    public var grown = 0.0
 
-    /// The share of the stick that's left, 0...1.
-    public var left: Double { boomed ? 0 : max(0, 1 - burned / fuse) }
+    /// The share of the stick that's left, 0...`Game.full`: 1 is a fresh stick, and past it is what cool grew.
+    public var left: Double { boomed ? 0 : max(0, 1 + grown - burned / fuse) }
     /// The open Sitting, if there is one.
     public var sitting: Sitting? { sittings.last.flatMap { $0.isOpen ? $0 : nil } }
     /// Every close call, oldest first.
