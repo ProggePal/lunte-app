@@ -91,7 +91,7 @@ struct RenderFuse {
             .shadow(color: .black.opacity(dark ? 0.5 : 0.18), radius: h * 0.22, y: h * 0.1)
     }
 
-    /// The repo's social preview, 1280 x 640, what a link to it shows: the name, the line, and of the menu bar's frames
+    /// The repo's social preview, 1280 x 640, what a link to it shows: the name, what it is, and of the menu bar's frames
     /// in FRAMES the one with the most fire in it, on GitHub's dark page.
     @MainActor static func social(_ frames: String, _ out: String) {
         let bars = try! FileManager.default.contentsOfDirectory(atPath: frames).filter { $0.hasSuffix(".png") }.sorted()
@@ -99,10 +99,10 @@ struct RenderFuse {
         let bar = bars.max { fire($0) < fire($1) }!
         let view = VStack(spacing: 0) {
             Text("Lunte").font(.system(size: 132, weight: .bold)).foregroundStyle(.white)
-            Text("Keep it cool. Or go boom.").font(.system(size: 46, weight: .semibold)).foregroundStyle(Color(white: 0.78))
+            Text("Dynamite in your menu bar").font(.system(size: 46, weight: .semibold)).foregroundStyle(Color(white: 0.78))
                 .padding(.top, 4)
             floating(bar, dark: true).padding(.top, 58)
-            Text("A Mac menu bar game for Claude Code").font(.system(size: 30, weight: .medium)).foregroundStyle(Color(white: 0.55))
+            Text("Lit by how you talk to your agent").font(.system(size: 30, weight: .medium)).foregroundStyle(Color(white: 0.55))
                 .padding(.top, 46)
         }
         .frame(width: 1280, height: 640)
