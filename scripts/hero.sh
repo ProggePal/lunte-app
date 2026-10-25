@@ -4,7 +4,8 @@
 # (App.swift `clips`): a Terminal window types each prompt into Claude Code, the hook hands it to Lunte, and Claude
 # answers it in a line. The prompts go to a spare log, so your game never sees them, and your own Lunte
 # steps aside meanwhile. A take is kept in docs/clips/takes, so the GIF can be framed again without a new one.
-#   scripts/hero.sh boom|heat|cool|close|chain|all   a take and its GIF; hands off for half a minute a clip
+#   scripts/hero.sh heat|cool|close|chain|boom|all   a take and its GIF, all being the README's two; hands off for
+#                                                     half a minute a clip
 #   scripts/hero.sh gif <clip>|all                    only the GIF again, from the take
 # Terminal needs Screen Recording (System Settings › Privacy & Security), once. ffmpeg records it: macOS's own
 # `screencapture -v` stalls now and then.
@@ -122,7 +123,7 @@ gif() {
   ls -lh "docs/clips/$1.gif"
 }
 
-all="heat cool close chain boom"
+all="heat cool" # the README's; boom, close and chain stay for whoever wants them
 swiftc -O -o dist/render-fuse LunteApp/Sources/FuseKit/MenuFuse.swift scripts/render-fuse.swift
 if [[ $1 == gif ]]; then
   for clip in ${2/all/$all}; do gif "$clip"; done
