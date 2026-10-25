@@ -84,6 +84,8 @@ public struct Sitting: Equatable, Sendable {
     public var lastBurn: Double?
     /// Still going: the last prompt was less than `Game.sittingGap` ago.
     public var isOpen = false
+    /// Its one award, without roasts (`Game.aura`): set by the replay, which knows the other Sittings that day.
+    public var aura = 0
 
     /// 0 without a Boom, else `boom.tier`.
     public var tier: Int { boom?.tier ?? 0 }

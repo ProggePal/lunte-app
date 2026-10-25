@@ -104,7 +104,7 @@ Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fu
 - **`.test` events** count as messages for Sittings but never burn, never Boom and never change the fuse.
 - **`.rest` events** close the open Sitting on the spot. The next prompt then starts a fresh Sitting, without counting the empty stretch in between as a calm Sitting.
 - **`Boom`** is `{id, ts, litBy, escalations}` with `tier` (1–3). `id = String(Int(ts * 1000))`, so it stays stable across replays. `litBy` holds the burns still burning when it blew, up to and including the Boom.
-- **`Sitting`** is `{start, end, prompts, peakHeat, coolPrompts, boom, closeCalls, lastBurn, isOpen}`, with `tier` (0 without a Boom) and `cooledOff`. `end` is its last message. `coolPrompts` counts messages with cool of at least `coolPrompt`. `cooledOff` is when the last burn had cooled off (`lastBurn` + 30 minutes), if you were still at it then. Sittings are facts about your day and stay on your Mac.
+- **`Sitting`** is `{start, end, prompts, peakHeat, coolPrompts, boom, closeCalls, lastBurn, isOpen, aura}`, with `tier` (0 without a Boom) and `cooledOff`. `aura` is its one award, set by the replay (below). `end` is its last message. `coolPrompts` counts messages with cool of at least `coolPrompt`. `cooledOff` is when the last burn had cooled off (`lastBurn` + 30 minutes), if you were still at it then. Sittings are facts about your day and stay on your Mac.
 - **`GameState`** is `{fuse, burned, boomed, sittingOpen, currentBurns, booms, sittingStart, freshAt, sittings}`. `left` is the share of stick left (0 when blown), `sitting` the open Sitting, and `closeCalls` every close call. `sittings` holds every Sitting, oldest first: the closed ones, then the open one. After a Boom, `burned` counts toward the tiers. With no open Sitting, `burned == 0` and `boomed == false`.
 - **`Game.sessionLine(_:)`:** one line about a Sitting, built from what happened, never a guess at your mood. It ends on the recovery when there is one (the peak-end rule). Four templates:
   - no Boom and no close call: "Cool all the way. 42 prompts."
@@ -113,7 +113,11 @@ Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fu
   - an escalated Boom, by its top tier: "Chain reaction at 15:03." or "Meltdown at 15:20."
 
   A Boom line ends with "Cooled off by 14:40." when `cooledOff` is set.
-- **Aura** (`Game.aura(_:)`), per Sitting, without roasts: `closeCallAura` (2) per close call, plus `coolSittingAura` (1) once a Sitting of `coolSittingPrompts` (5) or more messages closes without a Boom. An open Sitting's cool point waits for the close, so aura never goes down. A roast is worth `roastAura` (5), but the Club's reactions decide roasts, in the app and the relay, not the replay.
+- **Aura** (`Game.aura(_:)`, which returns `Sitting.aura`): one award per Sitting, the best thing that happened, without roasts ([why](why.md#aura-not-work)).
+  - A Sitting with any close call earns `closeCallAura` (3), at once, and keeps it if a Boom comes after.
+  - Otherwise a cool Sitting, `coolSittingPrompts` (5) or more messages and no Boom, earns `coolSittingAura` (1) when it closes, but only the first one on the local day it started. So an open Sitting's cool point waits for the close, and aura never goes down.
+  - Otherwise 0.
+  - A roast is worth `roastAura` (8). The Club's reactions decide roasts, in the app and the relay, not the replay. A roasted Sitting's one award is the roast, in place of its `aura`.
 - **`Game.stickText`:** `💥` when blown, otherwise `🧨` plus one `━` per third left, or `🧨✨` in the last third (`Game.inLastThird`).
 - **`Game.heatWord`:** cool (< 0.15), mild (< 0.35), warm (< 0.6), hot (< 0.85), boiling.
 - **The vibe** (`Vibe`): one dry line about the last 30 minutes, shown in the popover only, never sent.
@@ -148,7 +152,7 @@ Fixtures that must pass (GameTests, SittingTests):
 16. Close calls: mended by cool, cooled off, or walked away from; none when it Booms; one per dip; and one at exactly a third left.
 17. Sitting summaries: start, end, prompts, peak heat, cool prompts, the Boom, open or closed.
 18. Each session line template, its variants and the recovery.
-19. Aura: a cool Sitting, close calls, an open Sitting, and a Boom.
+19. Aura: one award per Sitting (a close call 3, a cool Sitting 1, never both), a cool point at most once per local day, an open Sitting, and a Boom.
 
 ## 5. The relay (HTTP + JSON)
 

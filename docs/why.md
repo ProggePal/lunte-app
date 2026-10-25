@@ -80,9 +80,9 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Source:** [Rankin et al. 2009](https://doi.org/10.1016/j.nlm.2008.09.012)
 
 ## aura-not-work
-- **Rule:** Aura never tracks how much you work. A cool session earns the same point at 5 prompts or 500, cool counts per session and not per prompt, nothing pays per Boom, and sessions and their lengths never leave the Mac.
+- **Rule:** Aura never tracks how much you work. A session earns one award, the best thing that happened: a roast 8, a close call 3, or a cool session 1, and only one cool session a day earns its point. A cool session earns the same at 5 prompts or 500, cool counts per session and not per prompt, nothing pays per Boom, and sessions and their lengths never leave the Mac.
 - **Principle:** Overjustification. Across 128 studies, expected tangible rewards lowered free-choice interest, while positive feedback raised it. Points per prompt or per hour would also turn Lunte into a work tracker, something a boss could use.
-- **Evidence:** mixed: its breadth is disputed.
+- **Evidence:** mixed: its breadth is disputed. Tuned on a replay of 13 weeks of one player's real prompts. Worth 1, 2 and 5 with no daily cap, cool sessions made 67% of aura, and daily aura tracked prompts per day at r = 0.75: a work tracker. At 1 once a day, 3 and 8, that falls to r = 0.49, near the floor of about 0.45 that aura from heat alone has, since more prompts give more chances. Its sources split 39% cool, 29% close calls and 32% roasts if half the Booms are roasted, and no source passes half at a quarter or three quarters.
 - **Source:** [Deci, Koestner & Ryan 1999](https://depts.washington.edu/techdocs/papers/deciExtrinsicRewardsAndIntrinsicMotivation99.pdf)
 
 ## silent-pings

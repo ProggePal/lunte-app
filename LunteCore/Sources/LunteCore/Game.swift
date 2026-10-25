@@ -25,13 +25,13 @@ public enum Game {
     static let spark = 0.01                     // heat² or cool² below this does nothing: a neutral message
     public static let slowBurn: Double = 600    // a Boom whose burns built up over 10 minutes or more is a slow burn
 
-    // Aura, per Sitting: the Club's points from Lunte's side (GAME.md).
+    // Aura, one award per Sitting, the best thing that happened: the Club's points from Lunte's side (GAME.md).
     // Why: overjustification; aura never tracks how much you work (docs/why.md#aura-not-work)
     public static let coolSittingPrompts = 5    // a cool Sitting has this many prompts or more, and no Boom
-    public static let coolSittingAura = 1
-    public static let closeCallAura = 2
+    public static let coolSittingAura = 1       // at most once per local day
+    public static let closeCallAura = 3         // any close call, even one a Boom came after
     // Why: the rewards come from people (docs/why.md#feedback-not-reward)
-    public static let roastAura = 5             // a roast is decided by the Club's reactions, in the app and relay
+    public static let roastAura = 8             // decided by the Club's reactions, in the app and relay; it replaces the rest
 
     // Why: venting feeds anger, so tiers escalate in flavour, not volume (docs/why.md#tiers-flavour-not-volume)
     /// The Boom tiers, by `Boom.tier`.
@@ -51,6 +51,7 @@ public enum Game {
         var thermostat = minFuse    // the next stick; the open Sitting keeps the one it was given
         var today: Range<Double>?   // the local day of the last prompt
         var boomedToday = false
+        var coolDay: Date?          // the local day whose cool Sitting has had its point
         var sitting: Sitting?       // the one being replayed
         var burning: [Event] = []   // what burns or mends, from the last 30 minutes, and since the Boom
         var stick = minFuse         // the stick that blew: each further half of it is a tier
@@ -65,6 +66,7 @@ public enum Game {
                 dip = dip ?? t
             } else if let d = dip {
                 sitting?.closeCalls.append(CloseCall(ts: d, cooled: t))
+                sitting?.aura = closeCallAura
                 dip = nil
             }
         }
@@ -88,6 +90,12 @@ public enum Game {
         // Why: a fresh start per session, and only at its close (docs/why.md#fresh-start)
         func close() {
             guard var done = sitting else { return }
+            // Why: overjustification; a cool Sitting counts once a day, however long you work (docs/why.md#aura-not-work)
+            let day = calendar.startOfDay(for: Date(timeIntervalSince1970: done.start))
+            if done.closeCalls.isEmpty, done.boom == nil, done.prompts >= coolSittingPrompts, day != coolDay {
+                done.aura = coolSittingAura
+                coolDay = day
+            }
             s.fuse = thermostat
             done.isOpen = false
             s.sittings.append(done)
@@ -211,11 +219,9 @@ public enum Game {
     }
 
     // Why: overjustification; aura never tracks how much you work (docs/why.md#aura-not-work)
-    /// A Sitting's aura, without roasts: `closeCallAura` per close call, plus `coolSittingAura` once a Sitting of
-    /// `coolSittingPrompts` or more closes without a Boom. An open Sitting's cool point waits for the close, so the
-    /// aura it shows never goes down.
-    public static func aura(_ s: Sitting) -> Int {
-        let cool = !s.isOpen && s.boom == nil && s.prompts >= coolSittingPrompts
-        return closeCallAura * s.closeCalls.count + (cool ? coolSittingAura : 0)
-    }
+    /// A Sitting's aura, without roasts: its one award, the best thing that happened, as the replay worked it out
+    /// (`Sitting.aura`). `closeCallAura` with any close call; else `coolSittingAura` once a Sitting of
+    /// `coolSittingPrompts` or more closes without a Boom, for the first one that day; else 0. An open Sitting's cool
+    /// point waits for the close, so the aura it shows never goes down.
+    public static func aura(_ s: Sitting) -> Int { s.aura }
 }
