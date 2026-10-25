@@ -1,11 +1,13 @@
-// Your own fuse (contract §8): your AI rates your past messages once, and Lunte learns how Laya's answers add up
-// to heat for you. The files live in ~/Library/Application Support/Lunte/fuse, next to the log.
+// Your own fuse (contract §8): your AI rates your past messages once, for heat and for cool, and Lunte learns how
+// Laya's answers add up to each for you. The files live in ~/Library/Application Support/Lunte/fuse, next to the log.
 import Foundation
 
 public enum Fuse {
     public static var dir: URL { EventLog.defaultURL.deletingLastPathComponent().appendingPathComponent("fuse") }
     public static var labelsURL: URL { dir.appendingPathComponent("labels.json") }
     public static var profileURL: URL { dir.appendingPathComponent("profile.json") }
+    /// The cool model: a `PersonalFuse` trained on the cool ratings, absent when labels.json has none.
+    public static var coolURL: URL { dir.appendingPathComponent("cool.json") }
     public static var vibesURL: URL { dir.appendingPathComponent("vibes.json") }
 
     /// The one prompt you paste into Claude Code. `lunte-hook setup` prints the rest (`setupText`). It never contains
@@ -27,9 +29,10 @@ public enum Fuse {
     public static let setupText = """
     # Set up a Lunte fuse
 
-    Lunte is a menu bar game: a fuse burns when its owner loses their temper with their AI assistant, and it blows at
-    the end. You are that assistant. Rate how heated the owner's own messages to you were, so Lunte can tune the fuse
-    to them. Everything stays on this Mac; Lunte keeps only the ratings.
+    Lunte is a menu bar game: a fuse burns when its owner loses their temper with their AI assistant, it grows back
+    when they talk to it like a best bud, and it blows at the end. You are that assistant. Rate the owner's own
+    messages to you twice, for heat and for cool, so Lunte can tune the fuse to them. Everything stays on this Mac;
+    Lunte keeps only the ratings.
 
     1. List the messages to rate:
 
@@ -38,22 +41,34 @@ public enum Fuse {
        One JSON object per line: {"sid", "ts", "text"}. About 300 messages from the last 60 days: the ones that look
        heated plus an even spread of the rest. Long ones are cut short.
 
-    2. Rate every message 0–3: how heated was the owner toward the assistant?
+    2. Rate every message for heat, 0–3: how angry was the owner at the assistant? Heat means anger, not volume:
+       capitals, swearing and !!! out of joy are 0 ("LETS GO", "lets fucking go", "faen så bra"), and sarcasm is heat
+       ("great, you broke it again").
 
-       - 0 calm: requests, questions, plain bug reports, pasted errors, happy or excited swearing ("lets fucking go", "faen så bra")
+       - 0 calm: requests, questions, plain bug reports, pasted errors, happy or excited swearing
        - 1 irritated: impatient, correcting it, repeating themselves, a mild telling-off ("I said…", "jeg sa…", "no, not that")
-       - 2 angry: clearly annoyed at the assistant, blaming it, harsh ("why did you delete that", "this is useless")
+       - 2 angry: clearly annoyed at the assistant, blaming it, sarcastic, harsh ("why did you delete that", "this is useless")
        - 3 furious: shouting in capitals, swearing at it, insulting it
 
-       Judge the tone toward the assistant, not the topic. Norwegian and English both occur. Rate every line.
+    3. Rate every message again for cool, 0–3: how much does the owner talk to the assistant like their best bud?
+       Cool is slang, banter, hype, nicknames, casual thanks and happy swearing. A formal "please" or "thank you" is 0,
+       and so is a plain request.
 
-    3. Write the ratings to ~/Library/Application Support/Lunte/fuse/labels.json in exactly this shape, with sid and ts
-       copied unchanged from step 1, and no message text:
+       - 0 neutral: plain requests, questions, bug reports, polite or formal wording, anything without a buddy tone
+       - 1 friendly: relaxed and warm, a casual "thx", "nice", a light joke
+       - 2 buddy: slang, banter, nicknames, hype ("let's gooo", "legend", "nice one mate", "sykt bra, kompis")
+       - 3 best bud: full banter or hype, roasting it with a laugh, happy swearing ("LETS FUCKING GO 🔥", "faen så rått")
+
+       One message can be both: "you deleted my db AGAIN, you absolute clown 😂" is heat 2 and cool 3. Judge the tone
+       toward the assistant, not the topic. Norwegian and English both occur. Rate every line, both times.
+
+    4. Write the ratings to ~/Library/Application Support/Lunte/fuse/labels.json in exactly this shape, with sid and ts
+       copied unchanged from step 1, "rating" for heat, "cool" for cool, and no message text:
 
            {"lunte": "fuse-labels", "v": 1, "rater": "<your model name>", "made": "<today as YYYY-MM-DD>",
-            "labels": [{"sid": "…", "ts": 1792744463.009, "rating": 3}, …]}
+            "labels": [{"sid": "…", "ts": 1792744463.009, "rating": 3, "cool": 0}, …]}
 
-    4. Write about 20 personal vibes to ~/Library/Application Support/Lunte/fuse/vibes.json. A vibe names how a
+    5. Write about 20 personal vibes to ~/Library/Application Support/Lunte/fuse/vibes.json. A vibe names how a
        stretch of a session feels, in Lunte's voice: dry, understated, a bit British ("Running rather hot",
        "Firm but fair", "Suspiciously calm"). Base them on patterns you saw across the owner's chats: their kinds of
        work, hours, habits and pet peeves. Spread them over the bands: about 6 calm, 6 warm, 5 hot and 3 explosive.
@@ -71,22 +86,25 @@ public enum Fuse {
        - About the mood, not the content: no quotes from messages, no names, nothing private.
        - Don't show the vibes to the owner. They're found by playing.
 
-    5. Check both files, and fix anything it reports:
+    6. Check both files, and fix anything it reports:
 
            "$HOME/Library/Application Support/Lunte/lunte-hook" check-fuse
 
-    6. Finish with one short line to the owner: how many messages you rated, that their vibes are set (without
+    7. Finish with one short line to the owner: how many messages you rated, that their vibes are set (without
        listing them), and that they should now type `3 2 1 pow` to light their tuned fuse. Lunte tunes itself as soon
        as the files appear.
     """
 }
 
-/// labels.json, written by your AI: a rating per message, by reference. No message text.
+/// labels.json, written by your AI: a heat and a cool rating per message, by reference. No message text.
 public struct FuseLabels: Codable, Equatable, Sendable {
     public struct Label: Codable, Equatable, Sendable {
         public var sid: String
         public var ts: Double
+        /// Heat, 0–3.
         public var rating: Int
+        /// Cool, 0–3. Nil in files from before cool.
+        public var cool: Int? = nil
     }
     public var lunte: String
     public var v: Int
@@ -94,22 +112,29 @@ public struct FuseLabels: Codable, Equatable, Sendable {
     public var made: String?
     public var labels: [Label]
 
-    /// What's wrong with it, or [] when it's fine.
+    /// What stops it tuning, or [] when it's fine. A file without cool still tunes heat; `check-fuse` also wants
+    /// `missingCool` at 0.
     public var problems: [String] {
         var out: [String] = []
         if lunte != "fuse-labels" { out.append(#""lunte" must be "fuse-labels""#) }
         if v != 1 { out.append(#""v" must be 1"#) }
         let bad = labels.filter { !(0...3).contains($0.rating) }.count
         if bad > 0 { out.append("\(bad) ratings are outside 0–3") }
+        let badCool = labels.filter { $0.cool.map { !(0...3).contains($0) } ?? false }.count
+        if badCool > 0 { out.append("\(badCool) cool ratings are outside 0–3") }
         if labels.count < 30 { out.append("only \(labels.count) ratings; rate at least 30, ideally all of them") }
         return out
     }
+
+    /// How many messages have no cool rating.
+    public var missingCool: Int { labels.filter { $0.cool == nil }.count }
 }
 
 /// profile.json, written by Lunte: your personal layer on top of Laya. A ridge regression over the log probabilities of
 /// Laya's answers to the probe questions, trained on your AI's 0–3 ratings, ranks how heated a message is. Your range
 /// sets the scale: `cuts` are the scores your top irritated, angry and furious shares start at, and they map to heat
 /// 1/3, 2/3 and 1. So if your AI rated 1% of your messages furious, scoring like your top 1% blows a fresh stick.
+/// cool.json is the same model trained on the cool ratings: there, read heat as cool.
 public struct PersonalFuse: Codable, Equatable, Sendable {
     public var v = 1
     /// The probe questions, in feature order. A profile only fits the probes it was trained with.

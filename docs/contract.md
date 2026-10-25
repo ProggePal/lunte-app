@@ -20,12 +20,12 @@ app/
 
 ```json
 {"v":1,"ts":1792670480.123,"burn":"none","sid":"<Claude Code session_id>","rated":true}
-{"v":1,"ts":1792670480.123,"burn":"heat","sid":"","heat":0.93,"mood":"frustrated","topic":"code"}
+{"v":1,"ts":1792670480.123,"burn":"heat","sid":"","heat":0.93,"cool":0.05,"mood":"frustrated","topic":"code"}
 ```
 
 - `burn`: `"none"`, `"tell"` (telling it off), `"lose"` (losing it) or `"test"` (the onboarding phrase, §6). `"heat"` and `"rest"` are written by the app, never by the hook.
 - `rated`: present and `true` when the hook handed the prompt to the app's model (§2), so a `heat` line should follow.
-- `heat` lines: the model's rating, `heat` 0…1, its `mood` choice, and the message's `topic`: one word from `Vibe.topics` (code, design, writing, business, voice, shipping, ideas, other), never text. Readers merge one into the prompt line with the same `ts` and drop it; a heat line without its prompt is dropped.
+- `heat` lines: the model's ratings, `heat` 0…1 and `cool` 0…1 (§8; absent without a cool model and in older logs), its `mood` choice, and the message's `topic`: one word from `Vibe.topics` (code, design, writing, business, voice, shipping, ideas, other), never text. Readers merge one into the prompt line with the same `ts` and drop it; a heat line without its prompt is dropped.
 - `ts`: Unix seconds, as a Double.
 - `sid`: the Claude Code session id, kept as a pointer for a later `lunte why`. It may be `""`.
 - **Writers** append one whole line with a single `write()` under `O_APPEND`.
@@ -215,26 +215,29 @@ A dev build is signed ad-hoc. `--release` signs with `Developer ID Application: 
 
 ## 8. Your fuse
 
-Your AI rates your past messages once, and Lunte learns how Laya's answers add up to heat for you. Nobody labels anything by hand, and Lunte and your AI never talk directly: they share a folder, `~/Library/Application Support/Lunte/fuse`, and the `lunte-hook` commands.
+Your AI rates your past messages once, for heat and for cool, and Lunte learns how Laya's answers add up to each for you. Nobody labels anything by hand, and Lunte and your AI never talk directly: they share a folder, `~/Library/Application Support/Lunte/fuse`, and the `lunte-hook` commands.
 
 - **The setup prompt** (`Fuse.setupPrompt`): `Let's set up Lunte. Look at my messages and tune the sensitivity and the vibes. Lunte's setup tool is at "$HOME/Library/Application Support/Lunte/lunte-hook": run it with setup for the steps. Let me know when you're done :)` It never contains the test phrase, so pasting it can't Boom, and it doesn't burn either.
 - **`lunte-hook setup`** prints the steps for your AI (`Fuse.setupText`):
   1. List the messages (`lunte-hook messages`).
-  2. Rate each 0–3 toward the assistant: 0 calm (including happy swearing), 1 irritated, 2 angry, 3 furious.
-  3. Write `labels.json`.
-  4. Write about 20 personal vibes to `vibes.json`, without showing them.
-  5. Run `lunte-hook check-fuse`, which checks both files.
-  6. Finish with one line in the chat telling you to type `3 2 1 pow`.
+  2. Rate each for heat, 0–3 toward the assistant: 0 calm, 1 irritated, 2 angry, 3 furious. Heat means anger, not volume: capitals and swearing out of joy ("LETS GO") are 0, and sarcasm ("great, you broke it again") is heat.
+  3. Rate each again for cool, 0–3: talking to the assistant like a best bud (slang, banter, hype, nicknames, casual thanks, happy swearing). 0 neutral, including a formal "please" or "thank you", 1 friendly, 2 buddy, 3 best bud. One message can be both hot and cool.
+  4. Write `labels.json`.
+  5. Write about 20 personal vibes to `vibes.json`, without showing them.
+  6. Run `lunte-hook check-fuse`, which checks both files.
+  7. Finish with one line in the chat telling you to type `3 2 1 pow`.
 - **`vibes.json`**, written by your AI: `{"lunte": "fuse-vibes", "v": 1, "made", "vibes": [{"emoji", "label", "band", "topic", "when", "story"}]}`. `topic` is one of code, design, writing, business, voice, shipping, ideas, or "any" for vibes about mood, time or habits. A vibe without a topic gets one from Laya's topic question on its label and "when", kept only above 0.5; that fallback is rough, so the AI's own topic is preferred. About 20 personal vibes in Lunte's voice (dry, understated), spread over the bands, about the mood rather than the content: no quotes, no names, nothing private. `lunte-hook setup` tells the AI not to list them to you. `FuseVibes.problems` checks the shape, the lengths, and that every band has at least one vibe. The app reads the file at launch and whenever the folder changes.
-- **`labels.json`**, written by your AI: `{"lunte": "fuse-labels", "v": 1, "rater", "made", "labels": [{"sid", "ts", "rating"}]}`. Message references only, no text. `FuseLabels.problems` lists what's wrong: the wrong `lunte` or `v`, ratings outside 0–3, or fewer than 30 ratings.
+- **`labels.json`**, written by your AI: `{"lunte": "fuse-labels", "v": 1, "rater", "made", "labels": [{"sid", "ts", "rating", "cool"}]}`, where `rating` is heat. Message references only, no text. `FuseLabels.problems` lists what stops tuning: the wrong `lunte` or `v`, heat or cool ratings outside 0–3, or fewer than 30 ratings. Files from before cool have no `cool`; they still decode and tune heat. `check-fuse` also reports every message without a `cool` (`FuseLabels.missingCool`), since setup rates both.
 - **Candidates** (`Fuse.candidates`): every message the word list flags, up to a third of 300, plus an even spread of the rest, oldest first.
 - **Tuning.** When `labels.json` is newer than `profile.json` (watched, 1 s debounce, and checked at launch once the model is loaded), the app:
   1. finds each rated message in the transcripts (same session, within 1 s), and needs at least 30
   2. asks Laya the 11 probes of `Scorer.probes` (~90 ms per message)
   3. turns every option's probability into a feature, `log(p + 0.0001)`
-  4. trains `PersonalFuse`: a ridge regression on the 0–3 ratings over the standardised features, with the regularisation picked from 0.01–3 by 5-fold cross-validation
-  5. saves `profile.json`
+  4. trains `PersonalFuse`: a ridge regression on the 0–3 heat ratings over the standardised features, with the regularisation picked from 0.01–3 by 5-fold cross-validation
+  5. trains a second `PersonalFuse` the same way on the cool ratings, from the same features, when at least 30 of the found messages have one
+  6. saves `profile.json`, and `cool.json` for cool (or removes `cool.json` when there's no cool model)
 
   `fit` is the held-out AUC of irritated-or-worse against calm. Message text stays in memory only.
-- **`profile.json`**, written by the app: `{v, probes, mean, sd, weights, bias, lambda, trainedOn, fit, rater, made}`. A profile only applies if its `probes` match the app's; otherwise it counts as untuned.
+- **`profile.json`** and **`cool.json`**, written by the app: `{v, probes, mean, sd, weights, bias, lambda, trainedOn, fit, rater, made}`. A profile only applies if its `probes` match the app's; otherwise it counts as untuned.
 - **Heat with a profile:** all probes are asked, and heat is the predicted rating divided by 3, clamped to 0…1. So furious is 1 (a Boom on a fresh stick), angry 0.67 and irritated 0.33. Without a profile, heat is P(frustrated) from the mood probe. The mood probe's top label always feeds the vibe line.
+- **Cool with a cool model:** the same answers through `cool.json` give cool 0…1, logged in the heat line next to heat. Without a cool model, cool stays nil, and the game reads nil as 0.

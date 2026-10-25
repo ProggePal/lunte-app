@@ -53,6 +53,22 @@ final class FuseTests: XCTestCase {
         XCTAssertEqual(bad.problems, [#""lunte" must be "fuse-labels""#, "1 ratings are outside 0–3"])
     }
 
+    func testLabelsWithAndWithoutCool() throws {
+        let old = #"{"lunte":"fuse-labels","v":1,"labels":[{"sid":"s1","ts":1792744463.009,"rating":2}]}"#
+        let before = try JSONDecoder().decode(FuseLabels.self, from: Data(old.utf8)) // a file from before cool
+        XCTAssertNil(before.labels[0].cool)
+        XCTAssertEqual(before.missingCool, 1)
+        var heatOnly = before
+        heatOnly.labels = (0..<40).map { FuseLabels.Label(sid: "s", ts: Double($0), rating: $0 % 4) }
+        XCTAssertEqual(heatOnly.problems, []) // still tunes heat; check-fuse asks for the cool
+        var both = heatOnly
+        both.labels = (0..<40).map { FuseLabels.Label(sid: "s", ts: Double($0), rating: 0, cool: $0 == 0 ? 4 : $0 % 4) }
+        XCTAssertEqual(both.problems, ["1 cool ratings are outside 0–3"])
+        XCTAssertEqual(both.missingCool, 0)
+        XCTAssertEqual(try JSONDecoder().decode(FuseLabels.self, from: JSONEncoder().encode(both)), both)
+        XCTAssertTrue(Fuse.setupText.contains(#""rating": 3, "cool": 0"#)) // the AI is asked for both
+    }
+
     func testCandidatesMixTemperAndCalm() {
         let all = (0..<1000).map { Transcript.Message(sid: "s", ts: Double($0), text: $0 % 50 == 0 ? "why did you do that" : "rename foo to bar") }
         let picked = Fuse.candidates(all, count: 300)

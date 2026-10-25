@@ -3,7 +3,7 @@
 import Foundation
 
 /// test: the onboarding phrase. rest: written by the app when a hurried break ends.
-/// heat: written by the app, the model's rating of the prompt logged at the same ts; merged into it on read.
+/// heat: written by the app, the model's heat and cool for the prompt logged at the same ts; merged into it on read.
 public enum Burn: String, Codable, Sendable { case none, tell, lose, test, rest, heat }
 
 /// One line of events.jsonl. Never holds prompt text.
@@ -14,15 +14,20 @@ public struct Event: Codable, Equatable, Sendable {
     public var sid: String
     /// The hook handed the prompt to the app's model, so a heat line should follow.
     public var rated: Bool?
-    /// 0...1, the model's rating.
+    /// 0...1, the model's rating. Heat is anger, not volume.
     public var heat: Double?
+    /// 0...1, how much you talk to your agent like a best bud: slang, banter, hype, happy swearing. Nil without a
+    /// trained cool model, and in logs from before cool.
+    public var cool: Double?
     /// The model's read of your mood ("frustrated", "hyped", …), for the vibe line.
     public var mood: String?
     /// What the message is about, one word from `Vibe.topics` ("design", "code", …), for the vibe line. Never text.
     public var topic: String?
 
-    public init(ts: Double, burn: Burn, sid: String = "", rated: Bool? = nil, heat: Double? = nil, mood: String? = nil, topic: String? = nil) {
-        self.v = 1; self.ts = ts; self.burn = burn; self.sid = sid; self.rated = rated; self.heat = heat; self.mood = mood; self.topic = topic
+    public init(ts: Double, burn: Burn, sid: String = "", rated: Bool? = nil, heat: Double? = nil, cool: Double? = nil,
+                mood: String? = nil, topic: String? = nil) {
+        self.v = 1; self.ts = ts; self.burn = burn; self.sid = sid; self.rated = rated; self.heat = heat; self.cool = cool
+        self.mood = mood; self.topic = topic
     }
 
     /// Handed to the model and still waiting for its rating, for at most `Game.ratingWait`.

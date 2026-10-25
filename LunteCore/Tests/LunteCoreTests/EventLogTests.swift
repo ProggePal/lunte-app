@@ -47,6 +47,23 @@ final class EventLogTests: XCTestCase {
         XCTAssertNil(events[1].heat)
     }
 
+    func testCoolMergesAndOldLinesStillRead() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("cool.jsonl"), ts = 1_792_670_480.5
+        try Data("""
+        {"v":1,"ts":\(ts),"burn":"none","sid":"s","rated":true}
+        {"v":1,"ts":\(ts),"burn":"heat","sid":"","heat":0.1,"mood":"hyped"}
+        {"v":1,"ts":\(ts + 1),"burn":"none","sid":"s","rated":true}
+
+        """.utf8).write(to: url)
+        try EventLog.append(Event(ts: ts + 1, burn: .heat, heat: 0.2, cool: 1.4), to: url)
+        let events = EventLog.read(url)
+        XCTAssertEqual(events[0].heat, 0.1)
+        XCTAssertNil(events[0].cool) // a heat line from before cool
+        XCTAssertEqual(events[1].heat, 0.2)
+        XCTAssertEqual(events[1].cool, 1) // clamped to 0...1
+    }
+
     func testMissingFileReadsEmpty() {
         XCTAssertEqual(EventLog.read(dir.appendingPathComponent("nope.jsonl")), [])
     }
