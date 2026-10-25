@@ -69,11 +69,13 @@ final class FuseTests: XCTestCase {
         XCTAssertTrue(Fuse.setupText.contains(#""rating": 3, "cool": 0"#)) // the AI is asked for both
     }
 
-    func testCandidatesMixTemperAndCalm() {
-        let all = (0..<1000).map { Transcript.Message(sid: "s", ts: Double($0), text: $0 % 50 == 0 ? "why did you do that" : "rename foo to bar") }
+    func testCandidatesMixTemperBanterAndCalm() {
+        let text = { (i: Int) -> String in i % 50 == 0 ? "why did you do that" : i % 40 == 1 ? "nice one bro" : "rename foo to bar" }
+        let all = (0..<1000).map { Transcript.Message(sid: "s", ts: Double($0), text: text($0)) }
         let picked = Fuse.candidates(all, count: 300)
         XCTAssertEqual(picked.count, 300)
         XCTAssertEqual(picked.filter { $0.text.hasPrefix("why") }.count, 20) // every flagged one
+        XCTAssertEqual(picked.filter { $0.text.hasPrefix("nice") }.count, 25) // and every one that looks like banter
         XCTAssertEqual(picked.map(\.ts), picked.map(\.ts).sorted())
         XCTAssertEqual(Fuse.candidates(Array(all.prefix(10))).count, 10)
         XCTAssertFalse(Fuse.setupPrompt.contains("pow")) // pasting the prompt must never Boom

@@ -29,12 +29,23 @@ public enum Classifier {
     }
 
     /// The part of a prompt a human typed. Claude Code also submits subagent hand-backs, task notifications and
-    /// system reminders as prompts, sometimes glued to a message typed mid-turn; those blocks are cut out.
+    /// system reminders as prompts, sometimes glued to a message typed mid-turn, and the app adds what you pasted,
+    /// image paths, what's on an open artifact, its PR instructions and its "please continue" notes. All of those are
+    /// cut out: none of it is your tone.
     public static func human(_ prompt: String) -> String {
-        prompt.replacingOccurrences(of: "(?s)<(task-notification|agent-message|system-reminder|local-command-\\w+)\\b[^>]*>.*?(</\\1>|$)",
+        prompt.replacingOccurrences(of: "(?s)<(task-notification|agent-message|system-reminder|local-command-\\w+|pasted_content|artifact-view-context|create-pr-command)\\b[^>]*>.*?(</\\1>|$)",
                                     with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\[Image(?: #\\d+|: source: [^\\]]*)\\]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[^.\\n]* while you were working\\. Please continue from where you left off\\.", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "Another Claude session sent a message:", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Looks like banter at a glance: a happy word, slang, a laugh or an emoji. It only picks messages for your AI to
+    /// rate at setup (`Fuse.candidates`), so a miss costs nothing; it never scores one.
+    public static func looksCool(_ prompt: String) -> Bool {
+        let text = clean(prompt)
+        return has(happyWords, in: text) || has(buddyWords, in: text) || text.range(of: "\\p{Extended_Pictographic}", options: .regularExpression) != nil
     }
 
     static func clean(_ prompt: String) -> String {
@@ -60,6 +71,10 @@ public enum Classifier {
     static let happyWords = phrases([
         "awesome", "amazing", "love", "perfect", "great", "nice", "cool", "sick", "wow", "insane", "let's go", "yay",
         "hell yeah", "thanks", "thank you", "thx", "appreciate", "legend", "bra", "digg", "rått", "takk", "nydelig", "herlig",
+    ])
+    static let buddyWords = phrases([
+        "lol", "lmao", "haha*", "hehe*", "bro", "dude", "mate", "buddy", "kompis", "lets go*", "let's go*", "lets fucking go*", "let's fucking go*", "lfg", "gg",
+        "goat*", "banger", "well done", "good job", "nice one", "you rock", "sykt", "nais", "bra jobba",
     ])
 
     static let wordChar = "[\\p{L}\\p{M}\\p{N}_]"

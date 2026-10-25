@@ -14,16 +14,19 @@ public enum Fuse {
     /// the test phrase, so pasting it can't Boom; your AI's last line tells you to type it.
     public static let setupPrompt = #"Let's set up Lunte. Look at my messages and tune the sensitivity and the vibes. Lunte's setup tool is at "$HOME/Library/Application Support/Lunte/lunte-hook": run it with setup for the steps. Let me know when you're done :)"#
 
-    /// Messages for your AI to rate, oldest first: everything the word list flags (up to a third of `count`),
-    /// then an even spread of the rest, so there's both temper and calm to learn from.
+    /// Messages for your AI to rate, oldest first: the latest the word list flags and the latest that look like banter
+    /// (up to a third of `count` each), then an even spread of the rest, so there's temper, banter and calm to learn from.
+    // Why: an even spread of a mostly plain history held 29 cool messages in 300, too few to learn cool from
+    // (docs/why.md#cool-grows)
     public static func candidates(_ all: [Transcript.Message], count: Int = 300) -> [Transcript.Message] {
-        let flagged = all.filter { [.tell, .lose].contains(Classifier.classify($0.text)) }
-        let hot = Array(flagged.suffix(count / 3))
-        let calm = all.filter { m in !hot.contains { $0.ts == m.ts && $0.sid == m.sid } }
-        let want = min(calm.count, count - hot.count)
+        let same = { (a: Transcript.Message, b: Transcript.Message) in a.ts == b.ts && a.sid == b.sid }
+        let hot = Array(all.filter { [.tell, .lose].contains(Classifier.classify($0.text)) }.suffix(count / 3))
+        let cool = Array(all.filter { m in Classifier.looksCool(m.text) && !hot.contains { same($0, m) } }.suffix(count / 3))
+        let calm = all.filter { m in !(hot + cool).contains { same($0, m) } }
+        let want = min(calm.count, count - hot.count - cool.count)
         let step = want > 0 ? Double(calm.count) / Double(want) : 1 // ponytail: an even spread, not random, so reruns agree
         let spread = (0..<want).map { calm[Int(Double($0) * step)] }
-        return (hot + spread).sorted { $0.ts < $1.ts }
+        return (hot + cool + spread).sorted { $0.ts < $1.ts }
     }
 
     public static let setupText = """
@@ -39,7 +42,7 @@ public enum Fuse {
            "$HOME/Library/Application Support/Lunte/lunte-hook" messages
 
        One JSON object per line: {"sid", "ts", "text"}. About 300 messages from the last 60 days: the ones that look
-       heated plus an even spread of the rest. Long ones are cut short.
+       heated, the ones that look friendly, and an even spread of the rest. Long ones are cut short.
 
     2. Rate every message for heat, 0–3: how angry was the owner at the assistant? Heat means anger, not volume:
        capitals, swearing and !!! out of joy are 0 ("LETS GO", "lets fucking go", "faen så bra"), and sarcasm is heat
