@@ -354,7 +354,6 @@ private struct PromptLines: View {
     var body: some View {
         let heat = event.heat(at: now), rating = event.awaitingRating(at: now), cool = isCool(event)
         let setItOff = boom?.ts == event.ts, cooled = heat >= 0.15 && !model.state.currentBurns.contains { $0.ts == event.ts }
-        let line = boom.flatMap { model.justifications[model.litID($0)] }
         VStack(alignment: .leading, spacing: 2) {
             if setItOff && picked {
                 // Why: a fresh start, when the session closes (docs/why.md#fresh-start)
@@ -369,12 +368,9 @@ private struct PromptLines: View {
                 Text(([ago(event.ts, now: now)] + [word].compactMap { $0 } + (cooled ? ["cooled off"] : []) + (setItOff ? ["set it off"] : [])).joined(separator: " · "))
                     .foregroundStyle(.secondary).lineLimit(1)
             }
-            if setItOff && picked, let line {
-                Text("“\(line)”").lineLimit(1)
-            } else {
-                PromptText(model: model, event: event, lines: 1)
-                    .foregroundStyle(heat < 0.15 && !setItOff ? .secondary : .primary)
-            }
+            // Your line about the Boom stays in the dots, where you wrote it; up here, the prompt that set it off.
+            PromptText(model: model, event: event, lines: 1)
+                .foregroundStyle(heat < 0.15 && !setItOff ? .secondary : .primary)
             if model.showRatings {
                 HStack(alignment: .top, spacing: 4) {
                     if rating { ProgressView().controlSize(.mini) }
@@ -432,7 +428,7 @@ private struct Strip: View {
     var body: some View {
         let session = model.session, now = Date().timeIntervalSince1970
         let id = boom.map(model.litID)
-        let room = id.flatMap { id in model.canJustify(id) || model.reactionSummary(id) != nil ? id : nil }
+        let room = id // the field, then your line and the Club's reactions, for as long as you're blown
         let split = room.flatMap { _ in boom.flatMap { b in session.firstIndex { $0.ts == b.ts }.map { $0 + 1 } } }
         VStack(alignment: .leading, spacing: 6) {
             ScrollView {
@@ -493,22 +489,55 @@ private struct Strip: View {
 }
 
 /// In the dots, right after the Boom: a line about it, if you want, sent with return. Nothing labels it and nothing
-/// asks twice. Then the Club's reactions take the same spot. It's saved on this Mac either way.
+/// asks twice. Sent, it pops out as your bubble, blue and on the right like a message you sent, and stays; the Club's
+/// reactions pop in under it, counted, and pointing at one says who threw it. That's the reward, so it never goes away
+/// while you're blown. It's saved on this Mac either way.
 // ponytail: silence is the mystery, so nothing invites staying quiet
 private struct BoomRow: View {
     @ObservedObject var model: GameModel
     let boom: String // the id its fuse was lit for
     @State private var line = ""
     @State private var sending = false
+    @State private var pointed: String? // the reaction pointed at, whose names show
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if model.canJustify(boom) { LineField(line: $line, send: send) }
-            if let reacted = model.reactionSummary(boom) {
-                Text(reacted).font(.caption).foregroundStyle(.secondary)
+        let mine = model.justifications[boom], reacted = model.reacted(boom)
+        VStack(alignment: .trailing, spacing: 5) {
+            if let mine {
+                // Sent: your bubble, as the Club sees it, and it stays.
+                Text(mine).foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 11).padding(.vertical, 6)
+                    .background(Color.accentColor, in: UnevenRoundedRectangle(topLeadingRadius: 14, bottomLeadingRadius: 14,
+                                                                               bottomTrailingRadius: 4, topTrailingRadius: 14, style: .continuous))
+                    .padding(.leading, 40) // a long one still keeps to the right
+                    .transition(.scale(scale: 0.5, anchor: .bottomTrailing).combined(with: .opacity))
+            } else {
+                LineField(line: $line, send: send).transition(.opacity)
+            }
+            if let reacted {
+                HStack(spacing: 4) {
+                    if let who = reacted.first(where: { $0.emoji == pointed }) {
+                        Text(who.names.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            .transition(.opacity)
+                    }
+                    ForEach(reacted, id: \.emoji) { r in
+                        Text("\(r.emoji) \(r.n)").monospacedDigit()
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                            .onHover { pointed = $0 ? r.emoji : pointed == r.emoji ? nil : pointed }
+                            .transition(.scale(scale: 0.3).combined(with: .opacity))
+                    }
+                }
+                .animation(.easeOut(duration: 0.15), value: pointed)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(reacted.map { "\($0.emoji) \($0.n), from \($0.names.joined(separator: ", "))" }.joined(separator: "; "))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.vertical, 4)
+        .animation(MenuPanel.expand, value: mine)
+        .animation(.spring(duration: 0.35, bounce: 0.3), value: model.reactions[boom]?.count)
     }
 
     private func send() {

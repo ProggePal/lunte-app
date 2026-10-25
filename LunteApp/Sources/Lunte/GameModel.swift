@@ -299,12 +299,13 @@ final class GameModel: ObservableObject {
 
     func canJustify(_ boom: String) -> Bool { justifications[boom] == nil } // solo too; the Club is a bonus
 
-    /// "🧯 2 · 😂 1 from Ola", or nil when nobody reacted yet.
-    func reactionSummary(_ boom: String) -> String? {
+    /// The Club's reactions to a Boom, an emoji each: how many threw it and who, the most first; nil when nobody has yet.
+    func reacted(_ boom: String) -> [(emoji: String, n: Int, names: [String])]? {
         guard let list = reactions[boom], !list.isEmpty else { return nil }
-        let emoji = list.map { String($0.prefix { $0 != " " }) }, names = Set(list.map { String($0.drop { $0 != " " }.dropFirst()) })
-        let counts = Dictionary(emoji.map { ($0, 1) }, uniquingKeysWith: +).sorted { $0.value > $1.value }
-        return counts.map { "\($0.key) \($0.value)" }.joined(separator: " · ") + " from " + names.sorted().joined(separator: ", ")
+        let pairs = list.map { (emoji: String($0.prefix { $0 != " " }), name: String($0.drop { $0 != " " }.dropFirst())) }
+        return Dictionary(grouping: pairs, by: \.emoji)
+            .map { (emoji: $0.key, n: $0.value.count, names: Set($0.value.map(\.name)).sorted()) }
+            .sorted { ($0.n, $1.emoji) > ($1.n, $0.emoji) }
     }
 
 
