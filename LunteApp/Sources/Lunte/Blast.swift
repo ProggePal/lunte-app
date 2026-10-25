@@ -58,7 +58,7 @@ enum Blast {
 
         let root = view.layer!
         let at = CGPoint(x: fuseAt.x - screen.frame.minX, y: fuseAt.y - screen.frame.minY) // y points up
-        // The dark, the flash and the comic word keep real time; the blast lives in `world`, whose time is eased.
+        // The dark and the flash keep real time; the blast lives in `world`, whose time is eased.
         let tint = CAGradientLayer()
         tint.type = .radial
         tint.frame = root.bounds
