@@ -25,6 +25,12 @@ final class GameModel: ObservableObject {
     @Published private(set) var messages: [Event] = []
     /// The open session's messages, oldest first: the dots.
     @Published private(set) var session: [Event] = []
+    /// Closed sessions with a message of yours in them (not just the onboarding test), oldest first. On this Mac only.
+    @Published private(set) var past: [Sitting] = []
+    /// The last session's summary, from the first time the popover opens after it closed until the popover closes.
+    @Published private(set) var summary: Sitting?
+    /// The start of the last session summarised, so each summary shows once.
+    private var summarised = defaults.double(forKey: "Summarised")
     /// The fuse is burning towards a Boom that hasn't gone off yet.
     @Published private(set) var fusing = false
     /// A test Boom has blown, so the menu bar says BOOM.
@@ -134,12 +140,32 @@ final class GameModel: ObservableObject {
         return Date().timeIntervalSince1970 - (boom.escalations.last ?? boom.ts) >= Self.loudFor
     }
 
+    /// Your Club's name, or nil without one.
+    var clubLabel: String? { club.map { clubName ?? $0 } }
+
     /// For VoiceOver: the vibe, and how much stick is left, or the Boom's tier.
     var sentence: String {
         let vibe = self.vibe.map { $0.label + ". " } ?? ""
         guard state.boomed, let boom = state.booms.last else { return vibe + "\(Int((state.left * 100).rounded()))% of the fuse left." }
         return tier(boom.tier).name + ". " + vibe
     }
+
+    // MARK: Sessions
+
+    /// The popover opened: the first time after a session closed, and before the next one starts, its summary shows.
+    // Why: the peak-end rule; the summary waits for your next look (docs/why.md#summary-next-open)
+    func popoverOpened() {
+        guard onboarded, state.sitting == nil, let last = past.last, last.start > summarised else { return }
+        summary = last
+        summarised = last.start
+        defaults.set(summarised, forKey: "Summarised")
+    }
+
+    /// The popover closed: the summary goes away. History keeps it.
+    func popoverClosed() { summary = nil }
+
+    /// A session's messages, oldest first, for its heat line.
+    func messages(in s: Sitting) -> [Event] { messages.filter { $0.ts >= s.start && $0.ts <= s.end } }
 
     // MARK: The vibe
 
@@ -395,6 +421,8 @@ final class GameModel: ObservableObject {
         state = Game.replay(events, now: now)
         messages = events.filter { $0.burn != .test && $0.burn != .rest }
         session = state.sittingStart.map { start in messages.filter { $0.ts >= start } } ?? []
+        let tests = events.filter { $0.burn == .test }.map(\.ts)
+        past = state.sittings.filter { s in !s.isOpen && s.prompts > tests.filter { $0 >= s.start && $0 <= s.end }.count }
         recent = Array(messages.filter { now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
         updateVibe(now)
         lastActivity = events.last { $0.burn != .rest }?.ts

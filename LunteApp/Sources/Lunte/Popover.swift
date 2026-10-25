@@ -4,7 +4,8 @@ import Sparkle
 import SwiftUI
 
 /// The whole UI. Onboarding until you've owned your first (test) Boom; then the stick or the Boom on top, one text slot
-/// for the message you're looking at, the session's vibe, the session as dots, the Club, a gear.
+/// for the message you're looking at, the session's vibe, the session as dots, the Club, a gear. Between sessions, the
+/// first open shows the last session's summary instead of the slot and the dots.
 struct PopoverView: View {
     @ObservedObject var model: GameModel
     let updater: SPUStandardUpdaterController?
@@ -28,12 +29,16 @@ struct PopoverView: View {
                     StickBar(left: model.state.left)
                     if model.heldTogether { HeldLine() }
                 }
-                MessageSlot(model: model, event: hovered.flatMap { ts in model.session.first { $0.ts == ts } } ?? fallback(boom), boom: boom, vibe: vibeHovered ? model.vibe : nil)
-                if let boom { JustifyRow(model: model, boom: boom) }
-                if model.vibesOn { VibeLine(vibe: model.vibe, isNew: model.vibeIsNew).onHover { vibeHovered = $0 && model.vibe != nil } }
-                Strip(model: model, hovered: $hovered)
-                Text(model.session.count == 1 ? "1 message from Claude Code" : "\(model.session.count) messages from Claude Code")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                if let summary = model.summary, model.state.sitting == nil {
+                    SummaryCard(title: "Your last session", sitting: summary, events: model.messages(in: summary), club: model.clubLabel)
+                } else {
+                    MessageSlot(model: model, event: hovered.flatMap { ts in model.session.first { $0.ts == ts } } ?? fallback(boom), boom: boom, vibe: vibeHovered ? model.vibe : nil)
+                    if let boom { JustifyRow(model: model, boom: boom) }
+                    if model.vibesOn { VibeLine(vibe: model.vibe, isNew: model.vibeIsNew).onHover { vibeHovered = $0 && model.vibe != nil } }
+                    Strip(model: model, hovered: $hovered)
+                    Text(model.session.count == 1 ? "1 message from Claude Code" : "\(model.session.count) messages from Claude Code")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
                 ForEach(model.clubFeed.suffix(2).reversed(), id: \.seq) { Text(model.describe($0)).font(.caption).foregroundStyle(.secondary) }
             }
             Divider()
@@ -42,6 +47,7 @@ struct PopoverView: View {
         .padding(16)
         .frame(width: 290)
         .background { if boom != nil || firstBoom { BoomTint() } } // snaps on with the Boom, no fade
+        .background(OpenWatch { $0 ? model.popoverOpened() : model.popoverClosed() })
     }
 
     /// With nothing hovered: the message that set off the Boom, else the hottest one still burning, else your latest.
@@ -49,6 +55,33 @@ struct PopoverView: View {
         if let boom { return boom.litBy.last }
         let now = Date().timeIntervalSince1970
         return model.state.currentBurns.max { $0.heat(at: now) < $1.heat(at: now) } ?? model.session.last
+    }
+}
+
+/// Says when the popover opens and closes. MenuBarExtra has no binding for that, so this watches its window, which is
+/// key while the popover is open.
+private struct OpenWatch: NSViewRepresentable {
+    let changed: @MainActor (Bool) -> Void
+
+    func makeNSView(context: Context) -> Probe { Probe(changed) }
+    func updateNSView(_ probe: Probe, context: Context) { probe.changed = changed }
+
+    final class Probe: NSView {
+        var changed: @MainActor (Bool) -> Void
+        init(_ changed: @escaping @MainActor (Bool) -> Void) { self.changed = changed; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            NotificationCenter.default.removeObserver(self)
+            guard let window else { return }
+            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(keyChanged), name: name, object: window)
+            }
+            keyChanged()
+        }
+
+        @objc private func keyChanged() { changed(window?.isKeyWindow == true) }
     }
 }
 

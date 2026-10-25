@@ -108,3 +108,9 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Principle:** Calm technology. A tool should live in the periphery and move to the centre only when it matters. You stay blown until 30 quiet minutes, often well over an hour, and a 💥 that shouts all that time is noise in the corner of your eye.
 - **Evidence:** weak: a design frame, not an experiment.
 - **Source:** [Weiser & Brown 1995](https://calmtech.com/papers/designing-calm-technology)
+
+## summary-next-open
+- **Rule:** When a session closes, its summary waits for the next time you open the popover: how long it ran, its heat line, its one line, and its aura last. It shows once, then goes away, and History keeps it. Nothing pops up when a session closes.
+- **Principle:** The peak-end rule. We remember an experience by its peak and its end, so the summary ends on the recovery and what it earned. A session closes after you've left, so its summary is a memory device, there when you next look.
+- **Evidence:** strong, though in a meta-analysis the plain average predicted about as well.
+- **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x)
