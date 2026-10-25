@@ -22,7 +22,12 @@ struct PopoverView: View {
             } else if firstBoom {
                 FirstBoomCard(model: model)
             } else {
-                if let boom { BoomHeader(model: model, boom: boom) } else { StickBar(left: model.state.left) }
+                if let boom {
+                    BoomHeader(model: model, boom: boom)
+                } else {
+                    StickBar(left: model.state.left)
+                    if model.heldTogether { HeldLine() }
+                }
                 MessageSlot(model: model, event: hovered.flatMap { ts in model.session.first { $0.ts == ts } } ?? fallback(boom), boom: boom, vibe: vibeHovered ? model.vibe : nil)
                 if let boom { JustifyRow(model: model, boom: boom) }
                 if model.vibesOn { VibeLine(vibe: model.vibe, isNew: model.vibeIsNew).onHover { vibeHovered = $0 && model.vibe != nil } }
@@ -197,7 +202,8 @@ private struct FirstBoomCard: View {
     private func own() { if !trimmed.isEmpty { model.ownTest(trimmed) } }
 }
 
-/// The fuse in three pieces: what's left is filled, what burned is faint. Orange past half, red near the end, ✨ on the last third.
+/// The fuse in three pieces: what's left is filled, what burned is faint. Orange past half, red near the end, ✨ on the
+/// last third. The last third, by the 🧨, always has a faint red edge, so you see the danger before you're in it.
 private struct StickBar: View {
     let left: Double
 
@@ -209,12 +215,23 @@ private struct StickBar: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Double(i) < piecesLeft(left) ? fuseColor(left) : Color.secondary.opacity(0.15))
                         .frame(height: 10)
+                        // Why: a close call needs the danger in sight (docs/why.md#close-call)
+                        .overlay { if i == 0 { RoundedRectangle(cornerRadius: 3).strokeBorder(Color.red.opacity(0.5), lineWidth: 1) } }
                 }
             }
             if left <= 1.0 / 3 { Text("✨") }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(Int((left * 100).rounded()))% of the fuse left")
+    }
+}
+
+/// Just after a close call, for your eyes only: no sound, no notification.
+// Why: competence, and relief right after the act (docs/why.md#close-call)
+private struct HeldLine: View {
+    var body: some View {
+        Text("Held it together").font(.callout.weight(.medium)).foregroundStyle(.green)
+            .help("The fuse got into its last third and you cooled off without a Boom: a close call.")
     }
 }
 

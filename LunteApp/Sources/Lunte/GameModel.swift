@@ -113,6 +113,16 @@ final class GameModel: ObservableObject {
 
     // MARK: The menu
 
+    /// How long "Held it together" shows after the fuse climbs out of its last third.
+    static let heldFor: Double = 600
+
+    /// A close call in the last 10 minutes: the fuse got into its last third and climbed back out without a Boom.
+    /// The 60-second reload takes it away on time.
+    var heldTogether: Bool {
+        guard !state.boomed, let last = state.closeCalls.last else { return false }
+        return Date().timeIntervalSince1970 - last.cooled < Self.heldFor
+    }
+
     /// For VoiceOver: the vibe, and how much stick is left.
     var sentence: String {
         let vibe = self.vibe.map { $0.label + ". " } ?? ""
