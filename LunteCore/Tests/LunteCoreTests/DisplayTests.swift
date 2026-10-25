@@ -31,5 +31,8 @@ final class DisplayTests: XCTestCase {
         XCTAssertNil(Transcript.prompt(sid: "s1", ts: at("2026-10-22T15:30:00Z"), root: root)) // nothing close or after
         XCTAssertNil(Transcript.prompt(sid: "nope", ts: at("2026-10-22T14:40:00Z"), root: root))
         XCTAssertNil(Transcript.prompt(sid: "../s1", ts: at("2026-10-22T14:40:00Z"), root: root))
+        // A resumed chat copies its history into a new file; each prompt still counts once.
+        try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: project.appendingPathComponent("s2.jsonl"))
+        XCTAssertEqual(Transcript.all(since: 0, root: root).map(\.text), ["why did you delete my tests", "wtf", "sent while you were busy"])
     }
 }
