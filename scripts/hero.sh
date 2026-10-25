@@ -106,19 +106,30 @@ EOF
   gif "$clip"
 }
 
-# The take to a GIF that loops: the Claude Code clips as they are, and the menu bar on a white backdrop with a soft
-# shadow, in 200 colours and no dithering, which keep the shadow smooth.
+# The take to a GIF that loops: the Claude Code clips as they are, and the menu bar floating on a backdrop with a soft
+# shadow, white and dark (-dark.gif), in 200 colours and no dithering, which keep the shadow smooth. The menu bar also
+# makes the repo's social preview, docs/social-preview.png, for its Settings.
 gif() {
   local dir
   dir=$(mktemp -d)
   mkdir "$dir/in" "$dir/out"
   if [[ $1 == menubar ]]; then
     ffmpeg -loglevel error -i docs/clips/takes/menubar.mp4 -vf fps=15 "$dir/in/t%04d.png"
-    dist/render-fuse bar "$dir/in" "$dir/out"
-    ffmpeg -y -loglevel error -framerate 15 -i "$dir/out/c%04d.png" -filter_complex "
-      [0]format=rgb24,split[c][d];
-      [c]palettegen=max_colors=200:stats_mode=diff[p];
-      [d][p]paletteuse=dither=none:diff_mode=rectangle" docs/clips/menubar.gif
+    dist/render-fuse social "$dir/in" docs/social-preview.png
+    local theme out
+    for theme in light dark; do
+      out=docs/clips/menubar.gif
+      [[ $theme == dark ]] && out=docs/clips/menubar-dark.gif
+      rm -f "$dir"/out/*
+      dist/render-fuse bar "$dir/in" "$dir/out" $theme
+      ffmpeg -y -loglevel error -framerate 15 -i "$dir/out/c%04d.png" -filter_complex "
+        [0]format=rgb24,split[c][d];
+        [c]palettegen=max_colors=200:stats_mode=diff[p];
+        [d][p]paletteuse=dither=none:diff_mode=rectangle" "$out"
+    done
+    rm -rf "$dir"
+    ls -lh docs/clips/menubar.gif docs/clips/menubar-dark.gif docs/social-preview.png
+    return
   else
     ffmpeg -loglevel error -i "docs/clips/takes/$1.mp4" -vf fps=12 "$dir/in/t%04d.png"
     dist/render-fuse plain "$dir/in" "$dir/out" 1000
@@ -132,7 +143,7 @@ gif() {
   ls -lh "docs/clips/$1.gif"
 }
 
-# The README's landing, docs/clips/menubar.gif: the menu bar from the fuse to the clock, recorded from a
+# The README's landing, docs/clips/menubar.gif and menubar-dark.gif: the menu bar from the fuse to the clock, recorded from a
 # Terminal window as the hook gets four prompts straight, two mean and two kind, which bring the fuse back where it
 # started, so it loops. It starts past the item's empty left end, where macOS draws its recording badge, and once the
 # screen has left any app in full screen.
