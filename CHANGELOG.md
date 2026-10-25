@@ -5,7 +5,7 @@ What changed for you in each version of Lunte.
 ## Unreleased
 
 ### Improvements
-- **The fuse lives in your menu bar.** The 🧨 and its three little bars are now a real fuse. Heat lights its tip, and a burn eats it from the tip with sparks and ash. Cool feeds new fuse in from the other end, glowing green. When it blows, it says BOOM, then CHAIN REACTION and MELTDOWN if you keep at it, and calms down to a faint burst. A new session lays out a fresh fuse. The bar is gone from the popover; the menu bar says it all.
+- **The fuse lives in your menu bar.** The 🧨 and its three little bars are now a real fuse. Heat lights its tip, and a burn eats it from the tip with sparks and ash. Cool feeds new fuse in from the other end, glowing green. Right before it blows, time slows almost to a stop, and then it bangs. After that it's a plain symbol and a word in your menu bar's colours: Boom, then Chain reaction and Meltdown if you keep at it, Still burning while the heat keeps coming, and Cooled off once it's quiet. A new session lays out a fresh fuse. The bar is gone from the popover; the menu bar says it all.
 - **Keep it cool.** Lunte now reads a second thing in every message: cool, when you talk to your agent like a buddy. Heat burns the fuse and cool grows it back. To tune it to you, Replay onboarding and paste the new setup prompt: your AI now rates cool as well as heat.
 - **Sessions.** A session lasts until you've been quiet for 30 minutes. You get one Boom per session; keep the heat coming and it turns into a Chain reaction, then a Meltdown. Funnier, never louder. Your fresh stick comes when the session ends.
 - **Close calls.** The last third of the fuse is marked, and climbing back out of it gets you a quiet "Held it together".

@@ -20,15 +20,17 @@ final class FuseKitTests: XCTestCase {
         }
     }
 
-    /// The item widens for the Boom's name at once, and narrows only once it has gone quiet.
-    func testWidthWidensAtOnceAndNarrowsAfter() {
+    /// The item widens for the Boom's words at once, never narrows while blown, and narrows after the fresh fuse is in.
+    func testWidthOnlyNarrowsAfterTheBoom() {
         var scene = FuseScene()
         scene.update(FuseLook(phase: .fusing, left: 0), at: 0, animated: false)
-        scene.update(FuseLook(phase: .blown), at: 1)
-        XCTAssertGreaterThan(scene.width(at: 1), FuseScene.fuseWidth)
-        let loud = scene.width(at: 1)
-        scene.update(FuseLook(phase: .blown, quiet: true), at: 10)
-        XCTAssertEqual(scene.width(at: 10.5), loud)
-        XCTAssertLessThan(scene.width(at: 20), loud)
+        scene.update(FuseLook(phase: .blown, name: "Chain reaction", tier: 2), at: 1)
+        let wide = scene.width(at: 1)
+        XCTAssertGreaterThan(wide, FuseScene.fuseWidth)
+        scene.update(FuseLook(phase: .blown, name: "Chain reaction", tier: 2, quiet: true), at: 10) // "Cooled off" is shorter
+        XCTAssertEqual(scene.width(at: 600), wide)
+        scene.update(FuseLook(), at: 700)
+        XCTAssertEqual(scene.width(at: 700.5), wide)
+        XCTAssertEqual(scene.width(at: 705), FuseScene.fuseWidth)
     }
 }

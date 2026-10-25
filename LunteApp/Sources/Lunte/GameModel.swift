@@ -152,7 +152,7 @@ final class GameModel: ObservableObject {
     var fuseLook: FuseLook {
         guard connected else { return FuseLook(phase: .offline) }
         if let fuseEnds { return FuseLook(phase: .fusing, left: 0, bangAt: fuseEnds) }
-        if testBlown { return FuseLook(phase: .blown, name: tier(1).name.uppercased()) } // the test Boom has no tier
+        if testBlown { return FuseLook(phase: .blown, name: tier(1).name) } // the test Boom has no tier
         guard state.boomed, let boom = state.booms.last else {
             let last = session.last, now = Date().timeIntervalSince1970
             let bite = last.map { (Game.burn($0, at: now) + Game.mend($0)) / state.fuse } ?? 0 // its heat alone
@@ -160,7 +160,7 @@ final class GameModel: ObservableObject {
         }
         let stick = max(Game.minFuse, state.fuse - Game.boomGrowth) // ponytail: the stick that blew, unless a day ended since
         let toward = state.burned / (Game.escalationStep * stick) - Double(boom.tier - 1)
-        return FuseLook(phase: .blown, name: tier(boom.tier).name.uppercased(), tier: boom.tier,
+        return FuseLook(phase: .blown, name: tier(boom.tier).name, tier: boom.tier,
                         heat: min(1, max(0, toward)), quiet: boomQuiet)
     }
 

@@ -3,8 +3,9 @@ import FuseKit
 import QuartzCore
 
 /// The Boom on screen, from the menu bar icon, in native Core Animation particles. While the fuse burns, sparks drip
-/// from the icon. In the last second the screen dims and the fuse spits harder. Then it blows from the icon: a burst
-/// of sparks falling down the screen and a shockwave. Clicks pass through. With Reduce Motion it's just the wait.
+/// from the icon. In the last second the screen dims and the sparks slow down until they almost hang, as the menu bar
+/// fuse does. Then it blows at full speed from the icon: a burst of sparks falling down the screen and a shockwave.
+/// Clicks pass through. With Reduce Motion it's just the wait.
 @MainActor
 enum Blast {
     private static var panel: NSPanel?
@@ -67,13 +68,16 @@ enum Blast {
             if late() { return fizzle() }
             fade(dim, to: 0.35, over: 0.9) // the last second
             drip.birthRate = 4
+            pace(drip, 0.3) // slowing down
             try? await Task.sleep(for: .seconds(1 - Bang.fizz))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
             if sound { Bang.play() } // the fizz, then the bang right on the burst
+            pace(drip, 0.08) // nearly still
             try? await Task.sleep(for: .seconds(Bang.fizz))
             guard !Task.isCancelled else { return }
             drip.birthRate = 0
+            pace(drip, 1) // and time comes back with the bang
             fade(dim, to: 0, over: 0.5)
             let burst = emitter(at: at, cells: sparks(birthRate: 500, velocity: 420, range: .pi * 2, down: false, lifetime: 2.6))
             root.addSublayer(burst)
@@ -150,6 +154,14 @@ enum Blast {
         group.timingFunction = CAMediaTimingFunction(name: .easeOut)
         ring.add(group, forKey: "shockwave")
         return ring
+    }
+
+    /// Plays `layer` at `speed` from where it is now, so its sparks slow down or speed up without a jump.
+    private static func pace(_ layer: CALayer, _ speed: Float) {
+        let now = CACurrentMediaTime()
+        layer.timeOffset = layer.convertTime(now, from: nil)
+        layer.beginTime = now
+        layer.speed = speed
     }
 
     private static func fade(_ layer: CALayer, to opacity: Float, over seconds: Double) {

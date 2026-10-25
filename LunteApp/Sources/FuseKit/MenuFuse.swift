@@ -14,14 +14,14 @@ public struct FuseLook: Equatable {
     /// Fusing: when it bangs.
     public var bangAt: Date?
     /// Blown: the tier's name and number (1 Boom, 2 Chain reaction, 3 Meltdown), the heat climbing toward the next
-    /// tier, 0...1, and whether it has quieted down.
-    public var name = "BOOM"
+    /// tier, 0...1, and whether it has quieted down, 10 minutes after the Boom or its last new tier.
+    public var name = "Boom"
     public var tier = 1
     public var heat = 0.0
     public var quiet = false
 
     public init(phase: Phase = .lit, left: Double = 1, prompt: Double? = nil, bite: Double = 0, bangAt: Date? = nil,
-                name: String = "BOOM", tier: Int = 1, heat: Double = 0, quiet: Bool = false) {
+                name: String = "Boom", tier: Int = 1, heat: Double = 0, quiet: Bool = false) {
         self.phase = phase; self.left = left; self.prompt = prompt; self.bite = bite; self.bangAt = bangAt
         self.name = name; self.tier = tier; self.heat = heat; self.quiet = quiet
     }
@@ -35,14 +35,20 @@ public struct FuseLook: Equatable {
 ///   burnt chars and falls as ash.
 /// - Cool feeds new fuse in at the start, left to right, green and twinkling, squeezing the coils together. One prompt
 ///   can do both. Grown back whole, the flame goes out in a puff.
-/// - Burnt through, it fizzes where it started, harder as the bang nears. Then it's blown: a small burst and the tier's
-///   name. More heat makes it glow and grow toward the next tier, a new tier pops the name, cooling smokes, and after a
-///   while it quiets to a faint burst. A new session feeds in a fresh fuse.
-/// Between events only the flame and the smoke move, at a low frame rate.
+/// - Burnt through, it fizzes where it started. Its last moments slow to a crawl, then it blows, big and at full speed.
+/// - Blown, it's a symbol and a word in the menu bar's own colour, with no fire left: the tier's name, "Still burning"
+///   while the heat keeps coming, "Cooled off" once it's quiet. They swap with a little spring and nothing more.
+/// - A new session feeds in a fresh fuse.
+/// Between events only the flame moves, at a low frame rate.
 ///
 /// Coordinates are points, y up, measured from the right edge (x ≤ 0), since a menu bar item grows to the left.
 public struct FuseScene {
     public static let fuseWidth = 36.0
+    /// How long the fuse's last moments stretch out before the bang.
+    // Why: anticipation, and a beat of stillness before the hit (hq: docs/research/game-feel-and-motivation.md)
+    static let slowMo = 1.4
+    /// How long the tier's name stays after the bang or a new tier, before the heat or the quiet takes over.
+    static let nameFor = 5.0
     private(set) var look = FuseLook()
     /// No motion: Reduce Motion, or a still preview.
     var still = false
@@ -50,16 +56,16 @@ public struct FuseScene {
     // The fuse is material from `head` (its start, where cool feeds it in) to `tail` (its burning tip).
     private var head = Tween(0)
     private var tail = Tween(1)
-    private var boom = Tween(0)   // the burst's size, 0...1
-    private var glyphX = Tween(0) // where the burst sits
-    private var named = Tween(0)  // the tier's name, 0...1
-    private var swap = Tween(1)   // from the last tier's name to this one's
-    private var lastName = ""
-    private var hush = Tween(0)   // 1 when the Boom has quieted down
-    private var heat = Tween(0)
-    private var wide = fuseWidth  // the width to keep until `shrinkAt`, so nothing is cut off mid-move
+    private var boom = Tween(0)  // the symbol's size, 0...1
+    private var named = Tween(0) // the word, 0...1
+    private var hush = Tween(0)  // 1 once the Boom has quieted down
+    private var landing = Tween(1) // the symbol flying from the ember to its place, 0...1
+    private var bangFrom = 0.0
+    private var captions: [(at: Double, caption: Caption)] = [] // what the Boom says, and from when
+    private var nameUntil = 0.0
+    private var wide = fuseWidth // the width to keep until `shrinkAt`, so nothing is cut off mid-move
     private var shrinkAt = 0.0
-    private var litUntil = 0.0    // a fuse growing back whole stays lit until it gets there
+    private var litUntil = 0.0   // a fuse growing back whole stays lit until it gets there
     private var bangAt = 0.0
     private var fizzFrom = 0.0
     private var effects: [Effect] = []
@@ -70,7 +76,8 @@ public struct FuseScene {
         let old = look, before = width(at: t)
         look = new
         if let date = new.bangAt { bangAt = t + date.timeIntervalSinceNow }
-        defer { wide = max(before, Self.width(new)); shrinkAt = t + 1.9 }
+        // Wider at once, narrower only after the move, and never while blown, so the menu bar doesn't jitter.
+        defer { wide = max(before, Self.width(new)); shrinkAt = new.phase == .blown ? .infinity : t + 1.9 }
         guard animated, !still else { return snap(t) }
         switch (old.phase, new.phase) {
         case (.lit, .lit), (.offline, .lit), (.lit, .offline):
@@ -87,15 +94,14 @@ public struct FuseScene {
         case (.fusing, .blown), (.lit, .blown), (.offline, .blown):
             bang(t)
         case (.blown, .blown):
-            if new.tier > old.tier { escalate(t, from: old.name) }
-            else if new.heat > old.heat + 0.04 { flare(t) }
-            else if new.heat < old.heat - 0.04 { effects.append(.puff(t, CGPoint(x: glyphX.to, y: 11))) }
-            heat = Tween(heat.value(t), new.heat, at: t, over: 0.8, Ease.outCubic)
-            if new.quiet != old.quiet {
-                // The name fades first, then the burst settles at the edge.
-                hush = Tween(hush.value(t), new.quiet ? 1 : 0, at: t, over: new.quiet ? 1.8 : 0.25)
-                glyphX = Tween(glyphX.value(t), Self.glyphSpot(new), at: t + (new.quiet ? 0.5 : 0), over: new.quiet ? 1.2 : 0.4, Ease.inOutCubic)
+            // Escalating and calming down are quiet: the word and the symbol swap, and that's all.
+            if new.tier > old.tier {
+                nameUntil = t + Self.nameFor
+                say(Self.named(new), at: t)
+                effects.append(.pop(t, 0.35))
             }
+            say(Self.caption(new), at: max(t, nameUntil))
+            if new.quiet != old.quiet { hush = Tween(hush.value(t), new.quiet ? 1 : 0, at: t, over: 0.8) }
         case (.blown, .lit), (.blown, .offline), (.fusing, .lit), (.fusing, .offline):
             fresh(t, to: new.phase == .lit ? new.left : 1)
         default:
@@ -106,14 +112,15 @@ public struct FuseScene {
     /// Something's happening: draw every frame.
     func busy(at t: Double) -> Bool {
         guard !still else { return false }
-        return [head, tail, boom, glyphX, named, swap, hush, heat].contains { !$0.done(t) } || effects.contains { t < $0.end }
-            || (t < shrinkAt && wide > Self.width(look)) // still has to narrow
+        return [head, tail, boom, named, hush, landing].contains { !$0.done(t) } || effects.contains { t < $0.end }
+            || (captions.last.map { t < $0.at + 0.6 } ?? false) // a swap to come, or under way
+            || (shrinkAt.isFinite && t < shrinkAt && wide > Self.width(look)) // still has to narrow
     }
 
-    /// Something's alive: the flame, the fizz, a loud Boom's smoke. A low frame rate is plenty.
+    /// Something's alive: the flame, the fizz. A low frame rate is plenty.
     func idling(at t: Double) -> Bool {
         guard !still else { return false }
-        return burning(at: t) || look.phase == .fusing || (look.phase == .blown && !look.quiet)
+        return burning(at: t) || look.phase == .fusing
     }
 
     /// How wide the item is at `t`: it widens at once and narrows only once the move is over.
@@ -123,7 +130,7 @@ public struct FuseScene {
 
     static func width(_ look: FuseLook) -> Double {
         guard look.phase == .blown else { return fuseWidth }
-        return look.quiet ? 16 : textWidth(look.name) + 18
+        return max(named(look).width, caption(look).width)
     }
 
     func length(_ t: Double) -> Double { max(0, tail.value(t) - head.value(t)) }
@@ -139,11 +146,11 @@ public struct FuseScene {
         head = Tween(0)
         tail = Tween(look.phase == .lit || look.phase == .offline ? look.left : 0)
         boom = Tween(blown ? 1 : 0)
-        glyphX = Tween(Self.glyphSpot(look))
         named = Tween(blown ? 1 : 0)
-        swap = Tween(1)
         hush = Tween(look.quiet ? 1 : 0)
-        heat = Tween(look.heat)
+        landing = Tween(1)
+        captions = blown ? [(t - 1, Self.caption(look))] : []
+        nameUntil = 0
         effects = []
         litUntil = 0
         fizzFrom = t
@@ -184,55 +191,44 @@ public struct FuseScene {
         }
     }
 
+    /// The one big moment: a flash, a shockwave and a spray of sparks out of the ember, with the symbol thrown out of it.
     private mutating func bang(_ t: Double) {
         let from = point(head.value(t), t)
         head = Tween(head.value(t))
         tail = Tween(head.value(t))
-        boom = Tween(0, 1, at: t, over: 0.5, Ease.outBack)
-        glyphX = Tween(from.x, Self.glyphSpot(look), at: t, over: 0.55, Ease.outBack)
-        named = Tween(0, 1, at: t + 0.12, over: 0.45, Ease.outBack)
-        swap = Tween(1)
+        bangFrom = from.x
+        boom = Tween(0, 1, at: t, over: 0.6, Ease.outBack)
+        landing = Tween(0, 1, at: t, over: 0.55, Ease.outBack)
+        named = Tween(0, 1, at: t + 0.3, over: 0.5, Ease.outCubic)
         hush = Tween(look.quiet ? 1 : 0)
-        heat = Tween(look.heat)
+        nameUntil = t + Self.nameFor
+        captions = [(t - 1, Self.named(look))]
+        say(Self.caption(look), at: nameUntil)
         seed += 1
         effects.append(.flash(t, from))
         effects.append(.ring(t, from))
-        effects.append(.shake(t, 1.2))
-        effects.append(.sparks(t, from, n: 30, seed: seed, speed: 62, spread: 2 * .pi, palette: .fire))
-    }
-
-    private mutating func escalate(_ t: Double, from name: String) {
-        lastName = name
-        swap = Tween(0, 1, at: t, over: 0.5, Ease.outBack)
-        named = Tween(1)
-        hush = Tween(0)
-        let at = CGPoint(x: glyphX.value(t), y: 9) // it goes off where it is, then makes room for the name
-        glyphX = Tween(at.x, Self.glyphSpot(look), at: t, over: 0.32, Ease.outBack)
-        seed += 1
-        effects.append(.pop(t, 0.5))
-        effects.append(.flash(t, at))
-        effects.append(.ring(t, at))
-        effects.append(.shake(t, 1))
-        effects.append(.sparks(t, at, n: 20, seed: seed, speed: 54, spread: 2 * .pi, palette: .fire))
-    }
-
-    private mutating func flare(_ t: Double) {
-        seed += 1
-        effects.append(.pop(t, 0.2))
-        effects.append(.sparks(t, CGPoint(x: glyphX.to, y: 11), n: 7, seed: seed, speed: 32, spread: 1.8, palette: .fire))
+        effects.append(.shake(t, 1.8))
+        effects.append(.sparks(t, from, n: 40, seed: seed, speed: 72, spread: 2 * .pi, palette: .fire))
+        effects.append(.puff(t + 0.25, CGPoint(x: from.x + 3, y: 10)))
     }
 
     /// A new session: the Boom goes, and a fresh fuse feeds in from the start.
     private mutating func fresh(_ t: Double, to left: Double) {
-        if boom.to > 0 { effects = [.puff(t, CGPoint(x: glyphX.value(t), y: 10))] } else { effects = [] }
         boom = Tween(boom.value(t), 0, at: t, over: 0.3, Ease.inCubic)
-        named = Tween(named.value(t) * (1 - hush.value(t)), 0, at: t, over: 0.2)
+        named = Tween(named.value(t), 0, at: t, over: 0.2)
         head = Tween(0, -left, at: t + 0.35, over: 0.6 + 0.9 * left, Ease.outCubic)
         tail = Tween(0)
         hush = Tween(0)
-        heat = Tween(0)
-        effects.append(.spring(t + 0.9 + 0.6 * left, -0.12)) // boing
+        effects = [.spring(t + 0.9 + 0.6 * left, -0.12)] // boing
         litUntil = 0
+    }
+
+    /// From `at`, the Boom says `caption`, if it isn't already about to.
+    private mutating func say(_ caption: Caption, at t: Double) {
+        captions.removeAll { $0.at > t } // a later plan gives way
+        guard captions.last?.caption != caption else { return }
+        captions.append((t, caption))
+        if captions.count > 3 { captions.removeFirst(captions.count - 3) }
     }
 
     // MARK: Drawing
@@ -270,16 +266,25 @@ public struct FuseScene {
         }
     }
 
-    /// Burnt through: the flame sits where the fuse began and fizzes, harder as the bang nears.
+    /// Burnt through: the flame sits where the fuse began and fizzes, swelling as the bang nears, while its last moments
+    /// slow almost to a stop, sparks hanging in the air.
     private func drawFizz(_ ctx: CGContext, _ t: Double) {
-        let at = point(head.value(t), t), urgency = still ? 0 : min(1, max(0, 1 - (bangAt - t) / 2.5))
-        glow(ctx, at, radius: 4 + 3 * urgency, Palette.red, alpha: 0.4 + 0.3 * urgency)
-        flame(ctx, at, size: 4 + 1.6 * urgency, t * (1 + urgency), outer: Palette.red)
+        let at = point(head.value(t), t), slow = fuseClock(t)
+        let urgency = still ? 0 : min(1, max(0, 1 - (bangAt - t) / Self.slowMo))
+        glow(ctx, at, radius: 4 + 5 * urgency, Palette.red, alpha: 0.4 + 0.35 * urgency)
+        flame(ctx, at, size: 4 + 2.4 * urgency, slow, outer: Palette.red)
         guard !still else { return }
-        let hot = { (born: Double) in min(1, max(0, 1 - (self.bangAt - born) / 2.5)) }
-        emit(ctx, from: max(fizzFrom, t - 0.7), to: t, every: 1 / 90.0, rate: { 40 + 70 * hot($0) }, seed: 7, t: t) { born in
-            (at, 24 + 20 * hot(born), 2.6)
+        emit(ctx, from: max(fizzFrom, slow - 0.7), to: slow, every: 1 / 90.0, rate: { _ in 40 + 50 * urgency }, seed: 7, t: slow) { _ in
+            (at, 30, 2.6)
         }
+    }
+
+    /// The fizz's own time: normal, then in the last `slowMo` seconds it slows to a twelfth.
+    private func fuseClock(_ t: Double) -> Double {
+        let begin = bangAt - Self.slowMo
+        guard !still, t > begin else { return t }
+        let u = min(1, (t - begin) / Self.slowMo) // the speed eases from 1 down to 0.08: the integral of that
+        return begin + Self.slowMo * (u - 0.92 * (u * u * u - u * u * u * u / 2))
     }
 
     /// A teardrop flame on `base`, `size` tall, with a yellow heart and a white-hot root.
@@ -305,94 +310,91 @@ public struct FuseScene {
 
     // MARK: The Boom
 
-    /// Where the burst sits: before the name, or alone once it's quiet.
-    static func glyphSpot(_ look: FuseLook) -> Double { look.quiet ? -8 : -(textWidth(look.name) + 9) }
+    /// What the Boom says: an SF Symbol and a word.
+    struct Caption: Equatable {
+        var symbol: String
+        var text: String
+        /// The symbol, a gap and the word, with the menu bar item's own margin.
+        var width: Double { textWidth(text) + 24 }
+        /// Where the symbol sits, before the word.
+        var spot: Double { -(textWidth(text) + 12) }
+    }
 
-    /// The Boom: a small burst and the tier's name. Loud, the burst is orange going red with heat, breathing and smoking
-    /// a little, and the name is red; quiet, the name is gone and the burst is the menu bar's ink, faint and still.
+    static func named(_ look: FuseLook) -> Caption { Caption(symbol: "burst.fill", text: look.name) }
+
+    /// After the name has had its moment: "Still burning" while heat keeps coming, "Cooled off" once it's quiet.
+    static func caption(_ look: FuseLook) -> Caption {
+        if look.heat >= 0.25 { return Caption(symbol: "flame.fill", text: "Still burning") }
+        if look.quiet { return Caption(symbol: "wind", text: "Cooled off") }
+        return named(look)
+    }
+
+    /// The Boom in the menu bar's colour: the symbol flies out of the ember and lands before the word. A new caption
+    /// springs in from below as the old one rises away.
     private func drawBoom(_ ctx: CGContext, _ t: Double, ink: CGColor) {
+        guard let now = captions.last(where: { $0.at <= t }) ?? captions.first else { return }
+        let before = captions.last { $0.at < now.at }?.caption
+        let k = still ? 1 : min(1, max(0, (t - now.at) / 0.45))
         var pop = 1.0, shake = 0.0
         for e in effects {
             if case .pop(let t0, let s) = e, t >= t0 { let x = t - t0; pop *= 1 + s * exp(-6 * x) * sin(17 * x) }
             if case .shake(let t0, let s) = e, t >= t0 { let x = t - t0; shake += s * exp(-9 * x) * sin(70 * x) }
         }
-        let hot = heat.value(t), quiet = hush.value(t), loud = 1 - quiet
-        let at = CGPoint(x: glyphX.value(t) + shake, y: 9)
-        let breathe = still ? 1 : 1 + 0.05 * loud * sin(t * 3.1)
-        let r = 5.4 * boom.value(t) * pop * breathe * (1 + 0.15 * hot)
-        if loud > 0 {
-            ctx.saveGState()
-            ctx.setAlpha(loud)
-            glow(ctx, at, radius: r * (1.4 + 0.5 * hot), Palette.red, alpha: 0.2 + 0.45 * hot)
-            Self.burst(ctx, at, r, Palette.mix(Palette.orange, Palette.red, hot), core: Palette.yellow)
-            ctx.restoreGState()
+        let alpha = 1 - 0.3 * hush.value(t), size = boom.value(t) * pop, word = named.value(t)
+        // Each symbol keeps to its own word; at the bang it flies there out of the ember.
+        let flying = landing.value(t)
+        let x = { (spot: Double) in bangFrom + (spot - bangFrom) * flying + shake }
+        // One after the other: the old caption rises away in the first 40%, the new one springs up from below after it.
+        let leaving = max(0, 1 - k / 0.4), arriving = before == nil ? 1 : max(0, (k - 0.3) / 0.7)
+        if let before, leaving > 0 {
+            Self.symbol(ctx, before.symbol, at: CGPoint(x: x(before.spot), y: 9 + 4 * (1 - leaving)), scale: size * (0.7 + 0.3 * leaving), ink: ink, alpha: alpha * leaving)
+            Self.text(ctx, before.text, y: 4 * (1 - leaving), ink: ink, alpha: alpha * word * leaving)
         }
-        if quiet > 0 {
-            ctx.saveGState()
-            ctx.setAlpha(quiet * 0.55)
-            Self.burst(ctx, at, r, ink, core: ink)
-            ctx.restoreGState()
-        }
-        // The name, popping in, and swapping with a pop for a new tier.
-        let shown = named.value(t) * max(0, 1 - 4 * quiet), s = swap.value(t)
-        if shown > 0.01 {
-            let colour = Palette.mix(Palette.red, Palette.orange, 0.25 * hot)
-            if s < 1 { label(ctx, lastName, colour, alpha: shown * max(0, 1 - 4 * s), scale: 1, shake: shake) }
-            label(ctx, look.name, colour, alpha: shown * min(1, max(0, 2.5 * s - 0.4)), scale: min(named.value(t), 1.2) * (0.5 + 0.5 * s), shake: shake)
-        }
-        // A wisp of smoke now and then while it's loud, once it has settled.
-        let settled = max(boom.start + boom.duration, swap.start + swap.duration) + 0.6
-        guard !still, loud > 0, t > settled else { return }
-        for k in Int((t - 2.2) / 3.2)...Int(t / 3.2) {
-            let born = Double(k) * 3.2 + 1.5 * noise(3, k, 0), age = t - born
-            guard born > settled, age >= 0, age < 2.2 else { continue }
-            smoke(ctx, CGPoint(x: at.x + 1.5 * (noise(3, k, 2) - 0.5), y: at.y + r * 0.6), age / 2.2, ink: ink, alpha: 0.2 * loud)
-        }
+        let rise = before == nil ? 0 : -4 * (1 - Ease.outBack(arriving))
+        Self.symbol(ctx, now.caption.symbol, at: CGPoint(x: x(now.caption.spot), y: 9 + rise), scale: size * (before == nil ? 1 : 0.6 + 0.4 * Ease.outBack(arriving)),
+                    ink: ink, alpha: alpha * min(1, arriving))
+        Self.text(ctx, now.caption.text, y: rise, ink: ink, alpha: alpha * word * min(1, arriving))
     }
 
-    /// The tier's name, right-aligned at the edge, grown from its right end by `scale`.
-    private func label(_ ctx: CGContext, _ text: String, _ colour: CGColor, alpha: Double, scale: Double, shake: Double) {
-        guard alpha > 0.01, scale > 0.05, !text.isEmpty else { return }
-        let line = Self.line(text), width = CTLineGetTypographicBounds(line, nil, nil, nil)
+    /// An SF Symbol in `ink`, centred on `at`.
+    static func symbol(_ ctx: CGContext, _ name: String, at c: CGPoint, scale: Double, ink: CGColor, alpha: Double) {
+        let colour = NSColor(cgColor: ink) ?? .labelColor
+        guard scale > 0.05, alpha > 0.01, let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [colour]))) else { return }
         ctx.saveGState()
-        ctx.translateBy(x: -2 + shake * 0.5, y: 9)
+        ctx.translateBy(x: c.x, y: c.y)
         ctx.scaleBy(x: scale, y: scale)
         ctx.setAlpha(alpha)
-        ctx.setFillColor(colour)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+        image.draw(in: CGRect(x: -image.size.width / 2, y: -image.size.height / 2, width: image.size.width, height: image.size.height))
+        NSGraphicsContext.restoreGraphicsState()
+        ctx.restoreGState()
+    }
+
+    /// A word in the menu bar's own font and `ink`, right-aligned at the edge, raised by `y`.
+    static func text(_ ctx: CGContext, _ text: String, y: Double, ink: CGColor, alpha: Double) {
+        guard alpha > 0.01, !text.isEmpty else { return }
+        let line = Self.line(text), width = CTLineGetTypographicBounds(line, nil, nil, nil)
+        ctx.saveGState()
+        ctx.setAlpha(alpha)
+        ctx.setFillColor(ink)
         ctx.textMatrix = .identity
-        ctx.textPosition = CGPoint(x: -width, y: -3.4)
+        ctx.textPosition = CGPoint(x: -2 - width, y: 9 - font.capHeight / 2 + y)
         CTLineDraw(line, ctx)
         ctx.restoreGState()
     }
 
-    private static let font: NSFont = {
-        let plain = NSFont.systemFont(ofSize: 9.5, weight: .heavy)
-        return plain.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: 9.5) } ?? plain
-    }()
+    private static let font = NSFont.menuBarFont(ofSize: 0)
 
     private static func line(_ text: String) -> CTLine {
         CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [
-            .font: font, .kern: 0.3,
-            NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
+            .font: font, NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
         ]))
     }
 
     static func textWidth(_ text: String) -> Double { CTLineGetTypographicBounds(line(text), nil, nil, nil).rounded(.up) }
-
-    /// Eight rays, long and short, around a dot.
-    static func burst(_ ctx: CGContext, _ c: CGPoint, _ r: Double, _ colour: CGColor, core: CGColor) {
-        ctx.beginPath()
-        for i in 0..<8 {
-            let a = 0.2 + Double(i) * .pi / 4, reach = i % 2 == 0 ? 1 : 0.68
-            ctx.move(to: CGPoint(x: c.x + cos(a) * r * 0.42, y: c.y + sin(a) * r * 0.42))
-            ctx.addLine(to: CGPoint(x: c.x + cos(a) * r * reach, y: c.y + sin(a) * r * reach))
-        }
-        ctx.setStrokeColor(colour)
-        ctx.setLineWidth(1.4)
-        ctx.setLineCap(.round)
-        ctx.strokePath()
-        dot(ctx, c, max(0.8, r * 0.18), core)
-    }
 
     // MARK: Effects
 
@@ -734,10 +736,10 @@ public struct FusePreviews: View {
         ("Last third", FuseLook(left: 0.2)),
         ("Fusing", FuseLook(phase: .fusing, left: 0, bangAt: .now.addingTimeInterval(1))),
         ("Boom", FuseLook(phase: .blown)),
-        ("Boom, heating", FuseLook(phase: .blown, heat: 0.8)),
-        ("Chain reaction", FuseLook(phase: .blown, name: "CHAIN REACTION", tier: 2)),
-        ("Meltdown", FuseLook(phase: .blown, name: "MELTDOWN", tier: 3, heat: 0.5)),
-        ("Quiet", FuseLook(phase: .blown, name: "MELTDOWN", tier: 3, quiet: true)),
+        ("Chain reaction", FuseLook(phase: .blown, name: "Chain reaction", tier: 2)),
+        ("Meltdown", FuseLook(phase: .blown, name: "Meltdown", tier: 3)),
+        ("Still burning", FuseLook(phase: .blown, heat: 0.6)),
+        ("Cooled off", FuseLook(phase: .blown, quiet: true)),
     ]
 
     static let moves: [(String, FuseLook, FuseLook)] = [
@@ -748,11 +750,10 @@ public struct FusePreviews: View {
         ("Close call", FuseLook(left: 0.2), FuseLook(left: 0.55)),
         ("Cooled off", FuseLook(left: 0.8), FuseLook(left: 1)),
         ("Burn out", FuseLook(left: 0.3), FuseLook(phase: .fusing, left: 0, bangAt: .now.addingTimeInterval(30))),
+        ("Slow-mo", FuseLook(phase: .fusing, left: 0, bangAt: .now.addingTimeInterval(30)), FuseLook(phase: .fusing, left: 0, bangAt: .now.addingTimeInterval(1.4))),
         ("Bang", FuseLook(phase: .fusing, left: 0, bangAt: .now), FuseLook(phase: .blown)),
-        ("Heating", FuseLook(phase: .blown, heat: 0.2), FuseLook(phase: .blown, heat: 0.7)),
-        ("Chain reaction", FuseLook(phase: .blown, heat: 0.9), FuseLook(phase: .blown, name: "CHAIN REACTION", tier: 2)),
-        ("Meltdown", FuseLook(phase: .blown, name: "CHAIN REACTION", tier: 2, heat: 0.9), FuseLook(phase: .blown, name: "MELTDOWN", tier: 3)),
-        ("Cooling down", FuseLook(phase: .blown, heat: 0.7), FuseLook(phase: .blown, heat: 0.2)),
+        ("Chain reaction", FuseLook(phase: .blown, heat: 0.9), FuseLook(phase: .blown, name: "Chain reaction", tier: 2)),
+        ("Still burning", FuseLook(phase: .blown, quiet: true), FuseLook(phase: .blown, heat: 0.5, quiet: true)),
         ("Quiets down", FuseLook(phase: .blown), FuseLook(phase: .blown, quiet: true)),
         ("Fresh fuse", FuseLook(phase: .blown, quiet: true), FuseLook()),
     ]
@@ -761,13 +762,12 @@ public struct FusePreviews: View {
     /// A whole session, for the menu bar demo: how long to hold each look. Fusing bangs when its hold is up.
     public static let demo: [(Double, FuseLook)] = [
         (3, FuseLook()), (2.5, FuseLook(left: 0.75, prompt: 1, bite: 0.25)), (2.5, FuseLook(left: 0.5, prompt: 2, bite: 0.25)),
-         (2.5, FuseLook(left: 0.45, prompt: 3, bite: 0.3)), (2.5, FuseLook(left: 0.65, prompt: 4)), (3, FuseLook(left: 0.25, prompt: 5, bite: 0.4)),
-         (3, FuseLook(left: 0.5, prompt: 6)), (0.8, FuseLook(left: 0.2, prompt: 7, bite: 0.3)),
-         (4, FuseLook(phase: .fusing, left: 0)), (3, FuseLook(phase: .blown)),
-         (2.5, FuseLook(phase: .blown, heat: 0.6)), (3, FuseLook(phase: .blown, name: "CHAIN REACTION", tier: 2)),
-         (2.5, FuseLook(phase: .blown, name: "CHAIN REACTION", tier: 2, heat: 0.8)), (3, FuseLook(phase: .blown, name: "MELTDOWN", tier: 3)),
-         (3, FuseLook(phase: .blown, name: "MELTDOWN", tier: 3, heat: 0.1)), (4, FuseLook(phase: .blown, name: "MELTDOWN", tier: 3, quiet: true)),
-         (1, FuseLook())]
+        (2.5, FuseLook(left: 0.45, prompt: 3, bite: 0.3)), (2.5, FuseLook(left: 0.65, prompt: 4)), (3, FuseLook(left: 0.25, prompt: 5, bite: 0.4)),
+        (3, FuseLook(left: 0.5, prompt: 6)), (0.8, FuseLook(left: 0.2, prompt: 7, bite: 0.3)),
+        (5, FuseLook(phase: .fusing, left: 0)), (5.5, FuseLook(phase: .blown)), (3, FuseLook(phase: .blown, heat: 0.6)),
+        (5.5, FuseLook(phase: .blown, name: "Chain reaction", tier: 2)), (3, FuseLook(phase: .blown, name: "Chain reaction", tier: 2, heat: 0.8)),
+        (5.5, FuseLook(phase: .blown, name: "Meltdown", tier: 3)), (3, FuseLook(phase: .blown, name: "Meltdown", tier: 3, quiet: true)),
+        (1, FuseLook())]
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -832,7 +832,7 @@ struct FuseFrame: View {
 struct FusePlayground: View {
     @State private var scene = FuseScene()
     @State private var look = FuseLook()
-    private static let names = ["BOOM", "CHAIN REACTION", "MELTDOWN"]
+    private static let names = ["Boom", "Chain reaction", "Meltdown"]
 
     var body: some View {
         VStack(spacing: 14) {
