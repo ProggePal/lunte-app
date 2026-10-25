@@ -2,7 +2,8 @@ import XCTest
 @testable import LunteCore
 
 final class GameTests: XCTestCase {
-    let t0 = 1_792_670_480.123
+    let t0 = 1_792_670_480.123 // a Thursday, 12:01 UTC
+    let utc = TimeZone(identifier: "UTC")!
 
     /// Events a minute apart from t0, unless `at` gives offsets in seconds.
     func log(_ burns: [Burn], at offsets: [Double]? = nil) -> [Event] {
@@ -14,7 +15,7 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(s.booms.count, 1)
         XCTAssertEqual(s.booms[0].ts, t0)
         XCTAssertEqual(s.booms[0].litBy.count, 1)
-        XCTAssertEqual(s.fuse, 1.5)
+        XCTAssertEqual(s.fuse, 1.75)
         XCTAssertTrue(s.boomed)
         XCTAssertEqual(s.left, 0)
     }
@@ -34,24 +35,39 @@ final class GameTests: XCTestCase {
     func test4OneBoomUntilItCools() {
         let s = Game.replay(log([.lose, .lose, .lose, .lose, .tell]), now: t0 + 300)
         XCTAssertEqual(s.booms.count, 1)
-        XCTAssertEqual(s.fuse, 1.5)
+        XCTAssertEqual(s.fuse, 1.75)
         XCTAssertEqual(s.currentBurns.count, 5)
     }
 
-    func test5CalmSittingShortensFuseNeverBelowOne() {
-        let boom = log([.lose, .lose])
-        XCTAssertEqual(Game.replay(boom, now: t0 + 10_000).fuse, 1.5) // a Booming Sitting doesn't shorten
-        let calm1 = log([.none, .none], at: [4000, 4060])
-        XCTAssertEqual(Game.replay(boom + calm1, now: t0 + 10_000).fuse, 1)
-        let calm2 = log([.tell], at: [20_000])
-        let s = Game.replay(boom + calm1 + calm2, now: t0 + 30_000)
-        XCTAssertEqual(s.fuse, 1)
-        XCTAssertEqual(s.burned, 0)
+    /// Guards docs/why.md#rare-booms: +0.75 per Boom, −0.25 per calm workday (a local day with prompts and no Boom),
+    /// never below 1. A calm Sitting on its own changes nothing.
+    func testThermostatShrinksPerCalmWorkday() {
+        let day = 86_400.0
+        func fuse(_ events: [Event], at now: Double) -> Double { Game.replay(events, now: now, timeZone: utc).fuse }
+        let thursday = log([.lose, .none, .none], at: [0, 4000, 8000]) // a Boom, then two calm Sittings
+        XCTAssertEqual(fuse(thursday, at: t0 + 10_000), 1.75)
+        XCTAssertEqual(fuse(thursday, at: t0 + day), 1.75) // a day that Boomed doesn't shrink it
+        let friday = log([.tell], at: [day])
+        XCTAssertEqual(fuse(thursday + friday, at: t0 + day + 60), 1.75) // Friday isn't over
+        XCTAssertEqual(fuse(thursday + friday, at: t0 + 2 * day), 1.5) // Friday was calm
+        XCTAssertEqual(fuse(thursday + friday, at: t0 + 4 * day), 1.5) // a day without prompts isn't a workday
+        let more = log([.none, .none, .none, .none], at: [2, 3, 4, 5].map { $0 * day })
+        XCTAssertEqual(fuse(thursday + friday + more, at: t0 + 9 * day), 1) // never below 1
+        XCTAssertEqual(fuse(thursday + log([.test], at: [day]), at: t0 + 2 * day), 1.75) // the onboarding phrase isn't work
+
+        // A Sitting keeps its stick past midnight; the next one gets the shorter stick.
+        let midnight = (t0 / day + 2).rounded(.down) * day // Friday to Saturday
+        let late = thursday + friday + [Event(ts: midnight - 600, burn: .lose), Event(ts: midnight + 600, burn: .none, heat: 0.775)]
+        let open = Game.replay(late, now: midnight + 660, timeZone: utc)
+        XCTAssertEqual(open.booms.count, 1) // 1.6 burned: under its 1.75, over the 1.5 to come
+        XCTAssertTrue(open.sittingOpen)
+        XCTAssertEqual(open.fuse, 1.75)
+        XCTAssertEqual(fuse(late + [Event(ts: midnight + 4000, burn: .none)], at: midnight + 4060), 1.5)
     }
 
     func test6SessionClosesAfter30QuietMinutes() {
         let same = Game.replay(log([.lose, .tell], at: [0, 1799]), now: t0 + 1800)
-        XCTAssertEqual(same.fuse, 1.5) // still the Booming Sitting
+        XCTAssertEqual(same.fuse, 1.75) // still the Booming Sitting
         XCTAssertTrue(same.boomed)
         XCTAssertEqual(same.sittings.count, 1)
         let next = Game.replay(log([.lose, .tell], at: [0, 1800]), now: t0 + 1801)
@@ -78,7 +94,7 @@ final class GameTests: XCTestCase {
     }
 
     func test8StableBoomIds() {
-        let events = log([.lose, .lose, .none, .lose, .lose], at: [0, 1, 2, 5000, 5001]) // the second stick is 1.5 long
+        let events = log([.lose, .lose, .none, .lose, .lose], at: [0, 1, 2, 5000, 5001]) // the second stick is 1.75 long
         let a = Game.replay(events, now: t0 + 9000), b = Game.replay(Array(events.reversed()), now: t0 + 9000)
         XCTAssertEqual(a, b)
         XCTAssertEqual(a.booms.map(\.id), [String(Int(t0 * 1000)), String(Int((t0 + 5001) * 1000))])
@@ -103,7 +119,7 @@ final class GameTests: XCTestCase {
         let fresh = Game.replay(events, now: t0 + 3600 + 1800)
         XCTAssertFalse(fresh.boomed)
         XCTAssertEqual(fresh.left, 1)
-        XCTAssertEqual(fresh.fuse, 1.5) // the Boom's growth stays
+        XCTAssertEqual(fresh.fuse, 1.75) // the Boom's growth stays
     }
 
     func test11TheModelBeatsTheWordList() {
@@ -159,7 +175,7 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(Game.tiers[s.booms[0].tier - 1].name, "Meltdown")
         XCTAssertEqual(s.sitting?.boom, s.booms[0])
         XCTAssertEqual(s.sitting?.tier, 3) // capped: two more loses change nothing
-        XCTAssertEqual(s.fuse, 1.5) // one Boom, one growth
+        XCTAssertEqual(s.fuse, 1.75) // one Boom, one growth
         let chain = Game.replay(log([.lose, .lose]), now: t0 + 120)
         XCTAssertEqual(chain.booms.map(\.tier), [2])
         XCTAssertEqual(chain.burned, 0) // and the burn starts from zero again
@@ -222,21 +238,26 @@ final class RestTests: XCTestCase {
         let s = Game.replay([Event(ts: t0, burn: .lose), Event(ts: t0 + 60, burn: .rest)], now: t0 + 61)
         XCTAssertFalse(s.boomed)
         XCTAssertFalse(s.sittingOpen)
-        XCTAssertEqual(s.fuse, 1.5) // the Boom's growth stays
+        XCTAssertEqual(s.fuse, 1.75) // the Boom's growth stays
         XCTAssertEqual(s.left, 1)
     }
 
-    func testPromptAfterRestStartsFreshWithoutAnExtraCalmSitting() {
+    func testPromptAfterRestStartsFresh() {
         let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 60, burn: .rest), Event(ts: t0 + 2000, burn: .tell)]
         let s = Game.replay(events, now: t0 + 2001)
-        XCTAssertEqual(s.fuse, 1.5) // the empty stretch after the rest isn't a calm Sitting
+        XCTAssertEqual(s.fuse, 1.75)
         XCTAssertEqual(s.burned, 0.36, accuracy: 1e-9)
         XCTAssertTrue(s.sittingOpen)
+        XCTAssertEqual(s.sittings.count, 2)
     }
 
-    func testRestOnACalmSittingShortensLikeABreak() {
-        let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 2000, burn: .tell), Event(ts: t0 + 2060, burn: .rest)]
-        XCTAssertEqual(Game.replay(events, now: t0 + 2061).fuse, 1)
+    func testRestOnACalmSittingClosesLikeABreak() {
+        let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 2000, burn: .tell)]
+        let rested = Game.replay(events + [Event(ts: t0 + 2060, burn: .rest)], now: t0 + 2061)
+        let walked = Game.replay(events, now: t0 + 2000 + 1800)
+        XCTAssertEqual(rested.fuse, 1.75) // a calm Sitting doesn't shorten it; a calm workday does
+        XCTAssertEqual(rested.fuse, walked.fuse)
+        XCTAssertEqual(rested.sittings.map(\.isOpen), walked.sittings.map(\.isOpen))
     }
 }
 

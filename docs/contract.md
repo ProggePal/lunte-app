@@ -83,9 +83,9 @@ These cases must pass:
 | `it's still broken!!` | none |
 | `WHY IS IT STILL BROKEN` | none |
 
-## 4. The game: `Game.replay(_:now:) -> GameState`
+## 4. The game: `Game.replay(_:now:timeZone:) -> GameState`
 
-Pure and deterministic, over the whole log. Why each rule is there, with its evidence and a source, is in [why.md](why.md); the code links each rule to its entry with a `// Why:` comment.
+Pure and deterministic, over the whole log. `timeZone` (default `.current`) sets the local calendar days the fuse counts. Why each rule is there, with its evidence and a source, is in [why.md](why.md); the code links each rule to its entry with a `// Why:` comment.
 
 Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fuse and cool mends some of it back, so calm messages barely touch it and hot ones eat it. A burn cools off after 30 minutes. Too much heat at once and it blows: once per Sitting, and more heat after that escalates the same Boom.
 
@@ -93,9 +93,11 @@ Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fu
 - **Cool** (`Event.cool`): the model's cool from the same `heat` line (§8): talking to your agent like a best bud. Nil without a cool model and in older logs, and nil counts as 0. A message counts as cool from `coolPrompt` (1/3, your AI's 1 of 3).
 - **Burn** (`Game.burn(_:at:)`): heat² less `coolMend` (0.5) × cool², where either part below 0.01 counts as 0. So a cool message is negative, and a hot and cool one ("you absolute clown 😂") burns less than the heat alone.
 - **Sitting** (a session in GAME.md): it starts with a message and closes after 30 minutes (`sittingGap`, 1800 s) without one. It has no length cap. The next message after that starts a new Sitting with a fresh stick.
-- **Fuse** is how much heat² the stick takes: 1 (`minFuse`) to start, +0.5 per Boom (`boomGrowth`), −0.5 per Sitting that ends without a Boom, never below 1.
+- **Fuse** is how much heat² the stick takes: 1 (`minFuse`) to start, +0.75 per Boom (`boomGrowth`), −0.25 per calm workday (`calmWorkdayShrink`), never below 1 ([why](why.md#rare-booms)).
+  - A **calm workday** is a local calendar day with at least one prompt and no Boom. `.test` prompts don't make a workday. It shrinks the fuse once it's over, at the first prompt after midnight or at `now`; a day without prompts changes nothing.
+  - A Sitting keeps the stick it started with, even past midnight; the shorter stick comes with the next Sitting.
 - **Burning:** a message whose burn isn't 0 joins what's burning, and `burned` adds each one's burn in turn, never going below 0, so cool can't be banked before the heat. Only messages from the last 30 minutes (`cooling`) count; each drops out when its 30 minutes are up. The messages with heat² of 0.01 or more are the Sitting's `currentBurns`.
-- **Boom:** when `burned >= fuse` in a Sitting that hasn't Boomed. `fuse += 0.5`. A Sitting Booms once and stays blown until it closes.
+- **Boom:** when `burned >= fuse` in a Sitting that hasn't Boomed. `fuse += 0.75`, and `fuse` shows the next stick from then on. A Sitting Booms once and stays blown until it closes.
 - **Tiers:** after the Boom the burn starts again from 0, and each time it fills the stick that blew again, the same Boom goes up a tier: 1 Boom, 2 Chain reaction, 3 Meltdown (`maxTier`; names and emoji in `Game.tiers`). Each escalation's time goes in `Boom.escalations`. It's still one Boom, with the same id, and more heat at Meltdown changes nothing.
 - **Fresh stick after a Boom:** only when the Sitting closes. `freshAt` is the last message + 30 minutes.
 - **Close call:** the stick gets into its last third (`left <= 1/3`, `closeCallLeft`) and climbs back out (`left > 1/3`) without a Boom in between, because a cool message mended it or the burn that put it there cooled off. Cooling is timed when the burn's 30 minutes are up, also after the last message, so walking away from a dip counts. `CloseCall` is `{ts, cooled}`: when it dipped and when it climbed out. One per dip; a dip that Booms, or that a `rest` cuts short, is none.
@@ -128,11 +130,11 @@ Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fu
 - **`Transcript.prompt(sid:ts:)`:** the prompt text for an event, read from Claude Code's own transcript (`~/.claude/projects/*/<sid>.jsonl`, the human prompt within 5 s of `ts`). It's used for display only and never stored. Claude Code deletes old transcripts, so it can come back nil.
 
 Fixtures that must pass (GameTests, SittingTests):
-1. One `lose` on a fresh stick: a Boom, then fuse 1.5.
+1. One `lose` on a fresh stick: a Boom, then fuse 1.75.
 2. `tell`, `tell`: no Boom, 0.72 burned.
 3. `tell`, `lose` Booms, and so do three `tell`s.
 4. More heat after a Boom: still one Boom.
-5. A calm Sitting after a Boom shortens the fuse back, never below 1.
+5. The thermostat: a calm workday shortens the fuse by 0.25, never below 1. A calm Sitting, a day that Boomed, a day without prompts and a day with only `.test` don't; a Sitting keeps its stick past midnight.
 6. A gap of 1,799 s is the same Sitting; a gap of 1,800 s closes it. A message every 20 minutes for 5 hours is one Sitting.
 7. Last event 31 minutes before `now`: `sittingOpen == false`, the whole stick left.
 8. Replaying twice gives the same Boom ids.

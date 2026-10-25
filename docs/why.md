@@ -74,9 +74,9 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Source:** [Dai, Milkman & Riis 2014](https://faculty.wharton.upenn.edu/wp-content/uploads/2014/06/Dai_Fresh_Start_2014_Mgmt_Sci.pdf)
 
 ## rare-booms
-- **Rule:** The fuse is a thermostat: +0.5 per Boom, −0.5 per calm session, never below 1, aiming at 1–2 Booms per person a week.
+- **Rule:** The fuse is a thermostat: +0.75 per Boom, −0.25 per calm workday (a local day with prompts and no Boom), never below 1, aiming at 1–2 Booms per person a week.
 - **Principle:** Habituation. Repeats lose their punch, so a rare bang stays fresh. Don't fight habituation with volume.
-- **Evidence:** strong.
+- **Evidence:** strong. Tuned on a replay of 13 weeks of one player's real prompts. Shrinking per calm session ran at 3.5–4.75 Booms a week over the hot last month, 2–3× the target, since the calm sessions between hot ones shrank it right back. Per calm workday it lands at 1.5 a week over that month, with no week above 2, and at 2 or less with twice the prompts or 25% more heat. Three calm workdays undo a Boom. For calm players the minimum fuse sets the rate, whatever the thermostat.
 - **Source:** [Rankin et al. 2009](https://doi.org/10.1016/j.nlm.2008.09.012)
 
 ## aura-not-work

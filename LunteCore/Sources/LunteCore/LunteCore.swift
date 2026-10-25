@@ -92,7 +92,8 @@ public struct Sitting: Equatable, Sendable {
 }
 
 public struct GameState: Equatable, Sendable {
-    /// How much heat the stick takes: 1 fresh, longer after a Boom, shorter after a calm Sitting.
+    /// How much heat the stick takes: 1 fresh, longer after a Boom, shorter after a calm workday. An open Sitting
+    /// keeps its stick; after a Boom, or with no Sitting open, it's the next one.
     public var fuse: Double
     /// What's burning in this Sitting: heat² from the last 30 minutes, less what cool mended, never below 0. After a
     /// Boom it starts again from 0 and counts toward the next tier.

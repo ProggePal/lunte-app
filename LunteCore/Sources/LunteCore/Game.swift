@@ -5,9 +5,10 @@
 import Foundation
 
 public enum Game {
-    public static let minFuse = 1.0
     // Why: habituation, so Booms stay rare (docs/why.md#rare-booms)
-    public static let boomGrowth = 0.5          // a Boom lengthens the next stick; a calm Sitting shortens it again
+    public static let minFuse = 1.0
+    public static let boomGrowth = 0.75         // a Boom lengthens the next stick
+    public static let calmWorkdayShrink = 0.25  // a local day with prompts and no Boom shortens it again, at midnight
     public static let sittingGap: Double = 1800 // a Sitting closes after 30 minutes without a prompt
     public static let cooling: Double = 1800    // a burn counts for 30 minutes
     // Why: humour as reappraisal (docs/why.md#cool-mends)
@@ -38,8 +39,14 @@ public enum Game {
         return (heat >= spark ? heat : 0) - (cool >= spark ? coolMend * cool : 0)
     }
 
-    public static func replay(_ events: [Event], now: Double) -> GameState {
+    /// `timeZone` sets where the local days that shorten the fuse begin and end.
+    public static func replay(_ events: [Event], now: Double, timeZone: TimeZone = .current) -> GameState {
         var s = GameState(fuse: minFuse, burned: 0, boomed: false, sittingOpen: false, currentBurns: [], booms: [])
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        var thermostat = minFuse    // the next stick; the open Sitting keeps the one it was given
+        var today: Range<Double>?   // the local day of the last prompt
+        var boomedToday = false
         var sitting: Sitting?       // the one being replayed
         var burning: [Event] = []   // what burns or mends, from the last 30 minutes, since the Boom or its last tier
         var stick = minFuse         // the stick that blew: each tier fills it again
@@ -65,11 +72,19 @@ public enum Game {
             }
             s.currentBurns.removeAll { t - $0.ts >= cooling }
         }
-        // A Sitting ends: shorten the fuse unless it Boomed, and lay out a fresh stick.
+        // A local day with prompts and no Boom is a calm workday: once it's over, the next stick is shorter.
+        // Why: habituation, so Booms stay rare (docs/why.md#rare-booms)
+        func dayEnds(by t: Double) {
+            guard let day = today, t >= day.upperBound else { return }
+            if !boomedToday { thermostat = max(minFuse, thermostat - calmWorkdayShrink) }
+            today = nil
+            boomedToday = false
+        }
+        // A Sitting ends: lay out a fresh stick.
         // Why: a fresh start per session, and only at its close (docs/why.md#fresh-start)
         func close() {
             guard var done = sitting else { return }
-            if done.boom == nil { s.fuse = max(minFuse, s.fuse - boomGrowth) }
+            s.fuse = thermostat
             done.isOpen = false
             s.sittings.append(done)
             sitting = nil
@@ -87,14 +102,20 @@ public enum Game {
                 expire(to: open.end + sittingGap)
                 close()
             }
+            dayEnds(by: e.ts)
             if sitting == nil {
                 sitting = Sitting(start: e.ts, end: e.ts)
                 s.sittingStart = e.ts
+                s.fuse = thermostat
             }
             sitting!.end = e.ts
             sitting!.prompts += 1
             expire(to: e.ts)
             guard e.burn != .test else { continue }
+            if today == nil {
+                let start = calendar.startOfDay(for: Date(timeIntervalSince1970: e.ts))
+                today = start.timeIntervalSince1970..<calendar.date(byAdding: .day, value: 1, to: start)!.timeIntervalSince1970
+            }
             let heat = e.heat(at: now)
             sitting!.peakHeat = max(sitting!.peakHeat, heat)
             if (e.cool ?? 0) >= coolPrompt { sitting!.coolPrompts += 1 }
@@ -109,7 +130,9 @@ public enum Game {
             if !s.boomed, s.burned >= s.fuse {
                 stick = s.fuse
                 s.boomed = true
-                s.fuse += boomGrowth
+                boomedToday = true
+                thermostat += boomGrowth
+                s.fuse = thermostat
                 sitting!.boom = Boom(id: String(Int(e.ts * 1000)), ts: e.ts, litBy: s.currentBurns)
                 s.booms.append(sitting!.boom!)
             } else if s.boomed, sitting!.tier < maxTier, s.burned >= stick {
@@ -133,6 +156,8 @@ public enum Game {
             expire(to: open.end + sittingGap)
             close()
         }
+        dayEnds(by: now)
+        if !s.sittingOpen || s.boomed { s.fuse = thermostat }
         return s
     }
 
