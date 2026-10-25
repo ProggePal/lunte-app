@@ -138,7 +138,7 @@ Fixtures that must pass (GameTests, SittingTests):
 2. `tell`, `tell`: no Boom, 0.72 burned.
 3. `tell`, `lose` Booms, and so do three `tell`s.
 4. More heat after a Boom: still one Boom.
-5. The thermostat: a calm workday shortens the fuse by 0.25, never below 1. A calm Sitting, a day that Boomed, a day without prompts and a day with only `.test` don't; a Sitting keeps its stick past midnight.
+5. The thermostat: a calm workday shortens the fuse by 0.25, never below 1. A calm Sitting, a day that Boomed, a day without prompts, a day with only `.test` and a day with only a rest don't; a Sitting keeps its stick past midnight; a 25-hour day across a DST change shrinks it once.
 6. A gap of 1,799 s is the same Sitting; a gap of 1,800 s closes it. A message every 20 minutes for 5 hours is one Sitting.
 7. Last event 31 minutes before `now`: `sittingOpen == false`, the whole stick left.
 8. Replaying twice gives the same Boom ids.
@@ -149,7 +149,7 @@ Fixtures that must pass (GameTests, SittingTests):
 13. `freshAt` is the last message + 30 minutes, and only after a Boom.
 14. Cool mends the fuse, never below 0, and can't be banked; a hot and cool message burns less than the heat alone.
 15. One Boom per Sitting: the burn starts again from 0, and each further half of the stick that blew steps up to Chain reaction and Meltdown, then stops; a whole stick at once steps up two; nothing escalates 30 minutes or more after the Boom.
-16. Close calls: mended by cool, cooled off, or walked away from; none when it Booms; one per dip; and one at exactly a third left.
+16. Close calls: mended by cool, cooled off, or walked away from; none when it Booms or a rest cuts the dip short; one per dip; and one at exactly a third left.
 17. Sitting summaries: start, end, prompts, peak heat, cool prompts, the Boom, open or closed.
 18. Each session line template, its variants and the recovery.
 19. Aura: one award per Sitting (a close call 3, a cool Sitting 1, never both), a cool point at most once per local day, an open Sitting, and a Boom.
@@ -183,7 +183,7 @@ Base URL comes from Info.plist `LunteRelayURL`, overridable with `defaults write
 **Basics.** A menu bar-only app (`LSUIElement`) with bundle id `no.panter.lunte`, for macOS 14 and later. The menu bar label is 🧨 and three tiny pieces of what's left (orange at half, red near the end), the tier's emoji and `BOOM` for 10 minutes after a Boom or its last escalation, then a faint grey 💥 while still blown, or `🧨?` before it's connected.
 
 **Watching the log.** It watches `events.jsonl` with a file-system source and a 1 s debounce, reopening the file if it's created or replaced. On every change it replays the log. For a new Boom:
-- **Not yet announced and less than 10 minutes old:** light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from the menu bar icon and the icon shows `🧨✨`. In the last second the screen dims, and unless the sound is off, a soft fizz (0.4 s of synthesised noise) starts. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` right after the fizz, both capped at 0.6 of the Mac's volume. At that moment, sound or not, it posts the Boom to the relay if you're in a Club, so no Club Mac hears of it before the bang. If the Mac slept through the wait (more than 2 s late by the wall clock, `Blast.lateBy`), there's no dim, sound, burst or post; the Boom stays in the log and on its card. With Reduce Motion there's only the wait and the sound. The onboarding test and "Test your Boom" burn for 3 s.
+- **Not yet announced and less than 10 minutes old:** light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from the menu bar icon and the icon shows `🧨✨`. In the last second the screen dims, and unless the sound is off, a soft fizz (0.4 s of synthesised noise) starts. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` right after the fizz, both capped at 0.6 of the Mac's volume. At that moment, sound or not, it posts the Boom to the relay if you're in a Club, so no Club Mac hears of it before the bang. If the Mac slept through the wait (more than 2 s late by the wall clock, `Blast.lateBy`), there's no dim, sound, burst or post; the Boom stays in the log and on its card. With Reduce Motion there's only the wait and the sound. The onboarding test burns for 3 s.
 - **Older:** mark it announced silently.
 
 A Boom counts as announced at its bang, or when the Mac slept through it. So one whose fuse is still burning when Lunte quits, crashes or updates lights again, with a new wait, when it opens, if it's still under 10 minutes old.

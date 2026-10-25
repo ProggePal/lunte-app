@@ -82,7 +82,7 @@ final class SittingTests: XCTestCase {
         XCTAssertEqual(Game.aura(first(long)), Game.coolSittingAura)
     }
 
-    /// Vibes never go down: an open Sitting's cool point waits for the close, and a later Boom keeps the close call.
+    /// Aura never goes down: an open Sitting's cool point waits for the close, and a later Boom keeps the close call.
     func testAuraNeverGoesDown() {
         let calm = (0..<5).map { at(Double($0)) }
         XCTAssertEqual(Game.aura(first(calm, now: t0 + 600)), 0) // still open

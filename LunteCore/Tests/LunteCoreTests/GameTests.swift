@@ -32,7 +32,7 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(Game.replay(log([.tell, .tell, .tell]), now: t0 + 180).booms.count, 1) // 1.08 of a 1.0 fuse
     }
 
-    func test4OneBoomUntilItCools() {
+    func test4OneBoomUntilTheSittingCloses() {
         let s = Game.replay(log([.lose, .lose, .lose, .lose, .tell]), now: t0 + 300)
         XCTAssertEqual(s.booms.count, 1)
         XCTAssertEqual(s.fuse, 1.75)
@@ -63,6 +63,23 @@ final class GameTests: XCTestCase {
         XCTAssertTrue(open.sittingOpen)
         XCTAssertEqual(open.fuse, 1.75)
         XCTAssertEqual(fuse(late + [Event(ts: midnight + 4000, burn: .none)], at: midnight + 4060), 1.5)
+    }
+
+    /// Guards docs/why.md#rare-booms: a calm workday is a local day, however long. In Europe/Oslo the clocks go back
+    /// on Sunday 25 Oct 2026, so that day has 25 hours, and it still shortens the fuse once.
+    func testThermostatShrinksOncePerCalmDayAcrossDST() {
+        let oslo = TimeZone(identifier: "Europe/Oslo")!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = oslo
+        func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Double {
+            calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!.timeIntervalSince1970
+        }
+        XCTAssertEqual(at(26, 0) - at(25, 0), 25 * 3600) // the clocks go back an hour
+        let events = [Event(ts: at(24, 12), burn: .lose), // Saturday Booms: 1.75
+                      Event(ts: at(25, 0, 30), burn: .none), Event(ts: at(25, 23, 15), burn: .none)] // a calm Sunday, end to end
+        func fuse(at now: Double) -> Double { Game.replay(events, now: now, timeZone: oslo).fuse }
+        XCTAssertEqual(fuse(at: at(25, 23, 50)), 1.75) // Sunday isn't over, though 24 hours of it have gone
+        XCTAssertEqual(fuse(at: at(26, 23, 30)), 1.5) // one shrink for Sunday; Monday had no prompts
     }
 
     func test6SessionClosesAfter30QuietMinutes() {
@@ -294,6 +311,23 @@ final class RestTests: XCTestCase {
         XCTAssertEqual(rested.fuse, 1.75) // a calm Sitting doesn't shorten it; a calm workday does
         XCTAssertEqual(rested.fuse, walked.fuse)
         XCTAssertEqual(rested.sittings.map(\.isOpen), walked.sittings.map(\.isOpen))
+    }
+
+    /// Guards docs/why.md#rare-booms: a rest isn't a prompt, so a day with only a rest in it isn't a calm workday.
+    func testARestIsntAWorkday() {
+        let day = 86_400.0, utc = TimeZone(identifier: "UTC")!
+        let boom = [Event(ts: t0, burn: .lose)] // Thursday Booms: 1.75
+        XCTAssertEqual(Game.replay(boom + [Event(ts: t0 + day, burn: .rest)], now: t0 + 3 * day, timeZone: utc).fuse, 1.75)
+        XCTAssertEqual(Game.replay(boom + [Event(ts: t0 + day, burn: .none)], now: t0 + 3 * day, timeZone: utc).fuse, 1.5) // a prompt makes Friday one
+    }
+
+    /// Guards docs/why.md#close-call: a dip that a rest cuts short never climbed back out, so it's no close call.
+    func testADipCutShortByARestIsNoCloseCall() {
+        let dip = [Event(ts: t0, burn: .tell), Event(ts: t0 + 60, burn: .tell)] // 0.28 of the stick left: the last third
+        let rested = Game.replay(dip + [Event(ts: t0 + 120, burn: .rest)], now: t0 + 10_000)
+        XCTAssertEqual(rested.closeCalls, [])
+        XCTAssertEqual(rested.sittings.map(\.aura), [0])
+        XCTAssertEqual(Game.replay(dip, now: t0 + 10_000).closeCalls.count, 1) // walked away instead: a close call
     }
 }
 
