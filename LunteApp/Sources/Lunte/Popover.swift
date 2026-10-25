@@ -31,6 +31,7 @@ struct PopoverView: View {
                 }
                 if let summary = model.summary, model.state.sitting == nil {
                     SummaryCard(title: "Your last session", sitting: summary, events: model.messages(in: summary), club: model.clubLabel)
+                        .onAppear(perform: model.summaryShown)
                 } else {
                     MessageSlot(model: model, event: hovered.flatMap { ts in model.session.first { $0.ts == ts } } ?? fallback(boom), boom: boom, vibe: vibeHovered ? model.vibe : nil)
                     if let boom { JustifyRow(model: model, boom: boom) }

@@ -27,7 +27,7 @@ final class GameModel: ObservableObject {
     @Published private(set) var session: [Event] = []
     /// Closed sessions with a message of yours in them (not just the onboarding test), oldest first. On this Mac only.
     @Published private(set) var past: [Sitting] = []
-    /// The last session's summary, from the first time the popover opens after it closed until the popover closes.
+    /// The last session's summary, each time the popover opens after it closed, until its card has shown once.
     @Published private(set) var summary: Sitting?
     /// The start of the last session summarised, so each summary shows once.
     private var summarised = defaults.double(forKey: "Summarised")
@@ -159,12 +159,18 @@ final class GameModel: ObservableObject {
 
     // MARK: Sessions
 
-    /// The popover opened: the first time after a session closed, and before the next one starts, its summary shows.
+    /// The popover opened: after a session closed, and before the next one starts, its summary shows.
     // Why: the peak-end rule; the summary waits for your next look (docs/why.md#summary-next-open)
     func popoverOpened() {
         guard onboarded, state.sitting == nil, let last = past.last, last.start > summarised else { return }
         summary = last
-        summarised = last.start
+    }
+
+    /// The summary card is on screen, so it's used up. Not before: another screen, like the Heat Detector's, can fill
+    /// the popover instead.
+    func summaryShown() {
+        guard let summary else { return }
+        summarised = summary.start
         defaults.set(summarised, forKey: "Summarised")
     }
 
