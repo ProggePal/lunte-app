@@ -102,3 +102,9 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Principle:** Persistence. Game feel leaves traces, such as skid marks, trails and debris, that encode the past in what's on screen now, so you can rebuild what happened after you missed it.
 - **Evidence:** weak: craft knowledge, collected in a survey.
 - **Source:** [Pichlmair & Johansen 2020](https://arxiv.org/abs/2011.09201)
+
+## quiet-boom
+- **Rule:** After a Boom, the menu bar shows the tier and BOOM for about 10 minutes from the Boom or its last escalation, then quiets down to a faint grey 💥 until the fresh stick. The popover still says you're blown.
+- **Principle:** Calm technology. A tool should live in the periphery and move to the centre only when it matters. You stay blown until 30 quiet minutes, often well over an hour, and a 💥 that shouts all that time is noise in the corner of your eye.
+- **Evidence:** weak: a design frame, not an experiment.
+- **Source:** [Weiser & Brown 1995](https://calmtech.com/papers/designing-calm-technology)

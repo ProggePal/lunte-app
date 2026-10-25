@@ -523,20 +523,24 @@ func fuseColor(_ left: Double) -> Color { left <= 0.2 ? .red : left <= 0.5 ? .or
 func piecesLeft(_ left: Double) -> Double { (left * 3 - 1e-9).rounded(.up) }
 
 /// The menu bar icon: 🧨 and the fuse as three tiny pieces, orange past half and red near the end; 🧨✨ while a Boom's
-/// fuse burns; 💥 BOOM after.
+/// fuse burns; the tier's emoji and BOOM after, until it quiets down to a faint grey 💥.
 @MainActor
-func menuBarImage(_ state: GameState, connected: Bool, fusing: Bool, blown: Bool) -> NSImage {
+func menuBarImage(_ state: GameState, connected: Bool, fusing: Bool, blown: Bool, quiet: Bool) -> NSImage {
     // ponytail: follows the system appearance at render time; re-renders on the next state change after a switch
     let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     let view = HStack(spacing: 2) {
         let boomed = (state.boomed || blown) && !fusing
-        Text(boomed ? "💥" : "🧨").font(.system(size: 13))
+        let blast = state.boomed ? state.booms.last.map { tier($0.tier).emoji } ?? "💥" : "💥" // the test Boom has no tier
+        // Why: calm technology; after a while the Boom steps back into the periphery (docs/why.md#quiet-boom)
+        let hush = boomed && quiet
+        Text(!boomed ? "🧨" : hush ? "💥" : blast).font(.system(size: 13))
+            .grayscale(hush ? 1 : 0).opacity(hush ? 0.45 : 1)
         if !connected {
             Text("?").font(.system(size: 11, weight: .bold))
         } else if fusing {
             Text("✨").font(.system(size: 11))
         } else if boomed {
-            Text("BOOM").font(.system(size: 10, weight: .heavy)).foregroundStyle(.red)
+            if !hush { Text("BOOM").font(.system(size: 10, weight: .heavy)).foregroundStyle(.red) }
         } else {
             ForEach(0..<3, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1)
