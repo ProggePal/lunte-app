@@ -2,6 +2,8 @@
 
 One entry per game rule: the rule, the principle behind it, how strong the evidence is, and one public source. The code points here with `// Why:` comments, and the tests that guard a rule are named after it, so a change that drifts from the reason trips one. Change a rule's entry here before you change the rule.
 
+The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those are craft, tuned by eye frame by frame, so they also say what was **tried** and dropped. Don't bring one of those back without saying why it would land differently now, and render the fuse before and after any change (`scripts/render-fuse.sh`).
+
 **Evidence:**
 - **Strong:** many studies, or a meta-analysis, agree.
 - **Mixed:** the findings are real, but samples are small, replications failed, or big conditions apply.
@@ -110,10 +112,45 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Source:** [Pichlmair & Johansen 2020](https://arxiv.org/abs/2011.09201)
 
 ## quiet-boom
-- **Rule:** After a Boom, the menu bar shows the tier and BOOM for about 10 minutes from the Boom or its last escalation, then quiets down to a faint grey 💥 until the fresh stick. The popover still says you're blown.
-- **Principle:** Calm technology. A tool should live in the periphery and move to the centre only when it matters. You stay blown until 30 quiet minutes, often well over an hour, and a 💥 that shouts all that time is noise in the corner of your eye.
+- **Rule:** After the bang the menu bar has no fire: an SF Symbol and a word, in the menu bar's own colour and font. First the tier's name, for at least 5 s, then "Still burning" while the heat keeps coming, or "Cooled off" 10 minutes after the Boom or its last step up, until the fresh stick. Escalating and calming down only swap the words, with a little spring, and they're still in between. The popover still says you're blown.
+- **Principle:** Calm technology. A tool should live in the periphery and move to the centre only when it matters. You stay blown until 30 quiet minutes, often well over an hour, and a Boom that shouts all that time is noise in the corner of your eye. Keeping colour for the fuse also makes its red and green worth more.
 - **Evidence:** weak: a design frame, not an experiment.
+- **Tried:** red text; a big BOOM that stayed; a new blast for each tier; words that moved all the time. Each one kept shouting for the whole blown hour.
 - **Source:** [Weiser & Brown 1995](https://calmtech.com/papers/designing-calm-technology)
+
+## just-the-fuse
+- **Rule:** The menu bar item is a fuse and nothing else: one line in three coils, fixed at its start on the left, a little uneven. Like a spring, the coils sit tight when there's plenty left and spread as it runs out, so you can tell the length from the shape at a glance. No stick, no numbers, no cartoon.
+- **Principle:** Character from physics. Motion that follows physical rules, such as springs, easing and squash and stretch, reads as alive and makes a thing feel like an object rather than a picture.
+- **Evidence:** weak: craft.
+- **Tried:** a dynamite stick with cartoon bursts, which looked like clip art; more coils as the fuse grows back (it stays three and squeezes tighter instead); perfectly even coils.
+- **Source:** [Pichlmair & Johansen 2020](https://arxiv.org/abs/2011.09201)
+
+## still-between-prompts
+- **Rule:** The fuse moves only when a prompt does something. While the model rates a prompt, a faint breeze runs through the coils. Then the result shows at once: nothing, a burn, new fuse, or both. A burn's flame burns on for a few seconds, longer the nearer the end, and goes out in a puff. In between, it's still.
+- **Principle:** Motion that starts grabs attention, so motion in the corner of your eye should mean something just happened. A fuse that always moves teaches you to ignore it. The breeze answers you at once ([two-clocks](#two-clocks)) without giving the verdict away.
+- **Evidence:** strong that the onset of motion captures attention. The breeze and the flame's timing are craft.
+- **Tried:** a flame that burnt all the time.
+- **Source:** [Abrams & Christ 2003](https://pubmed.ncbi.nlm.nih.gov/12930472/)
+
+## burn-tip-feed-start
+- **Rule:** Heat burns from the tip, right to left, in fire colours. Cool feeds new fuse in at the start, from the left, in green. A prompt that's hot and cool at once does both, and you see both.
+- **Principle:** A clear link from act to outcome. Amplification that blurred that link lowered players' motivation, so each cause gets its own end of the fuse.
+- **Evidence:** mixed.
+- **Source:** [Kao et al. 2024](https://spiral.imperial.ac.uk/entities/publication/253c32f5-d124-4a23-88b5-9aaaf114608d)
+
+## close-call-crawl
+- **Rule:** A burn into the last third slows to a crawl that stops and starts, and the screen dims a little, darker nearer the end. The dim lifts when the fuse grows back or the flame goes out. The Boom starts exactly the same way, so until the end you can't tell which it is. The crawl only ever shows the real fuse ([never-fake-reactions](#never-fake-reactions)).
+- **Principle:** Curiosity is the gap between what you know and what you want to know, and suspense lives in the doubt. Curiosity drove enjoyment more than anything else in the 1,699-player juice study.
+- **Evidence:** mixed.
+- **Tried:** a Boom you could see coming: the fuse just ran out, so there was no doubt left.
+- **Source:** [Loewenstein 1994](https://doi.org/10.1037/0033-2909.116.1.75)
+
+## boom-in-the-dark
+- **Rule:** The Boom's own burn starts slow and races to the end, fastest last, in 1.6 s. As it empties, the screen goes dark: plain black, under the menu bar, so the fuse stays bright. Then 1–6 s of silence ([two-clocks](#two-clocks)), and it blows into the stillness: time starts from a near stop and eases back up over 0.9 s while the blast opens out, with real but faint smoke. Then just the symbol and the word ([quiet-boom](#quiet-boom)). It's the one loud moment, so it's big.
+- **Principle:** Hitstop and anticipation. A freeze on impact gives the eye time to feel the weight, and a wind-up points attention at what's coming.
+- **Evidence:** weak: craft.
+- **Tried:** a red tint, which read as an alarm (dark reads as suspense); a comic "BOOM!" word on screen; a wait of up to a minute, then up to 12 s, which felt like waiting rather than suspense; thick smoke.
+- **Source:** [Sakurai on hitstop](https://sourcegaming.info/2015/11/11/thoughts-on-hitstop-sakurais-famitsu-column-vol-490-1/) (fan translation)
 
 ## summary-next-open
 - **Rule:** When a session closes, its summary waits for the next time you open the popover: how long it ran, its heat line, its one line, and its aura last. It shows once, then goes away, and History keeps it. Nothing pops up when a session closes.

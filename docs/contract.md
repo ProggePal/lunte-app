@@ -254,7 +254,7 @@ A new `test` event (less than 10 minutes old, not yet announced) lights a fuse w
 
 A dev build is signed ad-hoc. `--release` signs with `Developer ID Application: Panter AS (BF4LY62Q92)` and the hardened runtime. Notarizing and the appcast are a separate release step.
 
-**The fuse, while working on it.** A debug build started with `open dist/Lunte.app --args -FuseDemo YES` plays a whole session on the menu bar fuse in a loop, the screen's show included but without the sound, instead of the game's. `scripts/render-fuse.sh` draws it to `dist/fuse.png` (every state and move, frame by frame) and `dist/fuse.gif` (that session), with the same code as the menu bar. In Xcode, open `LunteApp/Package.swift`, pick the `FuseKit` scheme and open `MenuFuse.swift` for the same previews, plus a live playground.
+**The fuse, while working on it.** A debug build started with `open dist/Lunte.app --args -FuseDemo YES` plays a whole session on the menu bar fuse in a loop, the screen's show included but without the sound, instead of the game's. `scripts/render-fuse.sh` draws it to `dist/fuse.png` (every state and move, frame by frame) and `dist/fuse.gif` (that session), with the same code as the menu bar. `scripts/render-fuse.sh "Close call" Bang` draws just those moves from `FusePreviews.moves`, magnified, to `dist/moves.png`. In Xcode, open `LunteApp/Package.swift`, pick the `FuseKit` scheme and open `MenuFuse.swift` for the same previews, plus a live playground.
 
 ## 8. Your fuse
 

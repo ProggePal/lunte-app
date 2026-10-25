@@ -137,11 +137,12 @@ final class GameModel: ObservableObject {
         return Date().timeIntervalSince1970 - last.cooled < Self.heldFor
     }
 
-    /// How long the menu bar says BOOM after the Boom or its last escalation, before it quiets down.
+    /// How long the menu bar keeps the tier's name, or "Still burning", after the Boom or its last escalation, before it
+    /// says "Cooled off".
     // Why: calm technology; a Boom shouts once, then steps back (docs/why.md#quiet-boom)
     static let loudFor: Double = 600
 
-    /// Blown for a while: the menu bar's 💥 has quieted down, while the popover still says you're blown. The 60-second
+    /// Blown for a while: the menu bar says "Cooled off", while the popover still says you're blown. The 60-second
     /// reload quiets it on time.
     var boomQuiet: Bool {
         guard state.boomed, let boom = state.booms.last else { return false }

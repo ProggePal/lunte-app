@@ -6,7 +6,7 @@ import QuartzCore
 /// already taken the screen dark (`FuseView`), and it's silent. Then the fizz, and it blows in the stillness: a flash
 /// and the sound, then time eases back up as the blast opens out, a bloom of light, two shockwaves, sparks, embers and
 /// smoke, while the light comes back. Clicks pass through. With Reduce Motion it's just the wait.
-// Why: a beat of stillness on impact (hq: docs/research/game-feel-and-motivation.md, hitstop)
+// Why: hitstop, a beat of stillness on impact (docs/why.md#boom-in-the-dark)
 @MainActor
 enum Blast {
     private static var panel: NSPanel?
