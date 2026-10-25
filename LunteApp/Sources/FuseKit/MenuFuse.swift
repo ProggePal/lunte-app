@@ -50,8 +50,13 @@ public struct FuseScene {
     /// How long before the bang the show starts, here and on screen, and how long of it is slow motion.
     // Why: anticipation, and a beat of stillness before the hit (hq: docs/research/game-feel-and-motivation.md)
     public static let takeover = 3.0, slowMo = 1.4
-    /// How long after the bang the word comes in.
-    static let calmAfter = 0.35
+    /// How long the nothing lasts, after the flame dies and before the show.
+    static let beat = 1.8
+    /// How long after the bang the word comes in, once the smoke has cleared.
+    static let calmAfter = 2.2
+    /// Around the bang, time stops `freeze` seconds before it and takes `speedUp` seconds after it to come back, as on
+    /// screen (`Blast.speed`).
+    static let freeze = 0.3, speedUp = 0.9
     /// How long the tier's name stays after the bang or a new tier, before the heat or the quiet takes over.
     static let nameFor = 5.0
     /// How long the flame burns on after a burn: with plenty left, past half, in the last third.
@@ -98,8 +103,8 @@ public struct FuseScene {
             if bite > 0.001 { burn(bite, t) }
             if mend > 0.001 { grow(mend, t, held: old.left <= 1.0 / 3 && new.left > 1.0 / 3) }
         case (.lit, .fusing), (.offline, .fusing):
-            // It crawls all the way down, the flame dies at the start, and then nothing, until the show.
-            let over = burn(tail.to - head.to, t, within: max(0.8, bangAt - Self.takeover - 0.8 - t))
+            // It crawls all the way down, as long as the wait allows, the flame dies at the start, and then nothing.
+            let over = burn(tail.to - head.to, t, lasting: max(0.8, bangAt - Self.takeover - Self.beat - t))
             douse(at: t + over + 0.05, t)
         case (.fusing, .blown), (.lit, .blown), (.offline, .blown):
             bang(t)
@@ -174,16 +179,16 @@ public struct FuseScene {
         litUntil = 0
     }
 
-    /// Burns `bite` off the tip, in at most `within` seconds. Returns how long it takes: a bigger bite burns longer, and
-    /// what's in the last third crawls, stopping and starting.
+    /// Burns `bite` off the tip, over `lasting` seconds if given. Returns how long it takes: a bigger bite burns longer,
+    /// and what's in the last third crawls, stopping and starting, more often the longer it takes.
     @discardableResult
-    private mutating func burn(_ bite: Double, _ t: Double, within: Double = .infinity) -> Double {
+    private mutating func burn(_ bite: Double, _ t: Double, lasting: Double? = nil) -> Double {
         let from = tail.value(t), to = tail.to - bite, edge = head.to + 1.0 / 3
         let fast = max(0, from - max(to, edge)), crawl = max(0, min(from, edge) - to)
         let quick = fast > 0 ? 0.45 + 0.75 * fast : 0
-        let over = max(0.3, min(within, quick + (crawl > 0 ? 1.2 + 9 * crawl : 0)))
+        let over = max(0.3, lasting ?? quick + (crawl > 0 ? 1.2 + 9 * crawl : 0))
         let split = fast / max(1e-9, fast + crawl), timeSplit = crawl > 0 ? min(quick, over * 0.3) / over : 1
-        let stops = max(1, Int((crawl * 9).rounded()))
+        let stops = max(1, Int(((over - quick) / 1.5).rounded()))
         tail = Tween(from, to, at: t, over: over) { x in
             guard x >= timeSplit, timeSplit < 1 else { return split * Ease.outCubic(x / timeSplit) }
             return split + (1 - split) * Ease.hesitate((x - timeSplit) / (1 - timeSplit), stops: stops)
@@ -243,7 +248,9 @@ public struct FuseScene {
         effects.append(.ring(t, from))
         effects.append(.shake(t, 1.8))
         effects.append(.sparks(t, from, n: 40, seed: seed, speed: 72, spread: 2 * .pi, palette: .fire))
-        effects.append(.puff(t + 0.1, CGPoint(x: from.x + 2, y: 10)))
+        effects.append(.puff(t + 0.05, CGPoint(x: from.x + 2, y: 10)))
+        effects.append(.puff(t + 0.15, CGPoint(x: from.x - 3, y: 8)))
+        effects.append(.puff(t + 0.25, CGPoint(x: from.x + 7, y: 9)))
         effects.append(.pop(calm, 0.4))
     }
 
@@ -278,12 +285,19 @@ public struct FuseScene {
         if look.phase == .offline { ctx.setAlpha(0.4) }
         let from = head.value(t), to = tail.value(t)
         if to - from > 0.002 { stroke(ctx, from, to, t, ink, width: 1.5) }
-        for e in effects { drawUnder(e, ctx, t, ink: ink) }
+        for e in effects { drawUnder(e, ctx, clock(e, t), ink: ink) }
         if burning(at: t) { drawFlame(ctx, t) }
         if look.phase == .fusing && t >= bangAt - Self.takeover { drawShow(ctx, t) }
         if boom.value(t) > 0.01 { drawBoom(ctx, t, ink: ink) }
-        for e in effects { drawOver(e, ctx, t, ink: ink) }
+        for e in effects { drawOver(e, ctx, clock(e, t), ink: ink) }
         ctx.restoreGState()
+    }
+
+    /// The time `e` is drawn at: the bang's own effects start in the stillness and ease back up to speed.
+    private func clock(_ e: Effect, _ t: Double) -> Double {
+        guard !still, abs(e.start - bangT) < 0.2, t > bangT else { return t }
+        let u = min(1, (t - bangT) / Self.speedUp) // the speed eases up from 0.05 to 1: the integral of that
+        return bangT + Self.speedUp * (0.05 * u + 0.95 * u * u * u / 3) + max(0, t - bangT - Self.speedUp)
     }
 
     /// The lit tip: a flame that flickers and sways, amber with plenty left, orange past half, red and nervous in the last
@@ -323,12 +337,12 @@ public struct FuseScene {
              seed: 7, t: slow) { _ in (at, 42, 2 * .pi) }
     }
 
-    /// The show's own time: normal, then in the last `slowMo` seconds it slows to a twelfth.
+    /// The show's own time: normal, then easing down to a near stop `freeze` seconds before the bang, as on screen.
     private func showClock(_ t: Double) -> Double {
-        let begin = bangAt - Self.slowMo
+        let begin = bangAt - Self.slowMo, slowing = Self.slowMo - Self.freeze
         guard !still, t > begin else { return t }
-        let u = min(1, (t - begin) / Self.slowMo) // the speed eases from 1 down to 0.08: the integral of that
-        return begin + Self.slowMo * (u - 0.92 * (u * u * u - u * u * u * u / 2))
+        let u = min(1, (t - begin) / slowing) // the speed eases from 1 down to 0.03: the integral of that
+        return begin + slowing * (u - 0.97 * (u * u * u - u * u * u * u / 2)) + 0.03 * max(0, t - begin - slowing)
     }
 
     /// A teardrop flame on `base`, `size` tall, with a yellow heart and a white-hot root.
@@ -786,6 +800,13 @@ public final class FuseView: NSView {
     }
 
     @objc private func tick() { needsDisplay = true }
+
+    /// Where the fuse begins on screen, where it fizzes and blows, and its screen; nil when it isn't showing.
+    public func startOnScreen() -> (NSScreen, CGPoint)? {
+        guard let window, window.isVisible, let screen = window.screen else { return nil }
+        let p = CGPoint(x: bounds.width - Self.margin + FuseScene.start, y: ((bounds.height - 18) / 2).rounded() + 9.5)
+        return (screen, window.convertPoint(toScreen: convert(p, to: nil)))
+    }
 
     public override func hitTest(_ point: NSPoint) -> NSView? { nil }
     public override func viewDidChangeEffectiveAppearance() { needsDisplay = true }

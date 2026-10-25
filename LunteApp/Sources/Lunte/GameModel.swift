@@ -376,9 +376,10 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// A random wait between your outburst and the bang, so the room has to guess who it was.
+    /// A random wait between your outburst and the bang, so the room has to guess who it was. The fuse crawls down
+    /// through most of it, and the rest is a short beat of nothing before the show.
     // Why: your own feedback is instant, the room's Boom is delayed (docs/why.md#two-clocks)
-    static let boomDelay = 5.0...60.0
+    static let boomDelay = 10.0...25.0
 
     /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the
     /// bang, with `sound`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
@@ -502,7 +503,7 @@ final class GameModel: ObservableObject {
         defaults.set(true, forKey: "Connected")
         defaults.set(Array(announced), forKey: "Announced")
         guard fresh.contains(where: { now - $0.ts < 600 }) else { return }
-        light(3, sound: soundOn, test: true)
+        light(7, sound: soundOn, test: true) // the whole show: a crawl, the nothing, the bang
     }
 
     /// Onboarding: you own the test Boom, and 10 seconds later you get your first fresh stick. Kept on this Mac only.

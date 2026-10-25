@@ -34,7 +34,7 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         fuse.autoresizingMask = [.width, .height]
         fuse.resize = { [item] in item?.length = $0 }
         button.addSubview(fuse)
-        Blast.icon = button
+        Blast.icon = fuse
         button.target = self
         button.action = #selector(toggle)
         let host = NSHostingController(rootView: PopoverView(model: model, updater: updater))
