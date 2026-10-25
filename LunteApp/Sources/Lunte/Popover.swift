@@ -235,22 +235,26 @@ private struct HeldLine: View {
     }
 }
 
-/// After a Boom: the 💥, when, and one timer. Once you've justified, tapping the 💥 is the hurry easter egg.
+/// After a Boom: its tier (💥 Boom, 💥💥 Chain reaction, ☢️ Meltdown), when it last went off, and one timer to the
+/// fresh stick. Once you've justified, tapping the emoji is the hurry easter egg.
+// Why: venting feeds anger, so a tier changes the name and emoji, never the volume (docs/why.md#tiers-flavour-not-volume)
 private struct BoomHeader: View {
     @ObservedObject var model: GameModel
     let boom: Boom
 
     var body: some View {
+        let level = tier(boom.tier), quiet = Int(Game.sittingGap / 60)
         VStack(spacing: 2) {
-            Button { if !model.canJustify(boom.id) { model.hurry() } } label: { Text("💥").font(.system(size: 44)) }
+            Button { if !model.canJustify(boom.id) { model.hurry() } } label: { Text(level.emoji).font(.system(size: 44)) }
                 .buttonStyle(.plain)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 VStack(spacing: 2) {
-                    (Text("Boom ").font(.headline) + Text(Date(timeIntervalSince1970: boom.ts).formatted(.relative(presentation: .named))).foregroundStyle(.secondary))
+                    (Text(level.name + " ").font(.headline) + Text(Date(timeIntervalSince1970: boom.escalations.last ?? boom.ts).formatted(.relative(presentation: .named))).foregroundStyle(.secondary))
                     if let left = model.freshLeft(at: context.date) {
-                        Text(left > 0 ? "Fresh stick in \(countdown(left))" : "Fresh stick any second")
-                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                            .help("Keep the heat down for 30 minutes, or take a 10-minute break to cool off.")
+                        // Why: a fresh start, when the session closes (docs/why.md#fresh-start)
+                        Text(left > 0 ? "Fresh stick after \(quiet) quiet minutes · \(countdown(left))" : "Fresh stick any second")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
+                            .help("Every prompt starts the \(quiet) minutes over. Then the session closes, and the next one starts on a fresh stick.")
                     }
                 }
             }

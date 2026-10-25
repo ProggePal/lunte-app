@@ -56,10 +56,10 @@ final class GameModel: ObservableObject {
     @Published private(set) var fuse: Scorer.Status = .untuned
     private var fuseSource: DispatchSourceFileSystemObject?
     private var fuseDebounce: Task<Void, Never>?
-    /// When you last sent a prompt: a break counts from here.
+    /// When you last sent a prompt: the 30 quiet minutes count from here.
     @Published private(set) var lastActivity: Double?
     private var promptCache: [Double: String] = [:]
-    /// Seconds shaved off the current break by tapping the countdown, and which break (last prompt) they belong to.
+    /// Seconds shaved off the wait for a fresh stick by tapping the emoji, and which wait (last prompt) they belong to.
     @Published private(set) var shaved: Double = 0
     private var shaveKey: Double?
     private var breakEnd: Task<Void, Never>?
@@ -123,10 +123,11 @@ final class GameModel: ObservableObject {
         return Date().timeIntervalSince1970 - last.cooled < Self.heldFor
     }
 
-    /// For VoiceOver: the vibe, and how much stick is left.
+    /// For VoiceOver: the vibe, and how much stick is left, or the Boom's tier.
     var sentence: String {
         let vibe = self.vibe.map { $0.label + ". " } ?? ""
-        return state.boomed ? "Boom. " + vibe : vibe + "\(Int((state.left * 100).rounded()))% of the fuse left."
+        guard state.boomed, let boom = state.booms.last else { return vibe + "\(Int((state.left * 100).rounded()))% of the fuse left." }
+        return tier(boom.tier).name + ". " + vibe
     }
 
     // MARK: The vibe
@@ -209,7 +210,8 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// After a Boom: seconds until a fresh stick, whichever comes first of 10 quiet minutes or 30 minutes without heat.
+    /// After a Boom: seconds until a fresh stick, which comes when the session closes after 30 quiet minutes
+    /// (`freshAt`), less what the hurry easter egg shaved off.
     func freshLeft(at now: Date) -> Double? {
         state.freshAt.map { max(0, $0 - shaved - now.timeIntervalSince1970) }
     }
@@ -385,7 +387,7 @@ final class GameModel: ObservableObject {
         recent = Array(messages.filter { now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
         updateVibe(now)
         lastActivity = events.last { $0.burn != .rest }?.ts
-        if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the break
+        if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the wait
         onboard(events.filter { $0.burn == .test }, now: now)
         scheduleBreakEnd()
         let fresh = state.booms.filter { !announced.contains($0.id) }
