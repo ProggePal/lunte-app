@@ -16,6 +16,14 @@ public enum Game {
     public static let ratingWait: Double = 90   // how long a rated message waits for the model before the word list decides
     static let spark = 0.01                     // heat² or cool² below this does nothing: a neutral message
 
+    public static let slowBurn: Double = 600    // a Boom whose burns built up over 10 minutes or more is a slow burn
+
+    // Aura, per Sitting: the Club's points from Lunte's side (GAME.md).
+    public static let coolSittingPrompts = 5    // a cool Sitting has this many prompts or more, and no Boom
+    public static let coolSittingAura = 1
+    public static let closeCallAura = 2
+    public static let roastAura = 5             // a roast is decided by the Club's reactions, in the app and relay
+
     /// The Boom tiers, by `Boom.tier`.
     public static let tiers: [(emoji: String, name: String)] = [("💥", "Boom"), ("💥💥", "Chain reaction"), ("☢️", "Meltdown")]
 
@@ -129,5 +137,41 @@ public enum Game {
     /// cool, mild, warm, hot, boiling.
     public static func heatWord(_ heat: Double) -> String {
         heat < 0.15 ? "cool" : heat < 0.35 ? "mild" : heat < 0.6 ? "warm" : heat < 0.85 ? "hot" : "boiling"
+    }
+
+    /// One line about a Sitting, built from what happened, never a guess at your mood. It ends on the recovery when
+    /// there is one, since that's what you remember:
+    /// - "Cool all the way. 42 prompts."
+    /// - "Close call at 14:12. Cooled off." or "3 close calls, the last at 15:03. Cooled off."
+    /// - "Slow burn. Boomed at 14:12. Cooled off by 14:40." ("Slow burn." after `slowBurn`, "Cooled off by" with `cooledOff`)
+    /// - "Chain reaction at 15:03." or "Meltdown at 15:20.", the top tier, with the same recovery
+    public static func sessionLine(_ s: Sitting, timeZone: TimeZone = .current) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        func at(_ t: Double) -> String {
+            let c = calendar.dateComponents([.hour, .minute], from: Date(timeIntervalSince1970: t))
+            return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+        }
+        let recovery = s.cooledOff.map { " Cooled off by \(at($0))." } ?? ""
+        if let boom = s.boom, let top = boom.escalations.last {
+            return "\(tiers[boom.tier - 1].name) at \(at(top))." + recovery
+        }
+        if let boom = s.boom {
+            let slow = boom.ts - (boom.litBy.first?.ts ?? boom.ts) >= slowBurn
+            return (slow ? "Slow burn. " : "") + "Boomed at \(at(boom.ts))." + recovery
+        }
+        if let last = s.closeCalls.last {
+            let n = s.closeCalls.count
+            return (n == 1 ? "Close call at \(at(last.ts))." : "\(n) close calls, the last at \(at(last.ts)).") + " Cooled off."
+        }
+        return "Cool all the way. \(s.prompts) prompt" + (s.prompts == 1 ? "." : "s.")
+    }
+
+    /// A Sitting's aura, without roasts: `closeCallAura` per close call, plus `coolSittingAura` once a Sitting of
+    /// `coolSittingPrompts` or more closes without a Boom. An open Sitting's cool point waits for the close, so the
+    /// aura it shows never goes down.
+    public static func aura(_ s: Sitting) -> Int {
+        let cool = !s.isOpen && s.boom == nil && s.prompts >= coolSittingPrompts
+        return closeCallAura * s.closeCalls.count + (cool ? coolSittingAura : 0)
     }
 }
