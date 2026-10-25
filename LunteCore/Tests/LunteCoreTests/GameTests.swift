@@ -49,14 +49,20 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(s.burned, 0)
     }
 
-    func test6GapOf600StartsNewSitting() {
-        let same = Game.replay(log([.lose, .tell], at: [0, 599]), now: t0 + 600)
+    func test6ThirtyQuietMinutesCloseTheSitting() {
+        let same = Game.replay(log([.lose, .tell], at: [0, 1799]), now: t0 + 1800)
         XCTAssertEqual(same.fuse, 1.5) // still the Booming Sitting
         XCTAssertTrue(same.boomed)
-        let next = Game.replay(log([.lose, .tell], at: [0, 600]), now: t0 + 601)
-        XCTAssertFalse(next.boomed) // the break gave a fresh stick
+        XCTAssertEqual(same.sittings.count, 1)
+        let next = Game.replay(log([.lose, .tell], at: [0, 1800]), now: t0 + 1801)
+        XCTAssertFalse(next.boomed) // it closed: a fresh stick
         XCTAssertEqual(next.burned, 0.36, accuracy: 1e-9)
-        XCTAssertEqual(next.sittingStart, t0 + 600)
+        XCTAssertEqual(next.sittingStart, t0 + 1800)
+        XCTAssertEqual(next.sittings.map(\.isOpen), [false, true])
+        let steady = (0..<16).map { Double($0) * 1200 } // a message every 20 minutes for 5 hours: no length cap
+        let long = Game.replay(log(steady.map { _ in .none }, at: steady), now: t0 + steady.last! + 1)
+        XCTAssertEqual(long.sittings.count, 1)
+        XCTAssertEqual(long.sitting?.prompts, 16)
     }
 
     func test7ClosedByNow() {
@@ -87,14 +93,16 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(s.burned, 0.72, accuracy: 1e-9)
     }
 
-    func test10BoomHealsAfter30CalmMinutesWithoutABreak() {
-        let chat = (1...7).map { Double($0) * 300 } // a calm message every 5 minutes
+    func test10BlownUntilTheSittingCloses() {
+        let chat = (1...12).map { Double($0) * 300 } // a calm message every 5 minutes for an hour
         let events = log([.lose], at: [0]) + log(chat.map { _ in .none }, at: chat)
-        XCTAssertTrue(Game.replay(Array(events.prefix(6)), now: t0 + 1500).boomed)
-        let healed = Game.replay(events, now: t0 + 2100)
-        XCTAssertFalse(healed.boomed)
-        XCTAssertEqual(healed.left, 1)
-        XCTAssertEqual(healed.fuse, 1.5) // the Boom's growth stays; the Sitting isn't over
+        let blown = Game.replay(events, now: t0 + 3700)
+        XCTAssertTrue(blown.boomed) // the burn cooled off long ago, but the Sitting isn't over
+        XCTAssertEqual(blown.left, 0)
+        let fresh = Game.replay(events, now: t0 + 3600 + 1800)
+        XCTAssertFalse(fresh.boomed)
+        XCTAssertEqual(fresh.left, 1)
+        XCTAssertEqual(fresh.fuse, 1.5) // the Boom's growth stays
     }
 
     func test11TheModelBeatsTheWordList() {
@@ -115,11 +123,82 @@ final class GameTests: XCTestCase {
         XCTAssertFalse(rated.awaitingRating(at: t0 + 10))
     }
 
-    func test13FreshAtIsTheSoonerOfBreakAndCooling() {
+    func test13FreshOnlyWhenTheSittingCloses() {
         let s = Game.replay(log([.lose, .none, .none, .none, .none, .none], at: [0, 300, 600, 900, 1200, 1500]), now: t0 + 1600)
-        XCTAssertEqual(s.freshAt, t0 + 1800) // 30 minutes after the burn comes before a break ending at 2100
-        let t = Game.replay(log([.lose, .none], at: [0, 60]), now: t0 + 100)
-        XCTAssertEqual(t.freshAt, t0 + 660)
+        XCTAssertEqual(s.freshAt, t0 + 1500 + 1800) // 30 quiet minutes after the last message, not after the burn
+        XCTAssertNil(Game.replay(log([.tell]), now: t0 + 60).freshAt) // only after a Boom
+    }
+
+    func testCoolMendsTheFuse() {
+        let tell = Event(ts: t0, burn: .tell) // heat 0.6 burns 0.36
+        let cool = Event(ts: t0 + 60, burn: .none, heat: 0, cool: 0.6) // mends 0.5 × 0.36
+        XCTAssertEqual(Game.replay([tell, cool], now: t0 + 61).burned, 0.18, accuracy: 1e-9)
+        let bud = Event(ts: t0 + 60, burn: .none, heat: 0, cool: 1) // mends 0.5, more than is burning
+        XCTAssertEqual(Game.replay([tell, bud], now: t0 + 61).burned, 0)
+        let early = Event(ts: t0 - 60, burn: .none, heat: 0, cool: 1)
+        XCTAssertEqual(Game.replay([early, tell], now: t0 + 1).burned, 0.36, accuracy: 1e-9) // cool can't be banked
+        let roast = Event(ts: t0, burn: .lose, heat: 1, cool: 1) // hot and cool at once: 1 − 0.5
+        XCTAssertEqual(Game.burn(roast, at: t0), 0.5, accuracy: 1e-9)
+        XCTAssertTrue(Game.replay([roast], now: t0 + 1).booms.isEmpty) // the same heat alone Booms (test 11)
+        XCTAssertEqual(Game.burn(Event(ts: t0, burn: .none, heat: 0.05, cool: 0.05), at: t0), 0) // too faint to count
+        XCTAssertEqual(Game.burn(Event(ts: t0, burn: .tell), at: t0), 0.36, accuracy: 1e-9) // no cool is 0
+    }
+
+    func testOneBoomPerSittingEscalatesToMeltdown() {
+        let s = Game.replay(log([.lose, .tell, .lose, .tell, .tell, .tell, .lose, .lose], at: [0, 60, 120, 180, 240, 300, 360, 420]),
+                            now: t0 + 500)
+        XCTAssertEqual(s.booms.count, 1)
+        XCTAssertEqual(s.booms[0].ts, t0)
+        // after the Boom the burn starts again from zero: 0.36 doesn't escalate, 1.36 fills the stick that blew (1) again
+        XCTAssertEqual(s.booms[0].escalations, [t0 + 120, t0 + 300])
+        XCTAssertEqual(s.booms[0].tier, 3)
+        XCTAssertEqual(Game.tiers[s.booms[0].tier - 1].name, "Meltdown")
+        XCTAssertEqual(s.sitting?.boom, s.booms[0])
+        XCTAssertEqual(s.sitting?.tier, 3) // capped: two more loses change nothing
+        XCTAssertEqual(s.fuse, 1.5) // one Boom, one growth
+        let chain = Game.replay(log([.lose, .lose]), now: t0 + 120)
+        XCTAssertEqual(chain.booms.map(\.tier), [2])
+        XCTAssertEqual(chain.burned, 0) // and the burn starts from zero again
+    }
+
+    func testCloseCalls() {
+        let dip = log([.tell, .tell], at: [0, 60]) // 0.28 of the stick left: the last third
+        let mend = Event(ts: t0 + 120, burn: .none, heat: 0, cool: 1) // 0.72 − 0.5: back to 0.78 left
+        XCTAssertEqual(Game.replay(dip + [mend], now: t0 + 200).closeCalls, [CloseCall(ts: t0 + 60, cooled: t0 + 120)])
+        XCTAssertEqual(Game.replay(dip, now: t0 + 100).closeCalls, []) // still in it
+        XCTAssertEqual(Game.replay(dip, now: t0 + 1810).closeCalls, [CloseCall(ts: t0 + 60, cooled: t0 + 1800)]) // the first tell cooled off
+        XCTAssertEqual(Game.replay(dip, now: t0 + 10_000).sittings[0].closeCalls, [CloseCall(ts: t0 + 60, cooled: t0 + 1800)]) // walked away
+        XCTAssertEqual(Game.replay(log([.tell, .tell, .tell], at: [0, 60, 120]), now: t0 + 10_000).closeCalls, []) // it Boomed
+        // one per dip: more heat inside the dip adds none, and a second dip is a second close call
+        let twice = dip + [Event(ts: t0 + 90, burn: .none, heat: 0.4), mend, Event(ts: t0 + 180, burn: .tell),
+                           Event(ts: t0 + 240, burn: .none, heat: 0, cool: 1)]
+        XCTAssertEqual(Game.replay(twice, now: t0 + 300).closeCalls,
+                       [CloseCall(ts: t0 + 60, cooled: t0 + 120), CloseCall(ts: t0 + 180, cooled: t0 + 240)])
+    }
+
+    func testSittingSummaries() {
+        let calm = (0..<6).map { Event(ts: t0 + Double($0) * 60, burn: .none, heat: 0.1, cool: $0 < 2 ? 0.8 : 0.2) }
+        let hot = log([.tell, .lose, .none], at: [4000, 4060, 4120])
+        let s = Game.replay(calm + hot, now: t0 + 4200)
+        XCTAssertEqual(s.sittings.count, 2)
+        let first = s.sittings[0]
+        XCTAssertEqual([first.start, first.end], [t0, t0 + 300])
+        XCTAssertEqual(first.prompts, 6)
+        XCTAssertEqual(first.coolPrompts, 2) // 0.2 is under a third
+        XCTAssertEqual(first.peakHeat, 0.1)
+        XCTAssertEqual(first.tier, 0)
+        XCTAssertNil(first.boom)
+        XCTAssertFalse(first.isOpen)
+        let second = s.sittings[1]
+        XCTAssertEqual([second.start, second.end], [t0 + 4000, t0 + 4120])
+        XCTAssertEqual(second.prompts, 3)
+        XCTAssertEqual(second.peakHeat, 1)
+        XCTAssertEqual(second.tier, 1)
+        XCTAssertEqual(second.boom?.ts, t0 + 4060)
+        XCTAssertEqual(second.lastBurn, t0 + 4060)
+        XCTAssertTrue(second.isOpen)
+        XCTAssertEqual(s.sitting, second)
+        XCTAssertNil(Game.replay(calm, now: t0 + 10_000).sitting) // all closed
     }
 
     func testText() {
@@ -151,8 +230,8 @@ final class RestTests: XCTestCase {
     }
 
     func testRestOnACalmSittingShortensLikeABreak() {
-        let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 700, burn: .tell), Event(ts: t0 + 760, burn: .rest)]
-        XCTAssertEqual(Game.replay(events, now: t0 + 761).fuse, 1)
+        let events = [Event(ts: t0, burn: .lose), Event(ts: t0 + 2000, burn: .tell), Event(ts: t0 + 2060, burn: .rest)]
+        XCTAssertEqual(Game.replay(events, now: t0 + 2061).fuse, 1)
     }
 }
 
