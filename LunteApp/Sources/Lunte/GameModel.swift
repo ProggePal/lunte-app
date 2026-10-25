@@ -19,8 +19,18 @@ final class GameModel: ObservableObject {
     @Published private(set) var onboarded = defaults.object(forKey: "Onboarded") as? Bool ?? defaults.bool(forKey: "Connected")
     /// Onboarding: what you owned your test Boom with, and when the 10-second fresh stick lands.
     @Published private(set) var ownedTest: (line: String, freshAt: Date)?
-    /// Your messages from the last 30 minutes (no onboarding test), for the timeline.
+    /// Your messages from the last 30 minutes (no onboarding test), for the vibe.
     @Published private(set) var recent: [Event] = []
+    /// Every message in the log (no onboarding test, no rest), oldest first, for heat lines.
+    @Published private(set) var messages: [Event] = []
+    /// The open session's messages, oldest first: the dots.
+    @Published private(set) var session: [Event] = []
+    /// Closed sessions with a message of yours in them (not just the onboarding test), oldest first. On this Mac only.
+    @Published private(set) var past: [Sitting] = []
+    /// The last session's summary, each time the popover opens after it closed, until its card has shown once.
+    @Published private(set) var summary: Sitting?
+    /// The start of the last session summarised, so each summary shows once.
+    private var summarised = defaults.double(forKey: "Summarised")
     /// The fuse is burning towards a Boom that hasn't gone off yet.
     @Published private(set) var fusing = false
     /// A test Boom has blown, so the menu bar says BOOM.
@@ -52,10 +62,10 @@ final class GameModel: ObservableObject {
     @Published private(set) var fuse: Scorer.Status = .untuned
     private var fuseSource: DispatchSourceFileSystemObject?
     private var fuseDebounce: Task<Void, Never>?
-    /// When you last sent a prompt: a break counts from here.
+    /// When you last sent a prompt: the 30 quiet minutes count from here.
     @Published private(set) var lastActivity: Double?
     private var promptCache: [Double: String] = [:]
-    /// Seconds shaved off the current break by tapping the countdown, and which break (last prompt) they belong to.
+    /// Seconds shaved off the wait for a fresh stick by tapping the emoji, and which wait (last prompt) they belong to.
     @Published private(set) var shaved: Double = 0
     private var shaveKey: Double?
     private var breakEnd: Task<Void, Never>?
@@ -69,7 +79,14 @@ final class GameModel: ObservableObject {
     @Published var soundOn = defaults.object(forKey: "SoundOn") as? Bool ?? true {
         didSet { defaults.set(soundOn, forKey: "SoundOn") }
     }
+    /// Booms done with for good (`announce`), and the onboarding tests.
     private var announced = Set(defaults.stringArray(forKey: "Announced") ?? [])
+    /// Sittings whose fuse was lit (`sittingKey`) → the Boom id it banged under. A Sitting bangs once, even when a late
+    /// rating moves its Boom to an earlier prompt, which gives it a new id.
+    private var lit = defaults.dictionary(forKey: "Lit") as? [String: String] ?? [:]
+    /// The same for the fuse that's burning, in memory only: it's announced at its bang, so a Boom whose fuse is still
+    /// burning when Lunte quits, crashes or updates lights again when it opens, if it's under 10 minutes old.
+    private var burning: [String: String] = [:]
     private var secrets = defaults.dictionary(forKey: "Secrets") as? [String: String] ?? [:] // ponytail: UserDefaults, not the Keychain
     private var lastSeq = defaults.integer(forKey: "LastSeq")
 
@@ -79,7 +96,6 @@ final class GameModel: ObservableObject {
     private var watchedInode: Int?
     private var debounce: Task<Void, Never>?
     private var polling = false
-    private var sound: NSSound?
 
     init() {
         Notifier.setUp()
@@ -110,11 +126,56 @@ final class GameModel: ObservableObject {
 
     // MARK: The menu
 
-    /// For VoiceOver: the vibe, and how much stick is left.
+    /// How long "Held it together" shows after the fuse climbs out of its last third.
+    static let heldFor: Double = 600
+
+    /// A close call in the last 10 minutes: the fuse got into its last third and climbed back out without a Boom.
+    /// The 60-second reload takes it away on time.
+    var heldTogether: Bool {
+        guard !state.boomed, let last = state.closeCalls.last else { return false }
+        return Date().timeIntervalSince1970 - last.cooled < Self.heldFor
+    }
+
+    /// How long the menu bar says BOOM after the Boom or its last escalation, before it quiets down.
+    // Why: calm technology; a Boom shouts once, then steps back (docs/why.md#quiet-boom)
+    static let loudFor: Double = 600
+
+    /// Blown for a while: the menu bar's 💥 has quieted down, while the popover still says you're blown. The 60-second
+    /// reload quiets it on time.
+    var boomQuiet: Bool {
+        guard state.boomed, let boom = state.booms.last else { return false }
+        return Date().timeIntervalSince1970 - (boom.escalations.last ?? boom.ts) >= Self.loudFor
+    }
+
+    /// For VoiceOver: the vibe, and how much stick is left, or the Boom's tier.
     var sentence: String {
         let vibe = self.vibe.map { $0.label + ". " } ?? ""
-        return state.boomed ? "Boom. " + vibe : vibe + "\(Int((state.left * 100).rounded()))% of the fuse left."
+        guard state.boomed, let boom = state.booms.last else { return vibe + "\(Int((state.left * 100).rounded()))% of the fuse left." }
+        return tier(boom.tier).name + ". " + vibe
     }
+
+    // MARK: Sessions
+
+    /// The popover opened: after a session closed, and before the next one starts, its summary shows.
+    // Why: the peak-end rule; the summary waits for your next look (docs/why.md#summary-next-open)
+    func popoverOpened() {
+        guard onboarded, state.sitting == nil, let last = past.last, last.start > summarised else { return }
+        summary = last
+    }
+
+    /// The summary card is on screen, so it's used up. Not before: another screen, like the Heat Detector's, can fill
+    /// the popover instead.
+    func summaryShown() {
+        guard let summary else { return }
+        summarised = summary.start
+        defaults.set(summarised, forKey: "Summarised")
+    }
+
+    /// The popover closed: the summary goes away. History keeps it.
+    func popoverClosed() { summary = nil }
+
+    /// A session's messages, oldest first, for its heat line.
+    func messages(in s: Sitting) -> [Event] { messages.filter { $0.ts >= s.start && $0.ts <= s.end } }
 
     // MARK: The vibe
 
@@ -196,7 +257,8 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// After a Boom: seconds until a fresh stick, whichever comes first of 10 quiet minutes or 30 minutes without heat.
+    /// After a Boom: seconds until a fresh stick, which comes when the session closes after 30 quiet minutes
+    /// (`freshAt`), less what the hurry easter egg shaved off.
     func freshLeft(at now: Date) -> Double? {
         state.freshAt.map { max(0, $0 - shaved - now.timeIntervalSince1970) }
     }
@@ -297,17 +359,24 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// A random wait between your outburst and the bang, so the room has to guess who it was (GAME.md).
+    /// A random wait between your outburst and the bang, so the room has to guess who it was.
+    // Why: your own feedback is instant, the room's Boom is delayed (docs/why.md#two-clocks)
     static let boomDelay = 5.0...60.0
 
-    /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon, with the sound.
+    /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the
+    /// bang, with `sound`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
+    /// If the Mac slept through the wait, there's no bang and it never goes.
     /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
-    private func light(_ seconds: Double, sound: Bool, test: Bool = false) {
+    private func light(_ seconds: Double, sound: Bool, test: Bool = false, posting boom: Boom? = nil) {
         fusing = true
-        Blast.run(fuse: seconds) { [weak self] in
+        for (sitting, id) in burning { announce(id, sitting: sitting) } // a new Blast replaces a running one: no bang for it
+        let key = boom.map(sittingKey)
+        if let boom, let key { burning[key] = boom.id }
+        Blast.run(fuse: seconds, sound: sound) { [weak self] blew in
             guard let self else { return }
             fusing = false
-            if sound { playBoom() }
+            if let boom { announce(boom.id, sitting: key) }
+            if blew, let boom, club != nil { post(boom) }
             guard test else { return }
             testBlown = true
             if onboarded { Task { try? await Task.sleep(for: .seconds(10)); self.testBlown = false } }
@@ -329,12 +398,6 @@ final class GameModel: ObservableObject {
             }
             if connected { Alerts.tell(result.ok ? "Connected to Claude Code" : "Couldn't connect to Claude Code", connectError ?? "") }
         }
-    }
-
-    func playBoom() {
-        guard let url = Bundle.main.url(forResource: "boom", withExtension: "wav") else { return }
-        sound = NSSound(contentsOf: url, byReference: true) // kept so it isn't freed mid-boom
-        sound?.play()
     }
 
     // MARK: Watching the log
@@ -371,21 +434,46 @@ final class GameModel: ObservableObject {
         let now = Date().timeIntervalSince1970
         let events = EventLog.read(log)
         state = Game.replay(events, now: now)
-        recent = Array(events.filter { $0.burn != .test && $0.burn != .rest && now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
+        messages = events.filter { $0.burn != .test && $0.burn != .rest }
+        session = state.sittingStart.map { start in messages.filter { $0.ts >= start } } ?? []
+        let tests = events.filter { $0.burn == .test }.map(\.ts)
+        past = state.sittings.filter { s in !s.isOpen && s.prompts > tests.filter { $0 >= s.start && $0 <= s.end }.count }
+        recent = Array(messages.filter { now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
         updateVibe(now)
         lastActivity = events.last { $0.burn != .rest }?.ts
-        if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the break
+        if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the wait
         onboard(events.filter { $0.burn == .test }, now: now)
         scheduleBreakEnd()
-        let fresh = state.booms.filter { !announced.contains($0.id) }
-        guard !fresh.isEmpty else { return }
-        for boom in fresh {
-            announced.insert(boom.id)
-            guard now - boom.ts < 600 else { continue } // older than 10 minutes: announced silently
-            light(.random(in: Self.boomDelay), sound: soundOn)
-            if club != nil { post(boom) } // anonymous, and the Club polls every 30 s, so posting now gives nothing away
+        for boom in state.booms where !announced.contains(boom.id) {
+            let key = sittingKey(boom)
+            guard burning[key] == nil else { continue } // its Sitting's fuse is burning, and that bang announces it
+            // Older than 10 minutes, or its Sitting was lit already and a late rating moved the Boom: announced silently.
+            guard now - boom.ts < 600, lit[key] == nil else { announce(boom.id); continue }
+            light(.random(in: Self.boomDelay), sound: soundOn, posting: boom)
         }
+    }
+
+    /// Done with a Boom for good: it banged, the Mac slept through it, a new fuse replaced its own, or it's too old.
+    /// With its Sitting, that Sitting has been lit, under this id.
+    private func announce(_ id: String, sitting: String? = nil) {
+        announced.insert(id)
         defaults.set(Array(announced), forKey: "Announced")
+        guard let sitting else { return }
+        burning[sitting] = nil
+        lit[sitting] = id
+        defaults.set(lit, forKey: "Lit")
+    }
+
+    /// A Boom's Sitting, by its start written the way a Boom id is: what gets lit once.
+    private func sittingKey(_ boom: Boom) -> String {
+        String(Int((state.sittings.first { $0.boom?.id == boom.id }?.start ?? boom.ts) * 1000))
+    }
+
+    /// The id a Boom's fuse was lit for, which its comment, its reactions and the Club keep, even if a late rating has
+    /// moved the Boom to an earlier prompt since. Its own id until its fuse is lit.
+    func litID(_ boom: Boom) -> String {
+        let key = sittingKey(boom)
+        return lit[key] ?? burning[key] ?? boom.id
     }
 
     /// The first Boom is the onboarding: "this is a test 3 2 1 pow" proves the hook reaches the app. Never posted to the Club.
@@ -397,7 +485,7 @@ final class GameModel: ObservableObject {
         defaults.set(true, forKey: "Connected")
         defaults.set(Array(announced), forKey: "Announced")
         guard fresh.contains(where: { now - $0.ts < 600 }) else { return }
-        light(3, sound: true, test: true)
+        light(3, sound: soundOn, test: true)
     }
 
     /// Onboarding: you own the test Boom, and 10 seconds later you get your first fresh stick. Kept on this Mac only.
@@ -430,6 +518,7 @@ final class GameModel: ObservableObject {
         defaults.set(false, forKey: "Onboarded")
     }
 
+    /// Sent at the bang (`light`).
     private func post(_ boom: Boom) {
         let secret = (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         let proof = SHA256.hash(data: Data(secret.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -440,6 +529,9 @@ final class GameModel: ObservableObject {
             mine.insert(boom.id)
             defaults.set(secrets, forKey: "Secrets")
             defaults.set(Array(mine), forKey: "Mine")
+            // A comment typed while the fuse burned waited for the Boom. From here on, `justify` sends it, so it goes once.
+            guard let line = justifications[boom.id] else { return }
+            try? await Relay.post(["type": "why", "boom": boom.id, "text": line, "secret": secret]) // ponytail: no retry either
         }
     }
 
@@ -488,8 +580,8 @@ final class GameModel: ObservableObject {
         saveClub()
     }
 
-    /// Justify a Boom: saved on this Mac, and sent to your Club (the relay's "why") when the Boom reached it.
-    /// Returns a message when the Club couldn't get it, or nil.
+    /// Justify a Boom: saved on this Mac, and sent to your Club (the relay's "why") once the Boom has reached it. While
+    /// its fuse still burns, `post` sends it right after the Boom. Returns a message when the Club couldn't get it, or nil.
     func justify(_ boom: String, _ text: String) async -> String? {
         let line = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.justifyLimit))
         guard !line.isEmpty else { return nil }
@@ -536,13 +628,12 @@ final class GameModel: ObservableObject {
         saveClub()
     }
 
+    /// Reactions never notify: those on your own Boom pile up on its card, so nothing pops up to say it was yours.
     private func notify(about e: ClubEvent) {
         let who = e.from ?? "Someone"
         switch e.type {
         case "boom" where !isMine(e):
             Notifier.post("💥 Boom in your Club", "Someone lost it. Throw them something.", boom: e.boom)
-        case "react" where isMine(e):
-            Notifier.post("\(e.emoji ?? "") from \(who)", "On your Boom")
         case "why" where !isMine(e): // only a Boom's owner can justify it, so a why on your own Boom is yours
             Notifier.post("\(who): \(e.text ?? "")")
         case "join":

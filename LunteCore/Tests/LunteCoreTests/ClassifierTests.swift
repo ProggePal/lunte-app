@@ -22,8 +22,27 @@ final class ClassifierTests: XCTestCase {
             ("hello shell", .none),
             ("what the hell are you doing", .lose),
             ("come on", .tell),
+            ("it's still broken!!", .none),
+            ("WHY IS IT STILL BROKEN", .none),
         ]
         for (prompt, burn) in rows { XCTAssertEqual(Classifier.classify(prompt), burn, prompt) }
+    }
+
+    /// Guards docs/why.md#heat-not-volume: `!!` and CAPS are volume. Alone they don't burn, and they only turn a
+    /// telling-off into losing it. Swearing and telling off still count.
+    func testBangsAndCapsAloneDontBurn() {
+        let rows: [(String, Burn)] = [
+            ("did it work?!", .none),
+            ("NOT WORKING AGAIN", .none),
+            ("STILL BROKEN!!", .none), // both, and nothing else
+            ("stop it!!", .lose),
+            ("I TOLD YOU so", .lose),
+            ("stop it!! thanks", .tell), // happy: no turning up
+            ("STILL BROKEN, SHIT", .lose),
+            ("i said use the other table", .tell),
+        ]
+        for (prompt, burn) in rows { XCTAssertEqual(Classifier.classify(prompt), burn, prompt) }
+        XCTAssertEqual(Classifier.signals("it's still broken!!"), ["!!"]) // still shown on hover
     }
 
     // Machine-made prompts are cut out, so only what you typed can burn. These leaked as Booms on 22 Oct.

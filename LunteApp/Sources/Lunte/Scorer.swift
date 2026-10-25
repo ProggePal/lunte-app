@@ -6,6 +6,8 @@ import LunteCore
 /// and every rating lands in the log as a heat line.
 /// - Untuned: heat is Laya's P(frustrated) for the mood probe.
 /// - Tuned: every probe is asked (~90 ms), and your personal fuse (fuse/profile.json) turns the answers into heat.
+///   Your cool model (fuse/cool.json), trained the same way on the cool ratings, turns the same answers into cool.
+///   Without it, cool stays nil.
 /// The model is the Heat Detector (`HeatDetector`, 483 MB), installed only when you press Download. Until it's loaded
 /// nothing listens on the socket, so the hook doesn't wait and the word list decides.
 @MainActor
@@ -54,6 +56,7 @@ final class Scorer {
     var topicsOn = false
     private var laya: LayaManager?
     private var profile: PersonalFuse?
+    private var coolProfile: PersonalFuse?
     private var listener: DispatchSourceRead?
     private let log: URL
     private let report: (Status) -> Void
@@ -61,8 +64,12 @@ final class Scorer {
     init(log: URL, report: @escaping (Status) -> Void) {
         self.log = log
         self.report = report
-        profile = (try? Data(contentsOf: Fuse.profileURL)).flatMap { try? JSONDecoder().decode(PersonalFuse.self, from: $0) }
-            .flatMap { $0.probes == Self.probes.map(\.name) ? $0 : nil } // trained on other probes: tune again
+        let load = { (url: URL) in
+            (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(PersonalFuse.self, from: $0) }
+                .flatMap { $0.probes == Scorer.probes.map(\.name) ? $0 : nil } // trained on other probes: tune again
+        }
+        profile = load(Fuse.profileURL)
+        coolProfile = load(Fuse.coolURL)
         report(profile.map(Status.tuned) ?? .untuned)
     }
 
@@ -97,13 +104,14 @@ final class Scorer {
     private func rate(_ line: Data) {
         guard let laya, let r = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
               let ts = r["ts"] as? Double, let text = r["text"] as? String else { return }
-        let log = log, profile = profile, topicsOn = topicsOn
+        let log = log, profile = profile, coolProfile = coolProfile, topicsOn = topicsOn
         Task.detached(priority: .utility) {
-            guard let answers = await Scorer.answers(laya, text, all: profile != nil) else { return }
-            let mood = answers[0]
-            let heat = profile.map { $0.heat(Scorer.features(answers)) } ?? Double(mood.probabilities[0])
+            guard let answers = await Scorer.answers(laya, text, all: profile != nil || coolProfile != nil) else { return }
+            let mood = answers[0], features = Scorer.features(answers)
+            let heat = profile.map { $0.heat(features) } ?? Double(mood.probabilities[0])
+            let cool = coolProfile.map { $0.heat(features) } // the cool model's heat is cool
             let topic = topicsOn ? try? await laya.answer(state: String(text.prefix(1000)), question: Scorer.topicQuestion).selectedLabel : nil
-            try? EventLog.append(Event(ts: ts, burn: .heat, heat: heat, mood: mood.selectedLabel, topic: topic), to: log) // the watcher reloads
+            try? EventLog.append(Event(ts: ts, burn: .heat, heat: heat, cool: cool, mood: mood.selectedLabel, topic: topic), to: log) // the watcher reloads
         }
     }
 
@@ -160,7 +168,8 @@ final class Scorer {
     private var tuning = false
 
     /// Called when fuse/labels.json changes. Reads the rated messages from Claude Code's transcripts, asks Laya the
-    /// probes, trains your personal fuse and saves it. Message text is only ever in memory.
+    /// probes, trains your personal fuse and your cool model on the same answers, and saves them. Message text is only
+    /// ever in memory.
     func labelsChanged() { if laya != nil, labelsAreNewer() { tune() } }
 
     private func tune() {
@@ -173,24 +182,29 @@ final class Scorer {
         Task.detached(priority: .utility) {
             let known = Transcript.all(since: (labels.labels.map(\.ts).min() ?? 0) - 60)
             let bySession = Dictionary(grouping: known, by: \.sid)
-            let matched = labels.labels.compactMap { l in bySession[l.sid]?.first { abs($0.ts - l.ts) < 1 }.map { ($0.text, l.rating) } }
+            let matched = labels.labels.compactMap { l in bySession[l.sid]?.first { abs($0.ts - l.ts) < 1 }.map { (text: $0.text, heat: l.rating, cool: l.cool) } }
             guard matched.count >= 30 else {
                 await MainActor.run { self.tuning = false; report(.failed("Only \(matched.count) of the rated messages were found. Run the setup prompt again.")) }
                 return
             }
-            var x: [[Double]] = [], y: [Int] = []
+            var x: [[Double]] = [], y: [Int] = [], coolX: [[Double]] = [], coolY: [Int] = []
             for (i, m) in matched.enumerated() {
                 if i % 10 == 0 { await MainActor.run { report(.tuning(done: i, of: matched.count)) } }
-                guard let a = await Scorer.answers(laya, m.0, all: true) else { continue }
-                x.append(Scorer.features(a)); y.append(m.1)
+                guard let a = await Scorer.answers(laya, m.text, all: true) else { continue }
+                let f = Scorer.features(a)
+                x.append(f); y.append(m.heat)
+                if let c = m.cool { coolX.append(f); coolY.append(c) }
             }
-            let fuse = PersonalFuse.train(features: x, ratings: y, probes: Scorer.probes.map(\.name), rater: labels.rater,
-                                          made: Date().formatted(.iso8601.year().month().day()))
+            let probes = Scorer.probes.map(\.name), made = Date().formatted(.iso8601.year().month().day())
+            let fuse = PersonalFuse.train(features: x, ratings: y, probes: probes, rater: labels.rater, made: made)
+            let cool = coolY.count >= 30 ? PersonalFuse.train(features: coolX, ratings: coolY, probes: probes, rater: labels.rater, made: made) : nil
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            if let cool { try? encoder.encode(cool).write(to: Fuse.coolURL) } else { try? FileManager.default.removeItem(at: Fuse.coolURL) }
             try? encoder.encode(fuse).write(to: Fuse.profileURL)
             await MainActor.run {
                 self.profile = fuse
+                self.coolProfile = cool
                 self.tuning = false
                 report(.tuned(fuse))
             }

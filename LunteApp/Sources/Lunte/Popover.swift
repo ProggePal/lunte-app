@@ -4,7 +4,8 @@ import Sparkle
 import SwiftUI
 
 /// The whole UI. Onboarding until you've owned your first (test) Boom; then the stick or the Boom on top, one text slot
-/// for the message you're looking at, the session's vibe, your last 30 minutes as dots, the Club, a gear.
+/// for the message you're looking at, the session's vibe, the session as dots, the Club, a gear. Between sessions, the
+/// first open shows the last session's summary instead of the slot and the dots.
 struct PopoverView: View {
     @ObservedObject var model: GameModel
     let updater: SPUStandardUpdaterController?
@@ -22,14 +23,25 @@ struct PopoverView: View {
             } else if firstBoom {
                 FirstBoomCard(model: model)
             } else {
-                if let boom { BoomHeader(model: model, boom: boom) } else { StickBar(left: model.state.left) }
-                MessageSlot(model: model, event: hovered.flatMap { ts in model.recent.first { $0.ts == ts } } ?? fallback(boom), boom: boom, vibe: vibeHovered ? model.vibe : nil)
-                if let boom { JustifyRow(model: model, boom: boom) }
-                if model.vibesOn { VibeLine(vibe: model.vibe, isNew: model.vibeIsNew).onHover { vibeHovered = $0 && model.vibe != nil } }
-                Strip(model: model, hovered: $hovered)
-                Text(model.recent.count == 1 ? "1 message from Claude Code" : "\(model.recent.count) messages from Claude Code")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                if let boom {
+                    BoomHeader(model: model, boom: boom)
+                } else {
+                    StickBar(left: model.state.left)
+                    if model.heldTogether { HeldLine() }
+                }
+                if let summary = model.summary, model.state.sitting == nil {
+                    SummaryCard(title: "Your last session", sitting: summary, events: model.messages(in: summary))
+                        .onAppear(perform: model.summaryShown)
+                } else {
+                    MessageSlot(model: model, event: hovered.flatMap { ts in model.session.first { $0.ts == ts } } ?? fallback(boom), boom: boom, vibe: vibeHovered ? model.vibe : nil)
+                    if let boom { JustifyRow(model: model, boom: boom) }
+                    if model.vibesOn { VibeLine(vibe: model.vibe, isNew: model.vibeIsNew).onHover { vibeHovered = $0 && model.vibe != nil } }
+                    Strip(model: model, hovered: $hovered)
+                    Text(model.session.count == 1 ? "1 message from Claude Code" : "\(model.session.count) messages from Claude Code")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
                 ForEach(model.clubFeed.suffix(2).reversed(), id: \.seq) { Text(model.describe($0)).font(.caption).foregroundStyle(.secondary) }
+                if !model.past.isEmpty { History(sessions: model.past, events: model.messages(in:)) }
             }
             Divider()
             Footer(model: model, updater: updater)
@@ -37,13 +49,46 @@ struct PopoverView: View {
         .padding(16)
         .frame(width: 290)
         .background { if boom != nil || firstBoom { BoomTint() } } // snaps on with the Boom, no fade
+        .background(OpenWatch { $0 ? model.popoverOpened() : model.popoverClosed() })
     }
 
     /// With nothing hovered: the message that set off the Boom, else the hottest one still burning, else your latest.
     private func fallback(_ boom: Boom?) -> Event? {
         if let boom { return boom.litBy.last }
         let now = Date().timeIntervalSince1970
-        return model.state.currentBurns.max { $0.heat(at: now) < $1.heat(at: now) } ?? model.recent.last
+        return model.state.currentBurns.max { $0.heat(at: now) < $1.heat(at: now) } ?? model.session.last
+    }
+}
+
+/// Says when the popover opens and closes. MenuBarExtra has no binding for that, so this watches its window, which is
+/// key while the popover is open.
+private struct OpenWatch: NSViewRepresentable {
+    let changed: @MainActor (Bool) -> Void
+
+    func makeNSView(context: Context) -> Probe { Probe(changed) }
+    func updateNSView(_ probe: Probe, context: Context) { probe.changed = changed }
+
+    final class Probe: NSView {
+        var changed: @MainActor (Bool) -> Void
+        init(_ changed: @escaping @MainActor (Bool) -> Void) { self.changed = changed; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            NotificationCenter.default.removeObserver(self)
+            if let window {
+                for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+                    NotificationCenter.default.addObserver(self, selector: #selector(keyChanged), name: name, object: window)
+                }
+            }
+            keyChanged() // out of a window counts as closed
+        }
+
+        /// On the next turn of the main queue, in order, so it never publishes from inside a view update.
+        @objc private func keyChanged() {
+            let open = window?.isKeyWindow == true, changed = changed
+            DispatchQueue.main.async { MainActor.assumeIsolated { changed(open) } }
+        }
     }
 }
 
@@ -197,7 +242,8 @@ private struct FirstBoomCard: View {
     private func own() { if !trimmed.isEmpty { model.ownTest(trimmed) } }
 }
 
-/// The fuse in three pieces: what's left is filled, what burned is faint. Orange past half, red near the end, ✨ on the last third.
+/// The fuse in three pieces: what's left is filled, what burned is faint. Orange past half, red near the end, ✨ on the
+/// last third. The last third, by the 🧨, always has a faint red edge, so you see the danger before you're in it.
 private struct StickBar: View {
     let left: Double
 
@@ -209,31 +255,46 @@ private struct StickBar: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Double(i) < piecesLeft(left) ? fuseColor(left) : Color.secondary.opacity(0.15))
                         .frame(height: 10)
+                        // Why: a close call needs the danger in sight (docs/why.md#close-call)
+                        .overlay { if i == 0 { RoundedRectangle(cornerRadius: 3).strokeBorder(Color.red.opacity(0.5), lineWidth: 1) } }
                 }
             }
-            if left <= 1.0 / 3 { Text("✨") }
+            if Game.inLastThird(left) { Text("✨") }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(Int((left * 100).rounded()))% of the fuse left")
     }
 }
 
-/// After a Boom: the 💥, when, and one timer. Once you've justified, tapping the 💥 is the hurry easter egg.
+/// Just after a close call, for your eyes only: no sound, no notification.
+// Why: competence, and relief right after the act (docs/why.md#close-call)
+private struct HeldLine: View {
+    var body: some View {
+        Text("Held it together").font(.callout.weight(.medium)).foregroundStyle(.green)
+            .help("The fuse got into its last third and you cooled off without a Boom: a close call.")
+    }
+}
+
+/// After a Boom: its tier (💥 Boom, 💥💥 Chain reaction, ☢️ Meltdown), when it last went off, and one timer to the
+/// fresh stick. Once you've justified, tapping the emoji is the hurry easter egg.
+// Why: venting feeds anger, so a tier changes the name and emoji, never the volume (docs/why.md#tiers-flavour-not-volume)
 private struct BoomHeader: View {
     @ObservedObject var model: GameModel
     let boom: Boom
 
     var body: some View {
+        let level = tier(boom.tier), quiet = Int(Game.sittingGap / 60)
         VStack(spacing: 2) {
-            Button { if !model.canJustify(boom.id) { model.hurry() } } label: { Text("💥").font(.system(size: 44)) }
+            Button { if !model.canJustify(model.litID(boom)) { model.hurry() } } label: { Text(level.emoji).font(.system(size: 44)) }
                 .buttonStyle(.plain)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 VStack(spacing: 2) {
-                    (Text("Boom ").font(.headline) + Text(Date(timeIntervalSince1970: boom.ts).formatted(.relative(presentation: .named))).foregroundStyle(.secondary))
+                    (Text(level.name + " ").font(.headline) + Text(Date(timeIntervalSince1970: boom.escalations.last ?? boom.ts).formatted(.relative(presentation: .named))).foregroundStyle(.secondary))
                     if let left = model.freshLeft(at: context.date) {
-                        Text(left > 0 ? "Fresh stick in \(countdown(left))" : "Fresh stick any second")
-                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                            .help("Keep the heat down for 30 minutes, or take a 10-minute break to cool off.")
+                        // Why: a fresh start, when the session closes (docs/why.md#fresh-start)
+                        Text(left > 0 ? "Fresh stick after \(quiet) quiet minutes · \(countdown(left))" : "Fresh stick any second")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
+                            .help("Every prompt starts the \(quiet) minutes over. Then the session closes, and the next one starts on a fresh stick.")
                     }
                 }
             }
@@ -259,9 +320,11 @@ private struct MessageSlot: View {
                 (Text(vibe.label + ". ") + Text(vibe.story).foregroundStyle(.secondary)).font(.system(.callout, design: .serif))
             } else if let e = event {
                 let now = Date().timeIntervalSince1970, heat = e.heat(at: now), text = texts[e.ts]
-                let setItOff = boom?.ts == e.ts, cooled = heat >= 0.15 && model.state.sittingStart.map { e.ts < $0 } ?? true
-                let rating = e.awaitingRating(at: now)
-                Text(([clock(e.ts), rating ? "rating…" : Game.heatWord(heat)] + (cooled ? ["cooled off"] : []) + (setItOff ? ["set it off"] : [])).joined(separator: " · "))
+                let setItOff = boom?.ts == e.ts, cooled = heat >= 0.15 && !model.state.currentBurns.contains { $0.ts == e.ts }
+                let rating = e.awaitingRating(at: now), cool = isCool(e)
+                // A neutral message gets no word: heatWord's "cool" would read as the cool score.
+                let word = rating ? "rating…" : heat < 0.15 ? (cool ? "cool" : nil) : Game.heatWord(heat) + (cool ? " and cool" : "")
+                Text(([clock(e.ts)] + [word].compactMap { $0 } + (cooled ? ["cooled off"] : []) + (setItOff ? ["set it off"] : [])).joined(separator: " · "))
                     .font(.caption).foregroundStyle(.secondary)
                 Group {
                     if let text { Text("“\(text)”") } else { Text(missing.contains(e.ts) ? "Couldn’t find this message in Claude’s history." : "…") }
@@ -296,31 +359,30 @@ private struct MessageSlot: View {
     }
 }
 
-/// Owning a Boom, open from the start: one short line, or stay a mystery. The Club's reactions sit beside it.
+/// Owning a Boom, open from the start: one short line, if you want. The Club's reactions sit beside it.
 private struct JustifyRow: View {
     @ObservedObject var model: GameModel
     let boom: Boom
     @State private var why = ""
     @State private var error: String?
     @State private var sending = false
+    private var boomID: String { model.litID(boom) } // the id its fuse was lit for, if a late rating moved it
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if model.canJustify(boom.id) {
+            if model.canJustify(boomID) {
                 HStack {
                     TextField("it deleted my migrations again", text: $why).textFieldStyle(.roundedBorder).onSubmit(send)
                         .onChange(of: why) { _, new in if new.count > GameModel.justifyLimit { why = String(new.prefix(GameModel.justifyLimit)) } }
                     Button("Comment", action: send).disabled(why.isEmpty || sending)
                 }
-            } else if let line = model.justifications[boom.id] {
+            } else if let line = model.justifications[boomID] {
                 Text("“\(line)”").font(.callout).frame(maxWidth: .infinity)
             }
-            HStack {
-                if model.canJustify(boom.id) { Text("or stay a mystery") }
-                Spacer()
-                if let reacted = model.reactionSummary(boom.id) { Text(reacted) }
+            // ponytail: silence is the mystery, so nothing invites staying quiet
+            if let reacted = model.reactionSummary(boomID) {
+                Text(reacted).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
         }
     }
@@ -329,7 +391,7 @@ private struct JustifyRow: View {
         guard !why.isEmpty, !sending else { return }
         sending = true
         Task {
-            error = await model.justify(boom.id, why)
+            error = await model.justify(boomID, why)
             sending = false
             why = "" // it's saved either way; error only says the Club missed it
         }
@@ -356,35 +418,71 @@ private struct VibeLine: View {
     }
 }
 
-/// Your last 30 minutes as dots that wrap: grey calm, orange heated, red boiling, 💥 where it blew.
-/// The dots touch (no dead space between them), so moving across them never drops the hover.
+/// The open session as dots that wrap, oldest first: grey neutral, orange heated, red boiling, a soft green ember for
+/// cool, and the tier's emoji where it blew. Past four rows the oldest fold into a heat line, so a long session never
+/// grows the popover. The dots touch (no dead space between them), so moving across them never drops the hover.
+// Why: persistence; the whole session stays readable (docs/why.md#whole-session-dots)
 private struct Strip: View {
     @ObservedObject var model: GameModel
     @Binding var hovered: Double?
     private let cell: CGFloat = 18
+    static let dots = 56 // four rows of 14
 
     var body: some View {
-        let booms = Set(model.state.booms.map(\.ts)), now = Date().timeIntervalSince1970
-        if model.recent.isEmpty {
+        let session = model.session, now = Date().timeIntervalSince1970
+        if session.isEmpty {
             Text("Nothing yet. Every message you send Claude shows up here.").font(.caption).foregroundStyle(.secondary)
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: cell, maximum: cell), spacing: 0)], alignment: .leading, spacing: 0) {
-                ForEach(model.recent, id: \.ts) { e in
-                    Group {
-                        if booms.contains(e.ts) { Text("💥").font(.system(size: 12)) }
-                        else if e.awaitingRating(at: now) { RatingDot() }
-                        else { Circle().fill(dotColor(e.heat(at: now))).frame(width: 12, height: 12) }
+            let marks = blasts()
+            VStack(alignment: .leading, spacing: 4) {
+                if session.count > Self.dots {
+                    let folded = Array(session.dropLast(Self.dots))
+                    HStack(spacing: 6) {
+                        Text("\(folded.count) earlier").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                        HeatLine(events: folded).frame(height: 12)
                     }
-                    .frame(width: cell, height: cell)
-                    .background(hovered == e.ts ? Color.secondary.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                    .contentShape(Rectangle())
-                    .onHover { if $0 { hovered = e.ts } } // leaving the whole grid clears it, not leaving one dot
+                    .help("The session's first \(folded.count) messages, folded into a heat line")
                 }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: cell, maximum: cell), spacing: 0)], alignment: .leading, spacing: 0) {
+                    ForEach(session.suffix(Self.dots), id: \.ts) { e in
+                        Group {
+                            if let mark = marks[e.ts] { Text(mark).font(.system(size: 12)) }
+                            else if e.awaitingRating(at: now) { RatingDot() }
+                            else { Dot(heat: e.heat(at: now), cool: isCool(e)) }
+                        }
+                        .frame(width: cell, height: cell)
+                        .background(hovered == e.ts ? Color.secondary.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                        .contentShape(Rectangle())
+                        .onHover { if $0 { hovered = e.ts } } // leaving the whole grid clears it, not leaving one dot
+                    }
+                }
+                .onHover { if !$0 { hovered = nil } }
             }
-            .onHover { if !$0 { hovered = nil } }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(model.recent.count) messages in the last 30 minutes, \(model.recent.filter { $0.heat(at: now) >= 0.35 }.count) of them heated")
+            .accessibilityLabel("\(session.count) messages this session, \(session.filter { $0.heat(at: now) >= 0.35 }.count) of them heated, \(session.filter(isCool).count) cool")
         }
+    }
+
+    /// Where it blew, and where it went up a tier: 💥, 💥 again, ☢️ (one emoji per dot).
+    private func blasts() -> [Double: String] {
+        var marks: [Double: String] = [:]
+        for boom in model.state.booms {
+            for (i, ts) in ([boom.ts] + boom.escalations).enumerated() { marks[ts] = tier(i + 1).emoji.last.map(String.init) ?? "💥" }
+        }
+        return marks
+    }
+}
+
+/// One message: grey when neutral, orange when heated, red when boiling. A cool one glows soft green, an ember, over
+/// whatever heat it has, so roasting your agent live shows both.
+private struct Dot: View {
+    let heat: Double
+    let cool: Bool
+
+    var body: some View {
+        Circle().fill(cool && heat < 0.35 ? Color.green.opacity(0.5) : dotColor(heat))
+            .frame(width: 12, height: 12)
+            .shadow(color: cool ? Color.green.opacity(0.7) : .clear, radius: 2.5)
     }
 }
 
@@ -452,26 +550,36 @@ private struct Footer: View {
 /// Grey when calm, orange when heated (telling it off), red when boiling (losing it).
 func dotColor(_ heat: Double) -> Color { heat >= 0.85 ? .red : heat >= 0.35 ? .orange : Color.secondary.opacity(0.35) }
 
+/// Talking to your agent like a best bud: your AI's 1 of 3 or more.
+func isCool(_ e: Event) -> Bool { (e.cool ?? 0) >= Game.coolPrompt }
+
+/// A Boom tier's emoji and name, by `Boom.tier`: 💥 Boom, 💥💥 Chain reaction, ☢️ Meltdown.
+func tier(_ n: Int) -> (emoji: String, name: String) { Game.tiers[min(max(n, 1), Game.tiers.count) - 1] }
+
 func fuseColor(_ left: Double) -> Color { left <= 0.2 ? .red : left <= 0.5 ? .orange : Color.primary.opacity(0.7) }
 
 /// How many of the three pieces are still lit: any part of a third keeps it lit.
 func piecesLeft(_ left: Double) -> Double { (left * 3 - 1e-9).rounded(.up) }
 
 /// The menu bar icon: 🧨 and the fuse as three tiny pieces, orange past half and red near the end; 🧨✨ while a Boom's
-/// fuse burns; 💥 BOOM after.
+/// fuse burns; the tier's emoji and BOOM after, until it quiets down to a faint grey 💥.
 @MainActor
-func menuBarImage(_ state: GameState, connected: Bool, fusing: Bool, blown: Bool) -> NSImage {
+func menuBarImage(_ state: GameState, connected: Bool, fusing: Bool, blown: Bool, quiet: Bool) -> NSImage {
     // ponytail: follows the system appearance at render time; re-renders on the next state change after a switch
     let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     let view = HStack(spacing: 2) {
         let boomed = (state.boomed || blown) && !fusing
-        Text(boomed ? "💥" : "🧨").font(.system(size: 13))
+        let blast = state.boomed ? state.booms.last.map { tier($0.tier).emoji } ?? "💥" : "💥" // the test Boom has no tier
+        // Why: calm technology; after a while the Boom steps back into the periphery (docs/why.md#quiet-boom)
+        let hush = boomed && quiet
+        Text(!boomed ? "🧨" : hush ? "💥" : blast).font(.system(size: 13))
+            .grayscale(hush ? 1 : 0).opacity(hush ? 0.45 : 1)
         if !connected {
             Text("?").font(.system(size: 11, weight: .bold))
         } else if fusing {
             Text("✨").font(.system(size: 11))
         } else if boomed {
-            Text("BOOM").font(.system(size: 10, weight: .heavy)).foregroundStyle(.red)
+            if !hush { Text("BOOM").font(.system(size: 10, weight: .heavy)).foregroundStyle(.red) }
         } else {
             ForEach(0..<3, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1)

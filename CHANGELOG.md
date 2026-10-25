@@ -2,6 +2,27 @@
 
 What changed for you in each version of Lunte.
 
+## Unreleased
+
+### Improvements
+- **Keep it cool.** Lunte now reads a second thing in every message: cool, when you talk to your agent like a buddy. Heat burns the fuse and cool grows it back. To tune it to you, Replay onboarding and paste the new setup prompt: your AI now rates cool as well as heat.
+- **Sessions.** A session lasts until you've been quiet for 30 minutes. You get one Boom per session; keep the heat coming and it turns into a Chain reaction, then a Meltdown. Funnier, never louder. Your fresh stick comes when the session ends.
+- **Close calls.** The last third of the fuse is marked, and climbing back out of it gets you a quiet "Held it together".
+- **Your last session.** The next time you open Lunte after a session, you see how it went: a heat line and one line on what happened. History keeps your past sessions by day; click one to see it again. It all stays on your Mac.
+- **Aura.** Each session earns one award: 3 for a close call, 1 for your first cool session of the day. It shows on your sessions for now, and goes to your Club when Leagues arrive.
+- **The whole session as dots.** Your dots now cover the session, not just the last 30 minutes, and the oldest fold into a line on long days. Cool messages glow green.
+- **A quieter 💥.** Ten minutes after a Boom, the menu bar calms down to a faint 💥, so it doesn't shout for the rest of your session.
+- **A softer Boom.** The fuse fizzes for a moment before it blows, which takes the jump out of the bang, and the bang itself is a notch quieter. With the sound off, you hear neither.
+- **Fewer false alarms.** Tuned on 13 weeks of real use, the fuse lands around one or two Booms a week, and CAPS or "!!" on their own no longer burn it.
+
+### Fixes
+- The test Boom stays quiet when your sound is off.
+- **Club notifications never give you away.** They used to ding on every Mac but yours, sometimes before the bang. Now your Club hears about a Boom only once it has gone off, in a silent banner you can still throw a 🧯, 😂 or 🫂 from.
+- Reactions to your Boom show up on its card, without a notification.
+- **Quitting doesn't lose your Boom.** Quitting or updating Lunte while the fuse burned used to lose the bang. Now the fuse lights again when Lunte opens, if the Boom is under 10 minutes old.
+- **One bang per session.** A rating that came in late could move your Boom to an earlier message and set it off again, bang and all. Now a session bangs once, and your comment and your Club's reactions stay with it.
+- **Shutting the lid doesn't give you away.** If your Mac went to sleep while the fuse burned, the bang used to go off the moment you opened it. Now that Boom stays quiet: it's on your card, with no sound or sparks, and your Club never hears of it.
+
 ## 0.2.2
 
 ### Fixes

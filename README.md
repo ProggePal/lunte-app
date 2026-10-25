@@ -1,35 +1,35 @@
 # Lunte
 
-**When you lose it with your AI (more than you usually do), your laptop blows up. Everyone hears it. Own it, or stay a mystery.**
+**Keep it cool. Or go boom.**
 
-A Mac menu bar app for Claude Code. It's a prototype, with a handful of players so far.
+A stick of dynamite in your menu bar, lit by how you talk to your agent. For Claude Code on Mac. [Get Lunte](https://github.com/ProggePal/lunte-app/releases/latest)
 
-## How it plays
-- A stick of dynamite sits in your menu bar, and every message you send Claude has a heat.
-- Calm messages barely touch the fuse. Hot ones burn it, and the heat cools off after half an hour.
-- Too much heat at once and your laptop goes 💥: sparks from the menu bar, then a bang the whole room hears a few seconds later, so they have to guess who it was.
-- Your Club gets the Boom on their Macs and throws you a 🧯, 😂 or 🫂. Comment on it, or stay a mystery.
-- Step away for 10 minutes, or keep it calm for half an hour, and you get a fresh stick.
+## How it works
+- **Heat and cool.** Frustration is heat. Casual is cool. Claude tunes this for you during setup.
+- **The fuse.** Heat burns it, and cool grows it back.
+- **The Boom.** Burn through the fuse and your Mac blows up a few seconds later. Keep the heat coming and it turns into a Chain reaction, then a Meltdown.
+- **Sessions.** A session closes after 30 minutes without a prompt. Then you get a fresh stick and see how the session went.
+- **Your Club.** Your Club gets a silent ping when you blow up, and you can comment if you want. Roasts, close calls and cool sessions earn your Club aura.
+- **Leagues.** Invite other Clubs, race them every day, and the most points wins the week.
 
-## Tuned to you
-During setup, Lunte gives you one prompt for Claude Code. Your AI reads your recent messages and rates how heated they were, and Lunte tunes its heat detector to your normal. Nobody labels anything by hand.
-
-## Privacy
-Everything Lunte does runs on your Mac. Lunte never stores or sends your prompts. Only your Booms, reactions and comments go to your Club.
-- Lunte reads heat with a small model on your Mac, the Heat Detector. The first screen asks before downloading it, once, from Hugging Face (483 MB).
-- The setup prompt asks your own AI to read your recent messages, so they go to your AI provider like any other chat. Lunte keeps only the ratings.
-
-Read [the promise](docs/adr/0001-everything-runs-on-your-computer.md).
+Lunte is a prototype. Version 0.2.2 has heat, a fuse tuned to you, the Boom, and Clubs with pings, reactions and comments. Cool, sessions, aura and Leagues are coming next.
 
 ## Install
 1. Download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
-2. Open it, click the 🧨 in your menu bar, and install the Heat Detector (483 MB, once). Then follow the three steps: listen for new messages, activate the heat detector, and turn the heat up.
+2. Open it, click the 🧨 in your menu bar, and install the Heat Detector (483 MB, once). Then follow the three steps: listen for new messages, activate the heat detector, and turn the heat up by typing `3 2 1 pow` in Claude Code.
 3. Join a Club with its six-letter code, or create one, from the house at the bottom of the popover.
 
-You need a Mac with Apple Silicon, and Claude Code.
+You need a Mac with Apple Silicon and Claude Code.
+
+## Privacy
+Lunte reads your prompts on your Mac and never stores or sends them. Only your Booms, reactions and comments go to your Club.
+- The Heat Detector is a small model that runs on your Mac. The first screen asks before downloading it, once, from Hugging Face (483 MB).
+- During setup, one prompt asks your own AI to rate your recent messages, so Lunte learns how you normally talk. Those messages go to your AI provider like any other chat. Lunte keeps only the ratings.
+
+Read [the promise](docs/adr/0001-everything-runs-on-your-computer.md).
 
 ## Ideas
-Something you want to see in Lunte? Choose Submit a prompt… in Lunte's settings and it comes straight to us, or open an issue here with the prompt you'd want an agent to run to build it. If it's good, we keep it, and you're credited in the [changelog](CHANGELOG.md).
+Something you want in Lunte? Choose Submit a prompt… in Lunte's settings and it comes straight to us. You can also open an issue here with the prompt you'd give an agent to build it. If we keep it, you're credited in the [changelog](CHANGELOG.md).
 
 ## Credits
 Heat is read by [Laya](https://huggingface.co/convaiinnovations/laya-multilingual) (Apache-2.0), running on your Mac through FluidInference's [CoreML build](https://huggingface.co/FluidInference/laya-coreml) and the [FluidUse](https://github.com/FluidInference/FluidUse) runtime (Apache-2.0).

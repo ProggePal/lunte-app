@@ -24,7 +24,8 @@ public enum EventLog {
     }
 
     /// Skips unparseable lines and impossible timestamps (one would crash Boom ids); sorted by ts.
-    /// Heat lines are merged into the prompt with the same ts and dropped; one without its prompt is dropped too.
+    /// Heat lines (heat and cool) are merged into the prompt with the same ts and dropped; one without its prompt is
+    /// dropped too.
     public static func read(_ url: URL = defaultURL) -> [Event] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         let decoder = JSONDecoder()
@@ -37,6 +38,7 @@ public enum EventLog {
                 guard let r = ratings[e.ts] else { return e }
                 var e = e
                 e.heat = r.heat.map { min(1, max(0, $0)) }
+                e.cool = r.cool.map { min(1, max(0, $0)) }
                 e.mood = r.mood
                 e.topic = r.topic
                 return e

@@ -20,12 +20,12 @@ app/
 
 ```json
 {"v":1,"ts":1792670480.123,"burn":"none","sid":"<Claude Code session_id>","rated":true}
-{"v":1,"ts":1792670480.123,"burn":"heat","sid":"","heat":0.93,"mood":"frustrated","topic":"code"}
+{"v":1,"ts":1792670480.123,"burn":"heat","sid":"","heat":0.93,"cool":0.05,"mood":"frustrated","topic":"code"}
 ```
 
 - `burn`: `"none"`, `"tell"` (telling it off), `"lose"` (losing it) or `"test"` (the onboarding phrase, §6). `"heat"` and `"rest"` are written by the app, never by the hook.
 - `rated`: present and `true` when the hook handed the prompt to the app's model (§2), so a `heat` line should follow.
-- `heat` lines: the model's rating, `heat` 0…1, its `mood` choice, and the message's `topic`: one word from `Vibe.topics` (code, design, writing, business, voice, shipping, ideas, other), never text. Readers merge one into the prompt line with the same `ts` and drop it; a heat line without its prompt is dropped.
+- `heat` lines: the model's ratings, `heat` 0…1 and `cool` 0…1 (§8; absent without a cool model and in older logs), its `mood` choice, and the message's `topic`: one word from `Vibe.topics` (code, design, writing, business, voice, shipping, ideas, other), never text. Readers merge one into the prompt line with the same `ts` and drop it; a heat line without its prompt is dropped.
 - `ts`: Unix seconds, as a Double.
 - `sid`: the Claude Code session id, kept as a pointer for a later `lunte why`. It may be `""`.
 - **Writers** append one whole line with a single `write()` under `O_APPEND`.
@@ -52,11 +52,11 @@ Strip ```` ``` ```` fenced blocks, then match case-insensitively on Unicode word
 
 - **lose** (losing it), which beats tell:
   - a swear: `fuck*, shit*, bitch*, damn*, crap*, asshole*, bastard*, dick, piss*, bollocks, wtf, ffs, omfg, hell, faen*, helvete, hælvete, jævl*, dritt*, satan, kuk, pikk`
-  - three CAPS words in a row
-  - `!!`, `?!` or `!?`
   - `useless`, `stupid`, `are you kidding`, `what the hell`, `herregud`, `seriøst`
+  - a telling-off (below) turned up with three CAPS words in a row, or with `!!`, `?!` or `!?`
 - **tell** (telling it off): `i said`, `i told you`, `i already said`, `i asked you`, `why did you`, `why would you`, `why are you`, `you (just) broke|deleted|ignored|removed`, `not what i asked|said|wanted`, `that's wrong`, `that's not it`, `stop it|that|doing`, `come on`, `seriously`, `ugh`, `argh`, `jeg sa`, `jeg har sagt`, `hvorfor gjorde du`, `hvorfor gjør du`, `du slettet`, `du ødela`, `kom igjen`
-- **Happy guard:** if the prompt has a happy word, swears, CAPS and `!!` don't count, though the other phrases still do. The happy words are `awesome, amazing, love, perfect, great, nice, cool, sick, wow, insane, let's go, yay, hell yeah, thanks, thank you, thx, appreciate, legend, bra, digg, rått, takk, nydelig, herlig`.
+- **Volume alone is none:** CAPS and `!!` on their own, or together, don't burn. Heat is anger, not volume ([why](why.md#heat-not-volume)).
+- **Happy guard:** if the prompt has a happy word, swears don't count, and CAPS and `!!` don't turn a telling-off up, though the other phrases still do. The happy words are `awesome, amazing, love, perfect, great, nice, cool, sick, wow, insane, let's go, yay, hell yeah, thanks, thank you, thx, appreciate, legend, bra, digg, rått, takk, nydelig, herlig`.
 - **none:** everything else, including bug reports ("broken", "not working", "still failing", "funker ikke") and a plain "no".
 
 These cases must pass:
@@ -80,24 +80,45 @@ These cases must pass:
 | `hello shell` | none |
 | `what the hell are you doing` | lose |
 | `come on` | tell |
+| `it's still broken!!` | none |
+| `WHY IS IT STILL BROKEN` | none |
 
-## 4. The game: `Game.replay(_:now:) -> GameState`
+## 4. The game: `Game.replay(_:now:timeZone:) -> GameState`
 
-Pure and deterministic, over the whole log.
+Pure and deterministic, over the whole log. `timeZone` (default `.current`) sets the local calendar days the fuse counts. The app replays in the Mac's current time zone, so travelling can move a past session's day, and with it the calm workdays and the cool point. Why each rule is there, with its evidence and a source, is in [why.md](why.md); the code links each rule to its entry with a `// Why:` comment.
 
-Every message has **heat**, 0…1, and burns heat² of the fuse, so calm messages barely touch it and hot ones eat it. A burn cools off after 30 minutes. Too much heat at once and it blows.
+Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fuse and cool mends some of it back, so calm messages barely touch it and hot ones eat it. A burn cools off after 30 minutes. Too much heat at once and it blows: once per Sitting, and more heat soon after escalates the same Boom.
 
-- **Heat** (`Event.heat(at: now)`): the model's rating from the merged `heat` line. Without one, the word list: `tell` 0.6, `lose` 1, anything else 0. A `rated` prompt still waiting for its rating counts as 0 for `ratingWait` (90 s), so the word list can't Boom before the model speaks; after that the word list decides.
-- **Sitting:** consecutive events less than 10 minutes (600 s) apart. A gap of 600 s or more (a break) starts a new Sitting with a fresh stick.
-- **Fuse** is how much heat² the stick takes: 1 (`minFuse`) to start, +0.5 per Boom (`boomGrowth`), −0.5 per Sitting that ends without a Boom, never below 1.
-- **Burning:** a message whose heat² is at least 0.01 joins the Sitting's `currentBurns`. `burned` is the sum of heat² over the burns from the last 30 minutes (`cooling`); older ones drop out.
-- **Boom:** when `burned >= fuse` and the stick isn't already blown. `fuse += 0.5`. More heat while it's blown keeps it blown.
-- **Fresh stick after a Boom:** a 10-minute break, or 30 minutes after the last burn (every burn has cooled off), whichever comes first. `freshAt` is that time for the open Sitting.
-- **`.test` events** count as activity for Sittings but never burn, never Boom and never change the fuse.
-- **`.rest` events** close the open Sitting on the spot, exactly like a break. The next prompt then starts a fresh Sitting, without counting the empty stretch in between as a calm Sitting.
-- **`Boom`** is `{id, ts, litBy}`. `id = String(Int(ts * 1000))`, so it stays stable across replays. `litBy` holds the burns still burning when it blew, up to and including the Boom.
-- **`GameState`** is `{fuse, burned, boomed, sittingOpen, currentBurns, booms, sittingStart, freshAt}`, and `left` is the share of stick left (0 when blown). With no open Sitting, `burned == 0` and `boomed == false`.
-- **`Game.stickText`:** `💥` when blown, otherwise `🧨` plus one `━` per third left, or `🧨✨` at a third or less.
+- **Heat** (`Event.heat(at: now)`): the model's rating from the merged `heat` line. Heat is anger, not volume. Without one, the word list: `tell` 0.6, `lose` 1, anything else 0. A `rated` prompt still waiting for its rating counts as 0 for `ratingWait` (90 s), so the word list can't Boom before the model speaks; after that the word list decides.
+- **Cool** (`Event.cool`): the model's cool from the same `heat` line (§8): talking to your agent like a best bud. Nil without a cool model and in older logs, and nil counts as 0. A message counts as cool from `coolPrompt` (1/3, your AI's 1 of 3).
+- **Burn** (`Game.burn(_:at:)`): heat² less `coolMend` (0.5) × cool², where either part below 0.01 counts as 0. So a cool message is negative, and a hot and cool one ("you absolute clown 😂") burns less than the heat alone.
+- **Sitting** (a session in GAME.md): it starts with a message and closes after 30 minutes (`sittingGap`, 1800 s) without one. It has no length cap. The next message after that starts a new Sitting with a fresh stick.
+- **Fuse** is how much heat² the stick takes: 1 (`minFuse`) to start, +0.75 per Boom (`boomGrowth`), −0.25 per calm workday (`calmWorkdayShrink`), never below 1 ([why](why.md#rare-booms)).
+  - A **calm workday** is a local calendar day with at least one prompt and no Boom. `.test` prompts don't make a workday. It shrinks the fuse once it's over, at the first prompt after midnight or at `now`; a day without prompts changes nothing.
+  - A Sitting keeps the stick it started with, even past midnight; the shorter stick comes with the next Sitting.
+- **Burning:** a message whose burn isn't 0 joins what's burning, and `burned` adds each one's burn in turn, never going below 0, so cool can't be banked before the heat. Only messages from the last 30 minutes (`cooling`) count; each drops out when its 30 minutes are up. The messages with heat² of 0.01 or more are the Sitting's `currentBurns`.
+- **Boom:** when `burned >= fuse` in a Sitting that hasn't Boomed. `fuse += 0.75`, and `fuse` shows the next stick from then on. A Sitting Booms once and stays blown until it closes.
+- **Tiers:** after the Boom the burn starts again from 0, and each further half of the stick that blew (`escalationStep`, 0.5) within 30 minutes of the Boom (`escalationWindow`, 1800 s) steps the same Boom up a tier: 1 Boom, 2 Chain reaction at +½ stick, 3 Meltdown at +1 stick (`maxTier`; names and emoji in `Game.tiers`) ([why](why.md#tiers-flavour-not-volume)). Each step's time goes in `Boom.escalations`; a prompt that steps up two tiers is there twice. After 30 minutes nothing escalates, though the Sitting stays blown until it closes. It's still one Boom, with the same id, and more heat at Meltdown changes nothing.
+- **Fresh stick after a Boom:** only when the Sitting closes. `freshAt` is the last message + 30 minutes.
+- **Close call:** the stick gets into its last third (`Game.inLastThird(left)`: `left <= 1/3`, `closeCallLeft`, with 1e-9 of float slack, so a heat-1 burn on a 1.5 stick counts) and climbs back out without a Boom in between, because a cool message mended it or the burn that put it there cooled off. Cooling is timed when the burn's 30 minutes are up, also after the last message, so walking away from a dip counts. `CloseCall` is `{ts, cooled}`: when it dipped and when it climbed out. One per dip; a dip that Booms, or that a `rest` cuts short, is none.
+- **`.test` events** count as messages for Sittings but never burn, never Boom and never change the fuse.
+- **`.rest` events** close the open Sitting on the spot, and the next prompt starts a fresh Sitting. A rest isn't a prompt, so it doesn't make a workday.
+- **`Boom`** is `{id, ts, litBy, escalations}` with `tier` (1–3). `id = String(Int(ts * 1000))`, so it stays stable across replays. `litBy` holds the burns still burning when it blew, up to and including the Boom.
+- **`Sitting`** is `{start, end, prompts, peakHeat, coolPrompts, boom, closeCalls, lastBurn, isOpen, aura}`, with `tier` (0 without a Boom) and `cooledOff`. `aura` is its one award, set by the replay (below). `end` is its last message. `coolPrompts` counts messages with cool of at least `coolPrompt`. `cooledOff` is when the last burn had cooled off (`lastBurn` + 30 minutes), if you were still at it then. Sittings are facts about your day and stay on your Mac.
+- **`GameState`** is `{fuse, burned, boomed, sittingOpen, currentBurns, booms, sittingStart, freshAt, sittings}`. `left` is the share of stick left (0 when blown), `sitting` the open Sitting, and `closeCalls` every close call. `sittings` holds every Sitting, oldest first: the closed ones, then the open one. After a Boom, `burned` counts toward the tiers. With no open Sitting, `burned == 0` and `boomed == false`.
+- **`Game.sessionLine(_:)`:** one line about a Sitting, built from what happened, never a guess at your mood. It ends on the recovery when there is one (the peak-end rule). Four templates:
+  - no Boom and no close call: "Cool all the way. 42 prompts."
+  - close calls: "Close call at 14:12. Cooled off." or "3 close calls, the last at 15:03. Cooled off."
+  - a Boom: "Boomed at 14:12.", with "Slow burn. " in front when its burns built up over 10 minutes or more (`slowBurn`)
+  - an escalated Boom, by its top tier: "Chain reaction at 15:03." or "Meltdown at 15:20."
+
+  A Boom line ends with "Cooled off by 14:40." when `cooledOff` is set.
+- **Aura** (`Game.aura(_:)`, which returns `Sitting.aura`): one award per Sitting, the best thing that happened, without roasts ([why](why.md#aura-not-work)).
+  - A Sitting with any close call earns `closeCallAura` (3), at once, and keeps it if a Boom comes after.
+  - Otherwise a cool Sitting, `coolSittingPrompts` (5) or more messages and no Boom, earns `coolSittingAura` (1) when it closes, but only the first one on the local day it started. So an open Sitting's cool point waits for the close, and aura never goes down.
+  - Otherwise 0.
+  - A roast is worth `roastAura` (8). The Club's reactions decide roasts, in the app and the relay, not the replay. A roasted Sitting's one award is the roast, in place of its `aura`.
+- **`Game.stickText`:** `💥` when blown, otherwise `🧨` plus one `━` per third left, or `🧨✨` in the last third (`Game.inLastThird`).
 - **`Game.heatWord`:** cool (< 0.15), mild (< 0.35), warm (< 0.6), hot (< 0.85), boiling.
 - **The vibe** (`Vibe`): one dry line about the last 30 minutes, shown in the popover only, never sent.
   - A vibe has an emoji, a label, a band (calm, warm, hot, explosive), a short `when` and a one-line story for hover.
@@ -112,20 +133,26 @@ Every message has **heat**, 0…1, and burns heat² of the fuse, so calm message
 - **`Classifier.signals(_:)`:** the reasons behind a classification, for display only, such as `["told off: why did you", "swear", "CAPS"]`.
 - **`Transcript.prompt(sid:ts:)`:** the prompt text for an event, read from Claude Code's own transcript (`~/.claude/projects/*/<sid>.jsonl`, the human prompt within 5 s of `ts`). It's used for display only and never stored. Claude Code deletes old transcripts, so it can come back nil.
 
-Fixtures that must pass (GameTests):
-1. One `lose` on a fresh stick: a Boom, then fuse 1.5.
+Fixtures that must pass (GameTests, SittingTests):
+1. One `lose` on a fresh stick: a Boom, then fuse 1.75.
 2. `tell`, `tell`: no Boom, 0.72 burned.
 3. `tell`, `lose` Booms, and so do three `tell`s.
 4. More heat after a Boom: still one Boom.
-5. A calm Sitting after a Boom shortens the fuse back, never below 1.
-6. A gap of 599 s is the same Sitting; a gap of 600 s is a fresh stick.
+5. The thermostat: a calm workday shortens the fuse by 0.25, never below 1. A calm Sitting, a day that Boomed, a day without prompts, a day with only `.test` and a day with only a rest don't; a Sitting keeps its stick past midnight; a 25-hour day across a DST change shrinks it once.
+6. A gap of 1,799 s is the same Sitting; a gap of 1,800 s closes it. A message every 20 minutes for 5 hours is one Sitting.
 7. Last event 31 minutes before `now`: `sittingOpen == false`, the whole stick left.
 8. Replaying twice gives the same Boom ids.
 9. A burn cools off after 30 minutes, so the third `tell` doesn't Boom when the first has cooled.
-10. A Boom heals after 30 calm minutes of chatting, without a break; the fuse keeps its growth.
+10. Blown until the Sitting closes, however long ago the burn cooled; the fuse keeps its growth.
 11. The model's heat beats the word list both ways.
 12. A rated prompt waits for its rating, then the word list decides.
-13. `freshAt` is the sooner of the break and the cooling.
+13. `freshAt` is the last message + 30 minutes, and only after a Boom.
+14. Cool mends the fuse, never below 0, and can't be banked; a hot and cool message burns less than the heat alone.
+15. One Boom per Sitting: the burn starts again from 0, and each further half of the stick that blew steps up to Chain reaction and Meltdown, then stops; a whole stick at once steps up two; nothing escalates 30 minutes or more after the Boom.
+16. Close calls: mended by cool, cooled off, or walked away from; none when it Booms or a rest cuts the dip short; one per dip; and one at exactly a third left.
+17. Sitting summaries: start, end, prompts, peak heat, cool prompts, the Boom, open or closed.
+18. Each session line template, its variants and the recovery.
+19. Aura: one award per Sitting (a close call 3, a cool Sitting 1, never both), a cool point at most once per local day, an open Sitting, and a Boom.
 
 ## 5. The relay (HTTP + JSON)
 
@@ -153,11 +180,15 @@ Base URL comes from Info.plist `LunteRelayURL`, overridable with `defaults write
 
 ## 6. The app (`Lunte.app`)
 
-**Basics.** A menu bar-only app (`LSUIElement`) with bundle id `no.panter.lunte`, for macOS 14 and later. The menu bar label is 🧨 and three tiny pieces of what's left (orange at half, red near the end), `💥 BOOM` when blown, or `🧨?` before it's connected.
+**Basics.** A menu bar-only app (`LSUIElement`) with bundle id `no.panter.lunte`, for macOS 14 and later. The menu bar label is 🧨 and three tiny pieces of what's left (orange at half, red near the end), the tier's emoji and `BOOM` for 10 minutes after a Boom or its last escalation, then a faint grey 💥 while still blown, or `🧨?` before it's connected.
 
 **Watching the log.** It watches `events.jsonl` with a file-system source and a 1 s debounce, reopening the file if it's created or replaced. On every change it replays the log. For a new Boom:
-- **Not yet announced and less than 10 minutes old:** post it to the relay if you're in a Club, and light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from the menu bar icon and the icon shows `🧨✨`. In the last second the screen dims. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` unless the sound is off. With Reduce Motion there's only the wait and the sound. The onboarding test and "Test your Boom" burn for 3 s.
+- **Not yet announced and less than 10 minutes old:** light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from the menu bar icon and the icon shows `🧨✨`. In the last second the screen dims, and unless the sound is off, a soft fizz (0.4 s of synthesised noise) starts. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` right after the fizz, both capped at 0.6 of the Mac's volume. At that moment, sound or not, it posts the Boom to the relay if you're in a Club, so no Club Mac hears of it before the bang. If the Mac slept through the wait (more than 2 s late by the wall clock, `Blast.lateBy`), there's no dim, sound, burst or post; the Boom stays in the log and on its card. With Reduce Motion there's only the wait and the sound. The onboarding test burns for 3 s.
 - **Older:** mark it announced silently.
+
+A Boom counts as announced at its bang, or when the Mac slept through it. So one whose fuse is still burning when Lunte quits, crashes or updates lights again, with a new wait, when it opens, if it's still under 10 minutes old.
+
+A Sitting bangs once. A late rating, or a word-list decision after `ratingWait`, can move a Sitting's Boom to an earlier prompt, which gives it a new id; a Boom whose Sitting has been lit already is marked announced silently. The app keeps the lit Sittings by start, with the id each was lit for, in UserDefaults (`Lit`, next to `Announced`), and the Boom's comment and reactions stay with that id.
 
 The app keeps each Boom's secret and its "mine" flag in UserDefaults.
 
@@ -185,18 +216,22 @@ Pressing Download moves on to onboarding. Until the detector is ready, the Club'
 A new `test` event (less than 10 minutes old, not yet announced) lights a 3-second fuse and blows. The popover shows "Your first Boom" and "Everyone heard that. Comment:", with the field already filled in with "it was a test". Commenting shows the comment and "Fresh stick in 0:10"; ten seconds later you're onboarded. The test is never posted to the Club. Macs that were connected before this onboarding count as onboarded. While onboarding shows, the gear offers "Skip onboarding"; after it, "Replay onboarding".
 
 **The popover**, top to bottom. With a Boom showing, the whole sheet gets a red wash from the top, snapping on with no fade.
-- **The stick:** three pieces, lit for each third of fuse left, orange at half, red near the end, ✨ on the last third.
-- **Or the Boom:** a centred 💥, "Boom 2 minutes ago", and one timer, "Fresh stick in 9:12": the sooner of the break and the cooling. Its tooltip: "Keep the heat down for 30 minutes, or take a 10-minute break to cool off." **Easter egg, with no UI:** once you've justified, each tap on the 💥 shaves 2 s off the wait, at most 60 s; when a hurried wait ends, the app appends a `rest` event. A new prompt resets the shave.
+- **The stick:** three pieces, lit for each third of fuse left, orange at half, red near the end, ✨ on the last third. The last third always has a faint red edge.
+- **Held it together:** for 10 minutes after a close call climbs out, a green line says so. No sound, no notification.
+- **Or the Boom:** the tier's emoji and name (Boom, Chain reaction, Meltdown), when it last went off, and one timer, "Fresh stick after 30 quiet minutes · 24:10", counting to `freshAt`. **Easter egg, with no UI:** once you've justified, each tap on the 💥 shaves 2 s off the wait, at most 60 s; when a hurried wait ends, the app appends a `rest` event. A new prompt resets the shave.
 - **One text slot**, two lines and a fixed height: the hovered message, or with nothing hovered, the message that set off the Boom (serif italic, centred), else the hottest one still burning, else your latest. Above it, "19:34 · hot", plus "cooled off" or "set it off". Hovering the vibe line shows its story here instead.
-- **Comment** (the Justify of GAME.md), under a Boom: the field is open from the start, at most 40 characters, with a Comment button, "or stay a mystery" and your Club's reactions beside it. It's saved on the Mac and, in a Club, sent as a `why` when the Boom reached the relay.
+- **Comment** (the Justify of GAME.md), under a Boom: the field is open from the start, at most 40 characters, with a Comment button and your Club's reactions beside it. Nothing invites staying quiet. It's saved on the Mac and, in a Club, sent as a `why` once the Boom has reached the relay: one typed while the fuse burns goes right after the Boom, never before it.
 - **The vibe line:** the session's vibe (§4), emoji and label, "✨ new" the first time it ever shows, or "Reading the room…".
-- **Your last 30 minutes** as dots that wrap, oldest first: grey calm (heat under 0.35), orange heated, red boiling (0.85 and up), 💥 where it blew. A message Laya is still rating is a grey dot breathing, and the slot says "rating…". The dots touch, so moving across them never drops the hover.
+- **The open session** as dots that wrap, oldest first: grey calm (heat under 0.35), orange heated, red boiling (0.85 and up), a soft green glow for cool, and the tier's emoji where it blew or escalated. Past 56 dots the older ones fold into "N earlier" and a thin heat line. A message Laya is still rating is a grey dot breathing, and the slot says "rating…". The dots touch, so moving across them never drops the hover.
 - "12 messages from Claude Code", then the Club's latest two events.
+- **Your last session:** the first time the popover opens after a session closed, a card with its length, a small heat line, `Game.sessionLine` and its aura. Shown once, counted when the card is on screen, so another screen filling the popover, like the Heat Detector's, doesn't use it up.
+- **History:** past sessions, newest first, grouped by day, each opening its card. Local only, never a score.
 - **The footer:** sound; the Club (a house and its name, or "No Club") with its actions; a gear with Skip onboarding (while it shows) or Replay onboarding, **Vibes** (off by default; off means no vibe line, no vibe picking and no topic question), **Show model ratings** (debug: the slot adds heat %, its source (Laya, or the word list when Laya isn't there or didn't answer in time), what it burns, the mood and the word list's signals; a spinner while Laya is rating), **Submit a prompt…** (a native dialog, "Something you want to see in Lunte?", with your name and a multi-line prompt; Submit sends it to the relay's prompt inbox (§5) and says "Thanks, it's in", or why it couldn't, prompt cut at 4,000 characters), Check for updates and Quit.
 
-**The Club.** The app polls every 30 s.
+**The Club.** The app polls every 30 s. Every notification is a silent banner: the bang is the only sound in the room.
 - **Someone else's Boom:** a notification "💥 Boom in your Club" with 🧯 😂 🫂 actions, each of which posts a react.
-- **A react on your own Boom, a why on someone else's, or a join:** a notification such as "🧯 from Ola", "Paal: …" or "Ola joined your Club".
+- **A why on someone else's Boom, or a join:** a notification such as "Paal: …" or "Ola joined your Club".
+- **Reacts never notify.** Those on your own Boom go on its card.
 - **Catching up after being offline:** events older than 10 minutes go into the feed without a notification.
 - **A Boom counts as yours** only once the relay has accepted it (201). Leaving a Club forgets your Booms and their secrets.
 - **Run from Downloads:** if macOS runs the app from a temporary path (App Translocation), the app asks to be moved to Applications and doesn't link the hook.
@@ -215,26 +250,29 @@ A dev build is signed ad-hoc. `--release` signs with `Developer ID Application: 
 
 ## 8. Your fuse
 
-Your AI rates your past messages once, and Lunte learns how Laya's answers add up to heat for you. Nobody labels anything by hand, and Lunte and your AI never talk directly: they share a folder, `~/Library/Application Support/Lunte/fuse`, and the `lunte-hook` commands.
+Your AI rates your past messages once, for heat and for cool, and Lunte learns how Laya's answers add up to each for you. Nobody labels anything by hand, and Lunte and your AI never talk directly: they share a folder, `~/Library/Application Support/Lunte/fuse`, and the `lunte-hook` commands.
 
 - **The setup prompt** (`Fuse.setupPrompt`): `Let's set up Lunte. Look at my messages and tune the sensitivity and the vibes. Lunte's setup tool is at "$HOME/Library/Application Support/Lunte/lunte-hook": run it with setup for the steps. Let me know when you're done :)` It never contains the test phrase, so pasting it can't Boom, and it doesn't burn either.
 - **`lunte-hook setup`** prints the steps for your AI (`Fuse.setupText`):
   1. List the messages (`lunte-hook messages`).
-  2. Rate each 0–3 toward the assistant: 0 calm (including happy swearing), 1 irritated, 2 angry, 3 furious.
-  3. Write `labels.json`.
-  4. Write about 20 personal vibes to `vibes.json`, without showing them.
-  5. Run `lunte-hook check-fuse`, which checks both files.
-  6. Finish with one line in the chat telling you to type `3 2 1 pow`.
+  2. Rate each for heat, 0–3 toward the assistant: 0 calm, 1 irritated, 2 angry, 3 furious. Heat means anger, not volume: capitals and swearing out of joy ("LETS GO") are 0, and sarcasm ("great, you broke it again") is heat.
+  3. Rate each again for cool, 0–3: talking to the assistant like a best bud (slang, banter, hype, nicknames, casual thanks, happy swearing). 0 neutral, including a formal "please" or "thank you", 1 friendly, 2 buddy, 3 best bud. One message can be both hot and cool.
+  4. Write `labels.json`.
+  5. Write about 20 personal vibes to `vibes.json`, without showing them.
+  6. Run `lunte-hook check-fuse`, which checks both files.
+  7. Finish with one line in the chat telling you to type `3 2 1 pow`.
 - **`vibes.json`**, written by your AI: `{"lunte": "fuse-vibes", "v": 1, "made", "vibes": [{"emoji", "label", "band", "topic", "when", "story"}]}`. `topic` is one of code, design, writing, business, voice, shipping, ideas, or "any" for vibes about mood, time or habits. A vibe without a topic gets one from Laya's topic question on its label and "when", kept only above 0.5; that fallback is rough, so the AI's own topic is preferred. About 20 personal vibes in Lunte's voice (dry, understated), spread over the bands, about the mood rather than the content: no quotes, no names, nothing private. `lunte-hook setup` tells the AI not to list them to you. `FuseVibes.problems` checks the shape, the lengths, and that every band has at least one vibe. The app reads the file at launch and whenever the folder changes.
-- **`labels.json`**, written by your AI: `{"lunte": "fuse-labels", "v": 1, "rater", "made", "labels": [{"sid", "ts", "rating"}]}`. Message references only, no text. `FuseLabels.problems` lists what's wrong: the wrong `lunte` or `v`, ratings outside 0–3, or fewer than 30 ratings.
+- **`labels.json`**, written by your AI: `{"lunte": "fuse-labels", "v": 1, "rater", "made", "labels": [{"sid", "ts", "rating", "cool"}]}`, where `rating` is heat. Message references only, no text. `FuseLabels.problems` lists what stops tuning: the wrong `lunte` or `v`, heat or cool ratings outside 0–3, or fewer than 30 ratings. Files from before cool have no `cool`; they still decode and tune heat. `check-fuse` also reports every message without a `cool` (`FuseLabels.missingCool`), since setup rates both.
 - **Candidates** (`Fuse.candidates`): every message the word list flags, up to a third of 300, plus an even spread of the rest, oldest first.
 - **Tuning.** When `labels.json` is newer than `profile.json` (watched, 1 s debounce, and checked at launch once the model is loaded), the app:
   1. finds each rated message in the transcripts (same session, within 1 s), and needs at least 30
   2. asks Laya the 11 probes of `Scorer.probes` (~90 ms per message)
   3. turns every option's probability into a feature, `log(p + 0.0001)`
-  4. trains `PersonalFuse`: a ridge regression on the 0–3 ratings over the standardised features, with the regularisation picked from 0.01–3 by 5-fold cross-validation
-  5. saves `profile.json`
+  4. trains `PersonalFuse`: a ridge regression on the 0–3 heat ratings over the standardised features, with the regularisation picked from 0.01–3 by 5-fold cross-validation
+  5. trains a second `PersonalFuse` the same way on the cool ratings, from the same features, when at least 30 of the found messages have one
+  6. saves `profile.json`, and `cool.json` for cool (or removes `cool.json` when there's no cool model)
 
   `fit` is the held-out AUC of irritated-or-worse against calm. Message text stays in memory only.
-- **`profile.json`**, written by the app: `{v, probes, mean, sd, weights, bias, lambda, trainedOn, fit, rater, made}`. A profile only applies if its `probes` match the app's; otherwise it counts as untuned.
+- **`profile.json`** and **`cool.json`**, written by the app: `{v, probes, mean, sd, weights, bias, lambda, trainedOn, fit, rater, made}`. A profile only applies if its `probes` match the app's; otherwise it counts as untuned.
 - **Heat with a profile:** all probes are asked, and heat is the predicted rating divided by 3, clamped to 0…1. So furious is 1 (a Boom on a fresh stick), angry 0.67 and irritated 0.33. Without a profile, heat is P(frustrated) from the mood probe. The mood probe's top label always feeds the vibe line.
+- **Cool with a cool model:** the same answers through `cool.json` give cool 0…1, logged in the heat line next to heat. Without a cool model, cool stays nil, and the game reads nil as 0.

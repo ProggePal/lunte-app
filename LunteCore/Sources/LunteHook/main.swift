@@ -16,13 +16,14 @@ case "messages": // the messages your AI rates: one JSON line each, text cut sho
         }
     }
     FileHandle.standardError.write(Data("\(min(all.count, 300)) of your \(all.count) messages from the last 60 days\n".utf8))
-case "check-fuse": // are labels.json and vibes.json right, and can Lunte find the rated messages?
+case "check-fuse": // are labels.json (heat and cool) and vibes.json right, and can Lunte find the rated messages?
     guard let data = try? Data(contentsOf: Fuse.labelsURL) else { print("No file at \(Fuse.labelsURL.path)"); exit(1) }
     do {
         let labels = try JSONDecoder().decode(FuseLabels.self, from: data)
         let known = Transcript.all(since: (labels.labels.map(\.ts).min() ?? 0) - 60)
         let found = labels.labels.filter { l in known.contains { $0.sid == l.sid && abs($0.ts - l.ts) < 1 } }.count
         var problems = labels.problems + (found < labels.labels.count ? ["\(labels.labels.count - found) ratings point at messages Lunte can't find; copy sid and ts exactly"] : [])
+        if labels.missingCool > 0 { problems.append("\(labels.missingCool) messages have no \"cool\" rating; rate cool 0–3 for every message") }
         var vibes = 0
         if let v = try? Data(contentsOf: Fuse.vibesURL) {
             do {
@@ -33,7 +34,7 @@ case "check-fuse": // are labels.json and vibes.json right, and can Lunte find t
         } else {
             problems.append("No vibes.json yet")
         }
-        print(problems.isEmpty ? "OK: \(labels.labels.count) ratings, all found, and \(vibes) vibes. Lunte will tune the fuse now." : problems.joined(separator: "\n"))
+        print(problems.isEmpty ? "OK: \(labels.labels.count) messages rated for heat and cool, all found, and \(vibes) vibes. Lunte will tune the fuse now." : problems.joined(separator: "\n"))
         exit(problems.isEmpty ? 0 : 1)
     } catch {
         print("labels.json isn't in the expected shape: \(error)")

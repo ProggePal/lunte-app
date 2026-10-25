@@ -16,7 +16,7 @@ struct LunteApp: App {
         MenuBarExtra {
             PopoverView(model: model, updater: updater)
         } label: {
-            Image(nsImage: menuBarImage(model.state, connected: model.connected, fusing: model.fusing, blown: model.testBlown))
+            Image(nsImage: menuBarImage(model.state, connected: model.connected, fusing: model.fusing, blown: model.testBlown, quiet: model.boomQuiet))
                 .accessibilityLabel(model.connected ? model.sentence : "Lunte, not connected yet")
         }
         .menuBarExtraStyle(.window)
