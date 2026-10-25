@@ -1,4 +1,4 @@
-<h1 align="center">Lunte: dynamite in your menu bar</h1>
+<h1 align="center">Dynamite in your menu bar</h1>
 
 <p align="center">
   <picture>
@@ -7,7 +7,7 @@
   </picture>
 </p>
 
-<p align="center">Lit by how you talk to your agent. Keep it cool and the Lunte grows. Turn up the heat, and it blows.</p>
+<p align="center"><b>Lunte</b> is lit by how you talk to your agent. Keep it cool and it grows. Turn up the heat, and it blows.</p>
 
 <p align="center">
   <a href="https://github.com/ProggePal/lunte-app/releases/latest"><img src="https://img.shields.io/github/v/release/ProggePal/lunte-app?label=Download%20for%20Mac&logo=apple&style=for-the-badge&color=e8590c" alt="Download for Mac"></a>
