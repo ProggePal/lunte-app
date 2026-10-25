@@ -2,11 +2,11 @@ import AppKit
 import FuseKit
 import QuartzCore
 
-/// The Boom on screen, from the menu bar icon, in native Core Animation particles: the one show. While the fuse burns,
-/// sparks drip from the icon. In the last 3 seconds the room darkens around a warm glow at the fuse and the sparks spit
-/// harder; in the last 1.4 they slow down until they almost hang, as the menu bar fuse does. Then it blows at full speed
-/// from the icon: a flash, two shockwaves, and a burst of sparks and embers falling down the screen, as the dark drains
-/// away. Clicks pass through. With Reduce Motion it's just the wait.
+/// The Boom on screen, from the menu bar icon, in native Core Animation particles: the one show. The wait is silent, as
+/// if the fuse went out. In its last 3 seconds the room darkens around a warm glow at the fuse and sparks shoot out of
+/// it; in the last 1.4 they slow down until they almost hang, as the menu bar does. Then it blows at full speed from the
+/// icon: a flash, two shockwaves, and a burst of sparks and embers falling down the screen, as the dark drains away.
+/// Clicks pass through. With Reduce Motion it's just the wait.
 @MainActor
 enum Blast {
     private static var panel: NSPanel?
@@ -70,31 +70,34 @@ enum Blast {
         flash.backgroundColor = NSColor(srgbRed: 1, green: 0.88, blue: 0.68, alpha: 1).cgColor
         flash.opacity = 0
         root.addSublayer(flash)
-        let drip = emitter(at: at, cells: sparks(birthRate: 14, velocity: 50, range: .pi / 4, down: true, lifetime: 1.6))
-        root.addSublayer(drip)
+        // Sparks shooting out of where the fuse began, only once the show starts.
+        let shoot = emitter(at: at, cells: sparks(birthRate: 40, velocity: 170, range: .pi * 0.7, down: true, lifetime: 1.6))
+        shoot.birthRate = 0
+        root.addSublayer(shoot)
 
-        let fizzle = { p.close(); if panel === p { panel = nil }; boom(false) } // slept through: no tint, no sound, no burst
-        let slowMo = FuseScene.slowMo, build = min(3, fuse) // the build-up, then its slow last moments, like the menu bar's
+        let fizzle = { p.close(); if panel === p { panel = nil }; boom(false) } // slept through: no show, no sound, no burst
+        let slowMo = FuseScene.slowMo, show = min(FuseScene.takeover, fuse) // nothing, then the show, then its slow end
         job = Task {
-            try? await Task.sleep(for: .seconds(max(0, fuse - build)))
+            try? await Task.sleep(for: .seconds(max(0, fuse - show)))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
-            fade(tint, to: 0.55, over: max(0.1, build - slowMo))
-            drip.birthRate = 24 // spitting harder
-            try? await Task.sleep(for: .seconds(max(0, build - slowMo)))
+            fade(tint, to: 0.6, over: max(0.1, show - slowMo))
+            shoot.birthRate = 1
+            try? await Task.sleep(for: .seconds(max(0, show - slowMo)))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
             fade(tint, to: 1, over: slowMo)
-            pace(drip, 0.3) // slowing down
+            shoot.birthRate = 3 // harder, as it slows down
+            pace(shoot, 0.3)
             try? await Task.sleep(for: .seconds(slowMo - Bang.fizz))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
             if sound { Bang.play() } // the fizz, then the bang right on the burst
-            pace(drip, 0.08) // nearly still
+            pace(shoot, 0.08) // nearly still
             try? await Task.sleep(for: .seconds(Bang.fizz))
             guard !Task.isCancelled else { return }
-            drip.birthRate = 0
-            pace(drip, 1) // and time comes back with the bang
+            shoot.birthRate = 0
+            pace(shoot, 1) // and time comes back with the bang
             pulse(flash, to: 0.45, over: 0.4)
             fade(tint, to: 0, over: 1.8)
             let burst = emitter(at: at, cells: sparks(birthRate: 500, velocity: 420, range: .pi * 2, down: false, lifetime: 2.6))
