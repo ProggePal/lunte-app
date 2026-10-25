@@ -79,7 +79,11 @@ final class GameModel: ObservableObject {
     @Published var soundOn = defaults.object(forKey: "SoundOn") as? Bool ?? true {
         didSet { defaults.set(soundOn, forKey: "SoundOn") }
     }
+    /// Booms done with for good (`announce`), and the onboarding tests.
     private var announced = Set(defaults.stringArray(forKey: "Announced") ?? [])
+    /// Booms whose fuse is burning, in memory only: each is announced at its bang, so one whose fuse is still burning
+    /// when Lunte quits, crashes or updates lights again when it opens, if it's under 10 minutes old.
+    private var burning: Set<String> = []
     private var secrets = defaults.dictionary(forKey: "Secrets") as? [String: String] ?? [:] // ponytail: UserDefaults, not the Keychain
     private var lastSeq = defaults.integer(forKey: "LastSeq")
 
@@ -359,9 +363,12 @@ final class GameModel: ObservableObject {
     /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
     private func light(_ seconds: Double, sound: Bool, test: Bool = false, posting boom: Boom? = nil) {
         fusing = true
+        for id in burning { announce(id) } // a new Blast replaces a running one, so that Boom never bangs
+        if let boom { burning.insert(boom.id) }
         Blast.run(fuse: seconds, sound: sound) { [weak self] blew in
             guard let self else { return }
             fusing = false
+            if let boom { announce(boom.id) }
             if blew, let boom, club != nil { post(boom) }
             guard test else { return }
             testBlown = true
@@ -430,13 +437,16 @@ final class GameModel: ObservableObject {
         if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the wait
         onboard(events.filter { $0.burn == .test }, now: now)
         scheduleBreakEnd()
-        let fresh = state.booms.filter { !announced.contains($0.id) }
-        guard !fresh.isEmpty else { return }
-        for boom in fresh {
-            announced.insert(boom.id)
-            guard now - boom.ts < 600 else { continue } // older than 10 minutes: announced silently
+        for boom in state.booms where !announced.contains(boom.id) && !burning.contains(boom.id) {
+            guard now - boom.ts < 600 else { announce(boom.id); continue } // older than 10 minutes: announced silently
             light(.random(in: Self.boomDelay), sound: soundOn, posting: boom)
         }
+    }
+
+    /// Done with a Boom for good: it banged, the Mac slept through it, a new fuse replaced its own, or it's too old.
+    private func announce(_ id: String) {
+        burning.remove(id)
+        announced.insert(id)
         defaults.set(Array(announced), forKey: "Announced")
     }
 
@@ -482,7 +492,7 @@ final class GameModel: ObservableObject {
         defaults.set(false, forKey: "Onboarded")
     }
 
-    /// Sent at the bang (`light`). ponytail: a Boom whose fuse is still burning when Lunte quits never reaches the Club.
+    /// Sent at the bang (`light`).
     private func post(_ boom: Boom) {
         let secret = (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         let proof = SHA256.hash(data: Data(secret.utf8)).map { String(format: "%02x", $0) }.joined()
