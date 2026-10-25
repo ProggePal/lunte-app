@@ -49,7 +49,7 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(s.burned, 0)
     }
 
-    func test6ThirtyQuietMinutesCloseTheSitting() {
+    func test6SessionClosesAfter30QuietMinutes() {
         let same = Game.replay(log([.lose, .tell], at: [0, 1799]), now: t0 + 1800)
         XCTAssertEqual(same.fuse, 1.5) // still the Booming Sitting
         XCTAssertTrue(same.boomed)
@@ -93,7 +93,8 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(s.burned, 0.72, accuracy: 1e-9)
     }
 
-    func test10BlownUntilTheSittingCloses() {
+    /// Guards docs/why.md#one-boom-per-session.
+    func test10BlownUntilTheSessionCloses() {
         let chat = (1...12).map { Double($0) * 300 } // a calm message every 5 minutes for an hour
         let events = log([.lose], at: [0]) + log(chat.map { _ in .none }, at: chat)
         let blown = Game.replay(events, now: t0 + 3700)
@@ -123,13 +124,15 @@ final class GameTests: XCTestCase {
         XCTAssertFalse(rated.awaitingRating(at: t0 + 10))
     }
 
-    func test13FreshOnlyWhenTheSittingCloses() {
+    /// Guards docs/why.md#fresh-start.
+    func test13FreshStickOnlyAtSessionClose() {
         let s = Game.replay(log([.lose, .none, .none, .none, .none, .none], at: [0, 300, 600, 900, 1200, 1500]), now: t0 + 1600)
         XCTAssertEqual(s.freshAt, t0 + 1500 + 1800) // 30 quiet minutes after the last message, not after the burn
         XCTAssertNil(Game.replay(log([.tell]), now: t0 + 60).freshAt) // only after a Boom
     }
 
-    func testCoolMendsTheFuse() {
+    /// Guards docs/why.md#cool-mends.
+    func testCoolMendsButCantBeBanked() {
         let tell = Event(ts: t0, burn: .tell) // heat 0.6 burns 0.36
         let cool = Event(ts: t0 + 60, burn: .none, heat: 0, cool: 0.6) // mends 0.5 × 0.36
         XCTAssertEqual(Game.replay([tell, cool], now: t0 + 61).burned, 0.18, accuracy: 1e-9)
@@ -144,7 +147,8 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(Game.burn(Event(ts: t0, burn: .tell), at: t0), 0.36, accuracy: 1e-9) // no cool is 0
     }
 
-    func testOneBoomPerSittingEscalatesToMeltdown() {
+    /// Guards docs/why.md#one-boom-per-session.
+    func testOneBoomPerSessionEscalatesTiers() {
         let s = Game.replay(log([.lose, .tell, .lose, .tell, .tell, .tell, .lose, .lose], at: [0, 60, 120, 180, 240, 300, 360, 420]),
                             now: t0 + 500)
         XCTAssertEqual(s.booms.count, 1)
@@ -161,7 +165,8 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(chain.burned, 0) // and the burn starts from zero again
     }
 
-    func testCloseCalls() {
+    /// Guards docs/why.md#close-call.
+    func testCloseCallOncePerDipNeverOnABoom() {
         let dip = log([.tell, .tell], at: [0, 60]) // 0.28 of the stick left: the last third
         let mend = Event(ts: t0 + 120, burn: .none, heat: 0, cool: 1) // 0.72 − 0.5: back to 0.78 left
         XCTAssertEqual(Game.replay(dip + [mend], now: t0 + 200).closeCalls, [CloseCall(ts: t0 + 60, cooled: t0 + 120)])
@@ -176,7 +181,7 @@ final class GameTests: XCTestCase {
                        [CloseCall(ts: t0 + 60, cooled: t0 + 120), CloseCall(ts: t0 + 180, cooled: t0 + 240)])
     }
 
-    func testSittingSummaries() {
+    func testSessionSummaries() {
         let calm = (0..<6).map { Event(ts: t0 + Double($0) * 60, burn: .none, heat: 0.1, cool: $0 < 2 ? 0.8 : 0.2) }
         let hot = log([.tell, .lose, .none], at: [4000, 4060, 4120])
         let s = Game.replay(calm + hot, now: t0 + 4200)

@@ -6,24 +6,29 @@ import Foundation
 
 public enum Game {
     public static let minFuse = 1.0
+    // Why: habituation, so Booms stay rare (docs/why.md#rare-booms)
     public static let boomGrowth = 0.5          // a Boom lengthens the next stick; a calm Sitting shortens it again
     public static let sittingGap: Double = 1800 // a Sitting closes after 30 minutes without a prompt
     public static let cooling: Double = 1800    // a burn counts for 30 minutes
+    // Why: humour as reappraisal (docs/why.md#cool-mends)
     public static let coolMend = 0.5            // a cool prompt mends coolMend × cool² of what's burning
     public static let maxTier = 3               // Boom, Chain reaction, Meltdown
+    // Why: competence, and relief right after the act (docs/why.md#close-call)
     public static let closeCallLeft = 1.0 / 3   // a close call dips into the last third of the stick
     public static let coolPrompt = 1.0 / 3      // a prompt counts as cool from here: your AI's 1 of 3
     public static let ratingWait: Double = 90   // how long a rated message waits for the model before the word list decides
     static let spark = 0.01                     // heat² or cool² below this does nothing: a neutral message
-
     public static let slowBurn: Double = 600    // a Boom whose burns built up over 10 minutes or more is a slow burn
 
     // Aura, per Sitting: the Club's points from Lunte's side (GAME.md).
+    // Why: overjustification; aura never tracks how much you work (docs/why.md#aura-not-work)
     public static let coolSittingPrompts = 5    // a cool Sitting has this many prompts or more, and no Boom
     public static let coolSittingAura = 1
     public static let closeCallAura = 2
+    // Why: the rewards come from people (docs/why.md#feedback-not-reward)
     public static let roastAura = 5             // a roast is decided by the Club's reactions, in the app and relay
 
+    // Why: venting feeds anger, so tiers escalate in flavour, not volume (docs/why.md#tiers-flavour-not-volume)
     /// The Boom tiers, by `Boom.tier`.
     public static let tiers: [(emoji: String, name: String)] = [("💥", "Boom"), ("💥💥", "Chain reaction"), ("☢️", "Meltdown")]
 
@@ -61,6 +66,7 @@ public enum Game {
             s.currentBurns.removeAll { t - $0.ts >= cooling }
         }
         // A Sitting ends: shorten the fuse unless it Boomed, and lay out a fresh stick.
+        // Why: a fresh start per session, and only at its close (docs/why.md#fresh-start)
         func close() {
             guard var done = sitting else { return }
             if done.boom == nil { s.fuse = max(minFuse, s.fuse - boomGrowth) }
@@ -99,6 +105,7 @@ public enum Game {
             guard burn(e, at: now) != 0 else { continue }
             burning.append(e)
             settle(at: e.ts)
+            // Why: venting feeds anger, so more heat escalates the one Boom (docs/why.md#one-boom-per-session)
             if !s.boomed, s.burned >= s.fuse {
                 stick = s.fuse
                 s.boomed = true
@@ -139,6 +146,7 @@ public enum Game {
         heat < 0.15 ? "cool" : heat < 0.35 ? "mild" : heat < 0.6 ? "warm" : heat < 0.85 ? "hot" : "boiling"
     }
 
+    // Why: the peak-end rule (docs/why.md#peak-end)
     /// One line about a Sitting, built from what happened, never a guess at your mood. It ends on the recovery when
     /// there is one, since that's what you remember:
     /// - "Cool all the way. 42 prompts."
@@ -167,6 +175,7 @@ public enum Game {
         return "Cool all the way. \(s.prompts) prompt" + (s.prompts == 1 ? "." : "s.")
     }
 
+    // Why: overjustification; aura never tracks how much you work (docs/why.md#aura-not-work)
     /// A Sitting's aura, without roasts: `closeCallAura` per close call, plus `coolSittingAura` once a Sitting of
     /// `coolSittingPrompts` or more closes without a Boom. An open Sitting's cool point waits for the close, so the
     /// aura it shows never goes down.

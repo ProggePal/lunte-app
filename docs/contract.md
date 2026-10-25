@@ -83,7 +83,7 @@ These cases must pass:
 
 ## 4. The game: `Game.replay(_:now:) -> GameState`
 
-Pure and deterministic, over the whole log.
+Pure and deterministic, over the whole log. Why each rule is there, with its evidence and a source, is in [why.md](why.md); the code links each rule to its entry with a `// Why:` comment.
 
 Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fuse and cool mends some of it back, so calm messages barely touch it and hot ones eat it. A burn cools off after 30 minutes. Too much heat at once and it blows: once per Sitting, and more heat after that escalates the same Boom.
 
