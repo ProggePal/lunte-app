@@ -2,10 +2,10 @@ import AppKit
 import FuseKit
 import QuartzCore
 
-/// The Boom on screen, from the fuse in the menu bar, in native Core Animation: the one show. The moment the fuse has
-/// burnt through, the whole screen goes dark, and stays dark through the silence. Then the fizz, and it blows in the
-/// stillness: a flash and the sound, then time eases back up as the blast opens out, a bloom of light, two shockwaves,
-/// sparks, embers and smoke, while the dark drains away. Clicks pass through. With Reduce Motion it's just the wait.
+/// The Boom on screen, from the fuse in the menu bar, in native Core Animation: the one show. The menu bar fuse has
+/// already taken the screen dark (`FuseView`), and it's silent. Then the fizz, and it blows in the stillness: a flash
+/// and the sound, then time eases back up as the blast opens out, a bloom of light, two shockwaves, sparks, embers and
+/// smoke, while the light comes back. Clicks pass through. With Reduce Motion it's just the wait.
 // Why: a beat of stillness on impact (hq: docs/research/game-feel-and-motivation.md, hitstop)
 @MainActor
 enum Blast {
@@ -14,8 +14,6 @@ enum Blast {
 
     /// How late a fuse can run by the wall clock and still blow. Any later, the Mac slept through the wait.
     static let lateBy = 2.0
-    /// How long the screen takes to go dark, once the fuse has burnt through.
-    static let dimFor = 0.5
 
     /// The menu bar fuse, set by `MenuBar`: where the show comes from.
     static weak var icon: FuseView?
@@ -58,33 +56,19 @@ enum Blast {
 
         let root = view.layer!
         let at = CGPoint(x: fuseAt.x - screen.frame.minX, y: fuseAt.y - screen.frame.minY) // y points up
-        // The dark and the flash keep real time; the blast lives in `world`, whose time is eased.
-        let tint = CAGradientLayer()
-        tint.type = .radial
-        tint.frame = root.bounds
-        let centre = CGPoint(x: at.x / root.bounds.width, y: at.y / root.bounds.height), reach = 0.9
-        tint.startPoint = centre
-        tint.endPoint = CGPoint(x: centre.x + reach, y: centre.y + reach * root.bounds.width / root.bounds.height)
-        tint.colors = [NSColor(srgbRed: 1, green: 0.45, blue: 0.12, alpha: 0.18).cgColor,
-                       NSColor(srgbRed: 0.04, green: 0.01, blue: 0, alpha: 0.72).cgColor]
-        tint.opacity = 0
+        // The flash keeps real time; the blast lives in `world`, whose time is eased.
         let world = CALayer()
         world.frame = root.bounds
         let flash = CALayer()
         flash.frame = root.bounds
         flash.backgroundColor = NSColor(srgbRed: 1, green: 0.9, blue: 0.75, alpha: 1).cgColor
         flash.opacity = 0
-        root.addSublayer(tint)
         root.addSublayer(world)
         root.addSublayer(flash)
 
         let fizzle = { p.close(); if panel === p { panel = nil }; boom(false) } // slept through: no show, no sound, no blast
         job = Task {
-            // The fuse burns through, the lights go down, and it's silent in the dark. Then the fizz, and it blows.
-            try? await Task.sleep(for: .seconds(min(FuseScene.raceFor, max(0, fuse - dimFor))))
-            guard !Task.isCancelled else { return }
-            if late() { return fizzle() }
-            fade(tint, to: 1, over: dimFor, .easeOut)
+            // The fuse races through, and it's silent in the dark. Then the fizz, and it blows.
             try? await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow - Bang.fizz)))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
@@ -94,7 +78,6 @@ enum Blast {
             if late() { return fizzle() }
             pace(world, speed(0))
             pulse(flash, to: 0.5, over: 0.45)
-            fade(tint, to: 0, over: 2.4)
             let blast = bang(at: at, in: world)
             let stopAt = world.convertTime(CACurrentMediaTime(), from: nil) + 0.15 // one burst, in the world's own time
             boom(true)
@@ -251,16 +234,6 @@ enum Blast {
         a.keyTimes = [0, 0.12, 1]
         a.duration = seconds
         layer.add(a, forKey: "pulse")
-    }
-
-    private static func fade(_ layer: CALayer, to opacity: Float, over seconds: Double, _ timing: CAMediaTimingFunctionName = .default) {
-        let a = CABasicAnimation(keyPath: "opacity")
-        a.timingFunction = CAMediaTimingFunction(name: timing)
-        a.fromValue = layer.presentation()?.opacity ?? layer.opacity
-        a.toValue = opacity
-        a.duration = seconds
-        layer.opacity = opacity
-        layer.add(a, forKey: "fade")
     }
 
     /// A soft white disc; each spark tints it.
