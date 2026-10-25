@@ -10,7 +10,7 @@ enum PopoverPreviews {
     static var all: [(name: String, model: GameModel)] {
         [
             ("1-working", working), ("2-last-third", lastThird), ("3-held", held), ("4-blown", blown()),
-            ("5-blown-line", blown(line: true)), ("6-last-session", lastSession), ("7-long", long), ("8-fresh", fresh),
+            ("5-blown-line", blown(line: true)), ("5b-blown-line-sent", blown(line: true, reactions: false)), ("6-last-session", lastSession), ("7-long", long), ("8-fresh", fresh),
         ] + onboarding
     }
 
@@ -68,7 +68,7 @@ enum PopoverPreviews {
     }
 
     /// Boomed 12 minutes ago, then a Chain reaction 5 minutes later; still at it.
-    static func blown(line: Bool = false) -> GameModel {
+    static func blown(line: Bool = false, reactions: Bool = true) -> GameModel {
         var s = Session()
         s.calm(35, 21, cool: [28])
         s.add(20, .tell, "stop touching the migrations")
@@ -79,7 +79,7 @@ enum PopoverPreviews {
         s.add(7, heat: 0.5, "unbelievable")
         s.calm(6, 1, cool: [2])
         return GameModel(preview: s.events, texts: s.texts, feed: feed, line: line ? "it deleted my migrations again" : nil,
-                         reactions: line ? ["😂 Ola", "😂 Kari", "🫂 Ola", "😂 Sindre"] : [])
+                         reactions: line && reactions ? ["😂 Ola", "😂 Kari", "🫂 Ola", "😂 Sindre"] : [])
     }
 
     /// A session that closed an hour ago, not seen yet: a slow burn, a Boom, and cooled off by the end.
