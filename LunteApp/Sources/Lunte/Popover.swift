@@ -258,7 +258,7 @@ private struct StickBar: View {
                         .overlay { if i == 0 { RoundedRectangle(cornerRadius: 3).strokeBorder(Color.red.opacity(0.5), lineWidth: 1) } }
                 }
             }
-            if left <= 1.0 / 3 { Text("✨") }
+            if Game.inLastThird(left) { Text("✨") }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(Int((left * 100).rounded()))% of the fuse left")
@@ -358,7 +358,7 @@ private struct MessageSlot: View {
     }
 }
 
-/// Owning a Boom, open from the start: one short line, or stay a mystery. The Club's reactions sit beside it.
+/// Owning a Boom, open from the start: one short line, if you want. The Club's reactions sit beside it.
 private struct JustifyRow: View {
     @ObservedObject var model: GameModel
     let boom: Boom
@@ -377,12 +377,10 @@ private struct JustifyRow: View {
             } else if let line = model.justifications[boom.id] {
                 Text("“\(line)”").font(.callout).frame(maxWidth: .infinity)
             }
-            HStack {
-                if model.canJustify(boom.id) { Text("or stay a mystery") }
-                Spacer()
-                if let reacted = model.reactionSummary(boom.id) { Text(reacted) }
+            // ponytail: silence is the mystery, so nothing invites staying quiet
+            if let reacted = model.reactionSummary(boom.id) {
+                Text(reacted).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
         }
     }
