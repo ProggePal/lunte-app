@@ -175,7 +175,7 @@ Base URL comes from Info.plist `LunteRelayURL`, overridable with `defaults write
 **Basics.** A menu bar-only app (`LSUIElement`) with bundle id `no.panter.lunte`, for macOS 14 and later. The menu bar label is 🧨 and three tiny pieces of what's left (orange at half, red near the end), `💥 BOOM` when blown, or `🧨?` before it's connected.
 
 **Watching the log.** It watches `events.jsonl` with a file-system source and a 1 s debounce, reopening the file if it's created or replaced. On every change it replays the log. For a new Boom:
-- **Not yet announced and less than 10 minutes old:** post it to the relay if you're in a Club, and light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from the menu bar icon and the icon shows `🧨✨`. In the last second the screen dims. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` unless the sound is off. With Reduce Motion there's only the wait and the sound. The onboarding test and "Test your Boom" burn for 3 s.
+- **Not yet announced and less than 10 minutes old:** light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from the menu bar icon and the icon shows `🧨✨`. In the last second the screen dims, and unless the sound is off, a soft fizz (0.4 s of synthesised noise) starts. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` right after the fizz, both capped at 0.6 of the Mac's volume. At that moment, sound or not, it posts the Boom to the relay if you're in a Club, so no Club Mac hears of it before the bang. With Reduce Motion there's only the wait and the sound. The onboarding test and "Test your Boom" burn for 3 s.
 - **Older:** mark it announced silently.
 
 The app keeps each Boom's secret and its "mine" flag in UserDefaults.
@@ -213,9 +213,10 @@ A new `test` event (less than 10 minutes old, not yet announced) lights a 3-seco
 - "12 messages from Claude Code", then the Club's latest two events.
 - **The footer:** sound; the Club (a house and its name, or "No Club") with its actions; a gear with Skip onboarding (while it shows) or Replay onboarding, **Vibes** (off by default; off means no vibe line, no vibe picking and no topic question), **Show model ratings** (debug: the slot adds heat %, its source (Laya, or the word list when Laya isn't there or didn't answer in time), what it burns, the mood and the word list's signals; a spinner while Laya is rating), **Submit a prompt…** (a native dialog, "Something you want to see in Lunte?", with your name and a multi-line prompt; Submit sends it to the relay's prompt inbox (§5) and says "Thanks, it's in", or why it couldn't, prompt cut at 4,000 characters), Check for updates and Quit.
 
-**The Club.** The app polls every 30 s.
+**The Club.** The app polls every 30 s. Every notification is a silent banner: the bang is the only sound in the room.
 - **Someone else's Boom:** a notification "💥 Boom in your Club" with 🧯 😂 🫂 actions, each of which posts a react.
-- **A react on your own Boom, a why on someone else's, or a join:** a notification such as "🧯 from Ola", "Paal: …" or "Ola joined your Club".
+- **A why on someone else's Boom, or a join:** a notification such as "Paal: …" or "Ola joined your Club".
+- **Reacts never notify.** Those on your own Boom go on its card.
 - **Catching up after being offline:** events older than 10 minutes go into the feed without a notification.
 - **A Boom counts as yours** only once the relay has accepted it (201). Leaving a Club forgets your Booms and their secrets.
 - **Run from Downloads:** if macOS runs the app from a temporary path (App Translocation), the app asks to be moved to Applications and doesn't link the hook.

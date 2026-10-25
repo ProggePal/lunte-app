@@ -2,6 +2,15 @@
 
 What changed for you in each version of Lunte.
 
+## Unreleased
+
+### Improvements
+- **A softer Boom.** The fuse fizzes for a moment before it blows, which takes the jump out of the bang, and the bang itself is a notch quieter. With the sound off, you hear neither.
+
+### Fixes
+- **Club notifications never give you away.** They used to ding on every Mac but yours, sometimes before the bang. Now your Club hears about a Boom only once it has gone off, in a silent banner you can still throw a 🧯, 😂 or 🫂 from.
+- Reactions to your Boom show up on its card, without a notification.
+
 ## 0.2.2
 
 ### Fixes
