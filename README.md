@@ -2,12 +2,28 @@
 
 **Keep it cool. Or go boom.**
 
-A stick of dynamite in your menu bar, lit by how you talk to your agent. For Claude Code on Mac. [Get Lunte](https://github.com/ProggePal/lunte-app/releases/latest)
+<img src="docs/clips/boom.gif" width="760" alt="Three angry prompts to Claude Code burn the fuse down, and the Mac blows up">
+
+A stick of dynamite in your menu bar, lit by how you talk to your agent. For Claude Code on Mac.
+
+Paste this into Claude Code:
+
+```
+Install Lunte for me: https://github.com/ProggePal/lunte-app
+```
 
 ## How it works
 - **Heat and cool.** Frustration is heat. Casual is cool. Claude tunes this for you during setup.
 - **The fuse.** Heat burns it, and cool grows it back.
+
+<img src="docs/clips/heat.gif" width="49%" alt="An angry prompt burns a piece of the fuse">
+<img src="docs/clips/cool.gif" width="49%" alt="A friendly prompt feeds green fuse back in">
+
 - **The Boom.** Burn through the fuse and your Mac blows up a few seconds later. Keep the heat coming and it turns into a Chain reaction, then a Meltdown.
+
+<img src="docs/clips/close.gif" width="49%" alt="The fuse burns into its last third and the screen dims, then a calm prompt climbs back out">
+<img src="docs/clips/chain.gif" width="49%" alt="After a Boom, more heat turns it into a Chain reaction, then a Meltdown">
+
 - **Sessions.** A session closes after 30 minutes without a prompt. Then you get a fresh stick and see how the session went.
 - **Your Club.** Your Club gets a silent ping when you blow up, and you can comment if you want. Roasts, close calls and cool sessions earn your Club aura.
 - **Leagues.** Invite other Clubs, race them every day, and the most points wins the week.
@@ -15,11 +31,22 @@ A stick of dynamite in your menu bar, lit by how you talk to your agent. For Cla
 Lunte is a prototype. Version 0.2.2 has heat, a fuse tuned to you, the Boom, and Clubs with pings, reactions and comments. Cool, sessions, aura and Leagues are coming next.
 
 ## Install
-1. Download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
+1. Paste the install line at the top into Claude Code, and it installs Lunte for you. Or download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
 2. Open it, click the fuse in your menu bar, and follow the three steps: download the Heat Detector (483 MB, once), connect to Claude Code, and tune hot and cool to you. Then type `3 2 1 boom` in Claude Code for your first Boom.
 3. Join a Club with its six-letter code, or create one, from the Club row in the popover.
 
 You need a Mac with Apple Silicon and Claude Code.
+
+### For your agent
+Installing Lunte for someone? Check it's an Apple Silicon Mac (`uname -m` says `arm64`), then run:
+
+```bash
+curl -fsSL "$(curl -fsSL https://api.github.com/repos/ProggePal/lunte-app/releases/latest | grep -o 'https://[^"]*/Lunte-[^"]*\.zip' | head -1)" -o /tmp/Lunte.zip
+ditto -x -k /tmp/Lunte.zip /Applications
+open /Applications/Lunte.app
+```
+
+If Lunte is in Applications already, just open it: it updates itself. Then tell them to click the fuse in the menu bar and follow the three steps.
 
 ## Privacy
 Lunte reads your prompts on your Mac and never stores or sends them. Only your Booms, reactions and comments go to your Club.
