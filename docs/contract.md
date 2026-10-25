@@ -85,7 +85,7 @@ These cases must pass:
 
 ## 4. The game: `Game.replay(_:now:timeZone:) -> GameState`
 
-Pure and deterministic, over the whole log. `timeZone` (default `.current`) sets the local calendar days the fuse counts. Why each rule is there, with its evidence and a source, is in [why.md](why.md); the code links each rule to its entry with a `// Why:` comment.
+Pure and deterministic, over the whole log. `timeZone` (default `.current`) sets the local calendar days the fuse counts. The app replays in the Mac's current time zone, so travelling can move a past session's day, and with it the calm workdays and the cool point. Why each rule is there, with its evidence and a source, is in [why.md](why.md); the code links each rule to its entry with a `// Why:` comment.
 
 Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fuse and cool mends some of it back, so calm messages barely touch it and hot ones eat it. A burn cools off after 30 minutes. Too much heat at once and it blows: once per Sitting, and more heat soon after escalates the same Boom.
 
