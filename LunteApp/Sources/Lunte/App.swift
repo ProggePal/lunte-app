@@ -85,10 +85,12 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         }
     }
 
+    private static var entrance: DispatchSourceSignal?
+
     /// The README's clips (scripts/hero.sh): where the fuse starts, then the look each prompt brings.
     static let clips: [String: [FuseLook]] = [
         "fuse": [FuseLook(), FuseLook(left: 0.6, prompt: 1, bite: 0.4), FuseLook(left: 0.15, prompt: 2, bite: 0.45),
-                 FuseLook(left: 0.5, prompt: 3), FuseLook(left: 0.9, prompt: 4)],
+                 FuseLook(left: 0.5, prompt: 3), FuseLook(left: 1, prompt: 4)], // back where it started, so it loops
         "heat": [FuseLook(), FuseLook(left: 0.6, prompt: 1, bite: 0.4)],
         "cool": [FuseLook(left: 0.4), FuseLook(left: 0.8, prompt: 1)],
         "close": [FuseLook(left: 0.55), FuseLook(left: 0.12, prompt: 1, bite: 0.43), FuseLook(left: 0.5, prompt: 2)],
@@ -123,7 +125,22 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         // bar, and macOS hides the fuse to make room for the badge.
         fuse.resize = { _ in }
         item.length = UserDefaults.standard.object(forKey: "HeroItem") as? Double ?? 180
-        fuse.show(script[0])
+        if script[0].phase == .lit {
+            // It opens as a new session does, laying out a fresh fuse, once the recording has started (SIGUSR1). Till
+            // then it's out of sight, and a quiet Boom, which a fresh fuse comes after.
+            fuse.alphaValue = 0
+            fuse.show(FuseLook(phase: .blown, quiet: true))
+            signal(SIGUSR1, SIG_IGN)
+            let start = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+            start.setEventHandler { [fuse] in
+                fuse.show(script[0])
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { fuse.alphaValue = 1 } // once the Boom's word is gone
+            }
+            start.resume()
+            Self.entrance = start
+        } else {
+            fuse.show(script[0])
+        }
         Task {
             try? await Task.sleep(for: .seconds(1)) // the menu bar places the item first
             let frame = item.button?.window?.frame ?? .zero

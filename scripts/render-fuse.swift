@@ -2,7 +2,7 @@
 //   sheet OUT.png   every state and move, frame by frame (FusePreviews, the Xcode preview)
 //   gif OUT.gif     the demo session at 3x on a dark and a light menu bar, 25 fps
 //   plain FRAMES OUT WIDTH   a README clip's frames as they are, for scripts/hero.sh
-//   bar FRAMES OUT light|dark   the README's menu bar frames, rounded, on GitHub's page, for scripts/hero.sh
+//   bar FRAMES OUT   the README's menu bar frames, rounded, on a white backdrop, for scripts/hero.sh
 import AppKit
 import ImageIO
 import SwiftUI
@@ -13,7 +13,7 @@ struct RenderFuse {
     @MainActor static func main() {
         let args = CommandLine.arguments
         if args.count == 5, args[1] == "plain" { return plain(args[2], args[3], Double(args[4])!) }
-        if args.count == 5, args[1] == "bar" { return bar(args[2], args[3], dark: args[4] == "dark") }
+        if args.count == 4, args[1] == "bar" { return bar(args[2], args[3]) }
         guard args.count == 3, ["sheet", "gif"].contains(args[1]) else { return print("usage: render-fuse sheet|gif OUT") }
         args[1] == "sheet" ? sheet(args[2]) : gif(args[2])
         print(args[2])
@@ -63,18 +63,20 @@ struct RenderFuse {
     }
 
     /// The README's landing: the recorded menu bar's frames in FRAMES, in OUT, without macOS's recording dot, with
-    /// rounded corners and a faint edge, on GitHub's light or dark page, so it keeps its shape on either.
-    @MainActor static func bar(_ frames: String, _ out: String, dark: Bool) {
+    /// rounded corners, floating on a white backdrop with a soft shadow under it, to catch the eye on GitHub's light page
+    /// and dark page alike. The shadow is short and faint, a few greys, so a GIF's palette keeps it smooth.
+    @MainActor static func bar(_ frames: String, _ out: String) {
         let files = try! FileManager.default.contentsOfDirectory(atPath: frames).filter { $0.hasSuffix(".png") }.sorted()
         for (i, name) in files.enumerated() {
             let still = withoutDot(NSImage(contentsOfFile: frames + "/" + name)!.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
-            let corners = RoundedRectangle(cornerRadius: Double(still.height) * 0.28, style: .continuous)
+            let h = Double(still.height), corners = RoundedRectangle(cornerRadius: h * 0.28, style: .continuous)
             let view = Image(decorative: still, scale: 1).resizable()
-                .frame(width: Double(still.width), height: Double(still.height))
+                .frame(width: Double(still.width), height: h)
                 .clipShape(corners)
-                .overlay(corners.strokeBorder(Color.white.opacity(0.14), lineWidth: 2))
-                .padding(4)
-                .background(dark ? Color(red: 13 / 255, green: 17 / 255, blue: 23 / 255) : .white) // GitHub's page
+                .shadow(color: .black.opacity(0.18), radius: h * 0.22, y: h * 0.1)
+                .padding(.horizontal, h * 0.7)
+                .padding(.vertical, h * 0.6)
+                .background(Color.white)
             try! NSBitmapImageRep(cgImage: ImageRenderer(content: view).cgImage!).representation(using: .png, properties: [:])!
                 .write(to: URL(fileURLWithPath: String(format: "%@/c%04d.png", out, i)))
         }

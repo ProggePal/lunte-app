@@ -6,7 +6,7 @@
 # steps aside meanwhile. A take is kept in docs/clips/takes, so the GIF can be framed again without a new one.
 #   scripts/hero.sh fuse|heat|cool|close|chain|boom|all   a take and its GIF, all being the README's; hands off for
 #                                                          half a minute a clip
-#   scripts/hero.sh gif <clip>|all                    only the GIF again, from the take
+#   scripts/hero.sh gif <clip>|menubar|all            only the GIF again, from the take
 #   scripts/hero.sh bar                               the menu bar with the fuse in it, the README's landing
 # Terminal needs Screen Recording (System Settings › Privacy & Security), once. ffmpeg records it: macOS's own
 # `screencapture -v` stalls now and then.
@@ -58,7 +58,7 @@ take() {
   w=$(( ww + m + n )) h=$(( bar + 10 + wh + n )) x=$(( left + 52 ))
   # ponytail: a fixed pace instead of watching Claude's screen
   cat > "$dir/take.exp" <<'EOF'
-lassign $argv dir rect tail plugin win
+lassign $argv dir rect tail plugin win demo
 proc front {} { exec osascript -e "tell application \"Terminal\" to set index of window id $::win to 1" \
   -e {tell application "Terminal" to activate} }
 set prompts [split [string trim [read [open $dir/prompts]]] "\n"]
@@ -75,7 +75,7 @@ expect -timeout 8 -re {trust} { pause 1000; send "\033\[B"; pause 500; send "\r"
 expect_background -re {.+} {} ;# Claude's screen goes through to the window while we wait
 pause 2000
 # As long as the clip: a second, each prompt typed and stopped, then the tail. It stops itself.
-set secs [expr {1 + $tail}]
+set secs [expr {3.5 + $tail}]
 foreach p $prompts { set secs [expr {$secs + [string length $p] * .055 + 4.1}] }
 front ;# a focused window's cursor is solid
 lassign [split $rect ,] x y w h ;# pt; the screen records in px
@@ -84,7 +84,8 @@ set rec [exec ffmpeg -y -loglevel error -f avfoundation -pixel_format bgr0 -fram
   -c:v libx264 -crf 20 -pix_fmt yuv420p $dir/take.mp4 < /dev/null 2> /dev/null &] ;# AVFoundation's warnings would land on screen
 pause 500
 front ;# ffmpeg takes the focus as it starts
-pause 500
+exec kill -USR1 $demo ;# the fresh fuse comes in
+pause 3000
 # Each prompt reaches the hook as it's sent, and Claude answers it in a line.
 foreach p $prompts { type $p; pause 300; send "\r"; pause 3800 }
 while {![catch {exec kill -0 $rec}]} { pause 200 } ;# it writes the movie as it stops
@@ -95,7 +96,7 @@ exec touch $dir/done
 EOF
   osascript -e "tell application \"Terminal\"
     set bounds of window id $win to {$(( x + m )), $(( bar + 10 )), $(( x + m + ww )), $(( bar + 10 + wh ))}
-    do script \"clear; export LUNTE_LOG=$dir/events.jsonl; expect $dir/take.exp $dir $x,0,$w,$h $tail $PWD/plugin $win; exit\" in selected tab of window id $win
+    do script \"clear; export LUNTE_LOG=$dir/events.jsonl; expect $dir/take.exp $dir $x,0,$w,$h $tail $PWD/plugin $win $demo; exit\" in selected tab of window id $win
   end tell" > /dev/null
   until [[ -f $dir/done ]]; do sleep 1; done
   osascript -e "tell application \"Terminal\" to close (every window whose id is $win)" 2>/dev/null || true
@@ -105,33 +106,39 @@ EOF
   gif "$clip"
 }
 
-# The take to a GIF as it is, that loops: its last half second fades into its first.
+# The take to a GIF that loops: the Claude Code clips as they are, and the menu bar on a white backdrop with a soft
+# shadow, in 200 colours and no dithering, which keep the shadow smooth.
 gif() {
-  local width=1000 fade=0.5 dir len # px
+  local dir
   dir=$(mktemp -d)
   mkdir "$dir/in" "$dir/out"
-  ffmpeg -loglevel error -i "docs/clips/takes/$1.mp4" -vf fps=12 "$dir/in/t%04d.png"
-  dist/render-fuse plain "$dir/in" "$dir/out" $width
-  len=$(bc <<< "scale=3; $(ls "$dir/out" | wc -l) / 12")
-  # ponytail: ffmpeg's palette, no gifski; 128 colours dithered, for the wallpaper, the flame and the screen's dimming
-  ffmpeg -y -loglevel error -framerate 12 -i "$dir/out/c%04d.png" -filter_complex "
-    [0]format=rgb24,split[a][b];
-    [a]trim=start=$fade,setpts=PTS-STARTPTS[main];
-    [b]trim=end=$fade,setpts=PTS-STARTPTS[head];
-    [main][head]xfade=duration=$fade:offset=$(bc <<< "$len - 2 * $fade"),split[c][d];
-    [c]palettegen=max_colors=128:stats_mode=diff[p];
-    [d][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "docs/clips/$1.gif"
+  if [[ $1 == menubar ]]; then
+    ffmpeg -loglevel error -i docs/clips/takes/menubar.mp4 -vf fps=15 "$dir/in/t%04d.png"
+    dist/render-fuse bar "$dir/in" "$dir/out"
+    ffmpeg -y -loglevel error -framerate 15 -i "$dir/out/c%04d.png" -filter_complex "
+      [0]format=rgb24,split[c][d];
+      [c]palettegen=max_colors=200:stats_mode=diff[p];
+      [d][p]paletteuse=dither=none:diff_mode=rectangle" docs/clips/menubar.gif
+  else
+    ffmpeg -loglevel error -i "docs/clips/takes/$1.mp4" -vf fps=12 "$dir/in/t%04d.png"
+    dist/render-fuse plain "$dir/in" "$dir/out" 1000
+    # ponytail: ffmpeg's palette, no gifski; 128 colours dithered, for the wallpaper, the flame and the screen's dimming
+    ffmpeg -y -loglevel error -framerate 12 -i "$dir/out/c%04d.png" -filter_complex "
+      [0]format=rgb24,split[c][d];
+      [c]palettegen=max_colors=128:stats_mode=diff[p];
+      [d][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "docs/clips/$1.gif"
+  fi
   rm -rf "$dir"
   ls -lh "docs/clips/$1.gif"
 }
 
-# The README's landing, docs/clips/menubar.gif (and -dark.gif): the menu bar from the fuse to the clock, recorded from a
-# Terminal window as the hook gets four prompts straight, two mean and two kind. It starts past the item's empty left
-# end, where macOS draws its recording badge.
+# The README's landing, docs/clips/menubar.gif: the menu bar from the fuse to the clock, recorded from a
+# Terminal window as the hook gets four prompts straight, two mean and two kind, which bring the fuse back where it
+# started, so it loops. It starts past the item's empty left end, where macOS draws its recording badge, and once the
+# screen has left any app in full screen.
 bar() {
-  local dir left right bar screen x secs=13 theme out
+  local dir left right bar screen x secs=17
   dir=$(mktemp -d)
-  mkdir "$dir/in" "$dir/out"
   LUNTE_LOG=$dir/events.jsonl dist/Lunte.app/Contents/MacOS/Lunte -HeroDemo fuse -HeroItem 190 > "$dir/at" 2> /dev/null &
   local demo=$!
   until grep -q '^at' "$dir/at"; do sleep 0.2; done
@@ -141,8 +148,9 @@ bar() {
 ffmpeg -y -loglevel error -f avfoundation -pixel_format bgr0 -framerate 30 -capture_cursor 0 -i "Capture screen 0:none" \\
   -t $secs -vf "crop=$(( (screen - x) * 2 )):$(( bar * 2 )):$(( x * 2 )):0" -c:v libx264 -crf 16 -pix_fmt yuv420p \\
   $dir/bar.mp4 < /dev/null 2> /dev/null &
+sleep 0.5; kill -USR1 $demo # the fresh fuse comes in
 hook() { echo "{\"prompt\":\"\$1\"}" | LUNTE_LOG=$dir/events.jsonl "\$HOME/Library/Application Support/Lunte/lunte-hook"; }
-sleep 1; hook "why is this still broken"
+sleep 2.5; hook "why is this still broken"
 sleep 3; hook "omg. make no mistakes, idiot"
 sleep 4.5; hook "ok sorry. thanks for sticking with me"
 sleep 2.5; hook "you're a legend, honestly"
@@ -153,7 +161,7 @@ EOF
   # Terminal in front, out of any app in full screen, which hides the menu bar
   win=$(osascript -e "tell application \"Terminal\"
     activate
-    do script \"sleep 1; sh $dir/bar.sh; exit\"
+    do script \"sleep 2; sh $dir/bar.sh; exit\"
     id of front window
   end tell")
   until [[ -f $dir/done ]]; do sleep 0.5; done
@@ -161,22 +169,8 @@ EOF
   kill $demo
   mkdir -p docs/clips/takes
   mv "$dir/bar.mp4" docs/clips/takes/menubar.mp4
-  ffmpeg -loglevel error -i docs/clips/takes/menubar.mp4 -vf fps=15 "$dir/in/t%04d.png"
-  for theme in light dark; do
-    out=docs/clips/menubar.gif
-    [[ $theme == dark ]] && out=docs/clips/menubar-dark.gif
-    rm -f "$dir"/out/*
-    dist/render-fuse bar "$dir/in" "$dir/out" $theme
-    ffmpeg -y -loglevel error -framerate 15 -i "$dir/out/c%04d.png" -filter_complex "
-      [0]format=rgb24,split[a][b];
-      [a]trim=start=0.5,setpts=PTS-STARTPTS[main];
-      [b]trim=end=0.5,setpts=PTS-STARTPTS[head];
-      [main][head]xfade=duration=0.5:offset=$(bc <<< "$(ls "$dir/out" | wc -l) / 15 - 1"),split[c][d];
-      [c]palettegen=max_colors=64:stats_mode=diff[p];
-      [d][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "$out"
-  done
   rm -rf "$dir"
-  ls -lh docs/clips/menubar.gif docs/clips/menubar-dark.gif
+  gif menubar
 }
 
 all="fuse" # the README's; heat, cool, close, chain and boom stay for whoever wants them

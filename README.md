@@ -1,10 +1,7 @@
 <h1 align="center">Lunte</h1>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/clips/menubar-dark.gif">
-    <img src="docs/clips/menubar.gif" alt="Lunte's fuse in a Mac menu bar: it burns, crawls through its last third, and grows back green">
-  </picture>
+  <img src="docs/clips/menubar.gif" alt="Lunte's fuse in a Mac menu bar: a fresh one lays itself out, burns, crawls through its last third, and grows back green">
 </p>
 
 <p align="center"><b>Keep it cool. Or go boom.</b><br>
