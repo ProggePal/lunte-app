@@ -75,14 +75,19 @@ private struct OpenWatch: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             NotificationCenter.default.removeObserver(self)
-            guard let window else { return }
-            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
-                NotificationCenter.default.addObserver(self, selector: #selector(keyChanged), name: name, object: window)
+            if let window {
+                for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+                    NotificationCenter.default.addObserver(self, selector: #selector(keyChanged), name: name, object: window)
+                }
             }
-            keyChanged()
+            keyChanged() // out of a window counts as closed
         }
 
-        @objc private func keyChanged() { changed(window?.isKeyWindow == true) }
+        /// On the next turn of the main queue, in order, so it never publishes from inside a view update.
+        @objc private func keyChanged() {
+            let open = window?.isKeyWindow == true, changed = changed
+            DispatchQueue.main.async { MainActor.assumeIsolated { changed(open) } }
+        }
     }
 }
 
