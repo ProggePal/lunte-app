@@ -43,6 +43,12 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Evidence:** strong that venting fails; how a tier should sound is craft.
 - **Source:** [Kjærvik & Bushman 2024](https://doi.org/10.1016/j.cpr.2024.102414)
 
+## heat-not-volume
+- **Rule:** Heat is anger, not volume. When the word list decides, `!!` and CAPS on their own don't burn: they only turn a telling-off into losing it. Swearing and telling off still count.
+- **Principle:** Volume amplifies a feeling; it doesn't carry one. In a rule-based sentiment model that matched human raters, exclamation marks and capitals raise the intensity of the sentiment already in a text without changing its direction, so on their own they say nothing about anger.
+- **Evidence:** mixed: one well-validated model. Tuned on a replay of 13 weeks of one player's real prompts: a tuned model rated the prompts flagged only by `!!` at a median heat of 0.15 and those flagged only by CAPS at 0.00, yet 8 of the 14 word-list Booms came from a single prompt, 5 of them flagged only by `!!` or CAPS.
+- **Source:** [Hutto & Gilbert 2014](https://doi.org/10.1609/icwsm.v8i1.14550)
+
 ## cool-mends
 - **Rule:** Cool grows the fuse back. A cool prompt mends some of what's burning, never below zero, and a prompt that's hot and cool at once, roasting your agent live, burns less than the heat alone.
 - **Principle:** Humour as reappraisal. Good-natured humour lowered negative feeling more than mean humour did. Lunte rewards what you do with the anger, not the anger.

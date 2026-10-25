@@ -6,11 +6,9 @@ public enum Classifier {
         let text = clean(prompt)
         if has(testPhrase, in: text) { return .test } // the onboarding phrase: "this is a test 3 2 1 pow"
         let happy = has(happyWords, in: text)
-        if has(losePhrases, in: text) { return .lose }
-        if !happy && (has(swears, in: text) || hasCaps(text) || text.range(of: "!!|\\?!|!\\?", options: .regularExpression) != nil) {
-            return .lose
-        }
-        if has(tellPhrases, in: text) { return .tell }
+        if has(losePhrases, in: text) || (!happy && has(swears, in: text)) { return .lose }
+        // Why: heat is anger, not volume; !! and CAPS only turn a telling-off up (docs/why.md#heat-not-volume)
+        if has(tellPhrases, in: text) { return !happy && (hasCaps(text) || hasBangs(text)) ? .lose : .tell }
         return .none
     }
 
@@ -24,7 +22,7 @@ public enum Classifier {
         if let m = first(losePhrases, in: text) { out.append("lost it: " + m.lowercased()) }
         if has(swears, in: text) { out.append("swear" + but) }
         if hasCaps(text) { out.append("CAPS" + but) }
-        if text.range(of: "!!|\\?!|!\\?", options: .regularExpression) != nil { out.append("!!" + but) }
+        if hasBangs(text) { out.append("!!" + but) }
         if let m = first(tellPhrases, in: text) { out.append("told off: " + m.lowercased()) }
         if let happy { out.append("happy: " + happy.lowercased()) }
         return out
@@ -81,6 +79,9 @@ public enum Classifier {
     static func has(_ pattern: String, in text: String) -> Bool {
         text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
+
+    /// `!!`, `?!` or `!?`.
+    static func hasBangs(_ text: String) -> Bool { text.range(of: "!!|\\?!|!\\?", options: .regularExpression) != nil }
 
     /// Three all-caps words in a row ("I SAID DONT"), split by spaces or sentence punctuation, so MAX_RETRY_COUNT isn't one.
     // ponytail: a run of three acronyms ("ENV VAR PATH") also counts

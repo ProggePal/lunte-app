@@ -52,11 +52,11 @@ Strip ```` ``` ```` fenced blocks, then match case-insensitively on Unicode word
 
 - **lose** (losing it), which beats tell:
   - a swear: `fuck*, shit*, bitch*, damn*, crap*, asshole*, bastard*, dick, piss*, bollocks, wtf, ffs, omfg, hell, faen*, helvete, hælvete, jævl*, dritt*, satan, kuk, pikk`
-  - three CAPS words in a row
-  - `!!`, `?!` or `!?`
   - `useless`, `stupid`, `are you kidding`, `what the hell`, `herregud`, `seriøst`
+  - a telling-off (below) turned up with three CAPS words in a row, or with `!!`, `?!` or `!?`
 - **tell** (telling it off): `i said`, `i told you`, `i already said`, `i asked you`, `why did you`, `why would you`, `why are you`, `you (just) broke|deleted|ignored|removed`, `not what i asked|said|wanted`, `that's wrong`, `that's not it`, `stop it|that|doing`, `come on`, `seriously`, `ugh`, `argh`, `jeg sa`, `jeg har sagt`, `hvorfor gjorde du`, `hvorfor gjør du`, `du slettet`, `du ødela`, `kom igjen`
-- **Happy guard:** if the prompt has a happy word, swears, CAPS and `!!` don't count, though the other phrases still do. The happy words are `awesome, amazing, love, perfect, great, nice, cool, sick, wow, insane, let's go, yay, hell yeah, thanks, thank you, thx, appreciate, legend, bra, digg, rått, takk, nydelig, herlig`.
+- **Volume alone is none:** CAPS and `!!` on their own, or together, don't burn. Heat is anger, not volume ([why](why.md#heat-not-volume)).
+- **Happy guard:** if the prompt has a happy word, swears don't count, and CAPS and `!!` don't turn a telling-off up, though the other phrases still do. The happy words are `awesome, amazing, love, perfect, great, nice, cool, sick, wow, insane, let's go, yay, hell yeah, thanks, thank you, thx, appreciate, legend, bra, digg, rått, takk, nydelig, herlig`.
 - **none:** everything else, including bug reports ("broken", "not working", "still failing", "funker ikke") and a plain "no".
 
 These cases must pass:
@@ -80,6 +80,8 @@ These cases must pass:
 | `hello shell` | none |
 | `what the hell are you doing` | lose |
 | `come on` | tell |
+| `it's still broken!!` | none |
+| `WHY IS IT STILL BROKEN` | none |
 
 ## 4. The game: `Game.replay(_:now:) -> GameState`
 
