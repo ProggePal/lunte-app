@@ -32,6 +32,39 @@ final class FuseKitTests: XCTestCase {
         XCTAssertLessThan(abs(scene.jolt(at: 10 + FuseScene.calmAfter)), 0.01)
     }
 
+    /// The jolt reaches the pixels: the bang's white-hot flash moves sideways with it, and only by it.
+    func testTheFlashMovesWithTheJolt() {
+        var scene = FuseScene()
+        scene.update(FuseLook(phase: .fusing, left: 0), at: 0, animated: false)
+        scene.update(FuseLook(phase: .blown), at: 10)
+        let still = Self.whiteHot(scene, at: 10) // the jolt starts at 0
+        var swing = 0.0
+        for t in stride(from: 10.0, through: 10.3, by: 0.01) { // while the flash is the whitest thing there
+            let moved = Self.whiteHot(scene, at: t) - still
+            XCTAssertEqual(moved, scene.jolt(at: t), accuracy: 0.15, "at \(t)")
+            swing = max(swing, abs(moved))
+        }
+        XCTAssertGreaterThan(swing, 1)
+    }
+
+    /// Where the white-hot middle of the drawing is, sideways, in points: drawn 8x, weighted by how white each pixel is.
+    static func whiteHot(_ scene: FuseScene, at t: Double) -> Double {
+        let zoom = 8, w = 48, h = 24
+        let ctx = CGContext(data: nil, width: w * zoom, height: h * zoom, bitsPerComponent: 8, bytesPerRow: w * zoom * 4,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.scaleBy(x: CGFloat(zoom), y: CGFloat(zoom))
+        ctx.translateBy(x: CGFloat(w - 4), y: 3)
+        scene.draw(ctx, at: t)
+        let px = ctx.data!.assumingMemoryBound(to: UInt8.self)
+        var sum = 0.0, weight = 0.0
+        for i in 0..<(w * zoom * h * zoom) {
+            let white = max(0, Double(min(px[4 * i], px[4 * i + 1], px[4 * i + 2])) / 255 - 0.5) // the flash, not the sparks
+            sum += white * Double(i % (w * zoom))
+            weight += white
+        }
+        return sum / weight / Double(zoom)
+    }
+
     /// The item widens for the Boom's words at once, never narrows while blown, and narrows after the fresh fuse is in.
     func testWidthOnlyNarrowsAfterTheBoom() {
         var scene = FuseScene()

@@ -13,7 +13,8 @@ The fuse in the menu bar is the app, and its feel is the product. It lives in `L
 
 Look before and after you change how it moves or looks:
 - `scripts/render-fuse.sh` writes `dist/fuse.png`, every state and move frame by frame on a light and a dark menu bar, and `dist/fuse.gif`, a whole session. Open the PNG and look at it.
-- `scripts/render-fuse.sh "Close call" Bang` writes just those moves, magnified, to `dist/moves.png`. A wrong name lists the moves. To see a new move, add it to `FusePreviews.moves`.
+- `scripts/render-fuse.sh "Close call" Bang` writes just those moves, magnified: frame by frame to `dist/moves.png`, and at real speed to `dist/moves.gif` (open it in a browser, or with Quick Look). A wrong name lists the moves. To see a new move, add it to `FusePreviews.moves`.
+- Motion too small to see in stills, such as the bang's 2-point jolt, shows in a slit-scan: one row of pixels from each GIF frame, stacked, so time runs down the image and sideways motion zigzags. For the bang, the row through the flash is `ffmpeg -i dist/moves.gif -vf "crop=200:1:152:58,scale=800:8:flags=neighbor,tile=1x50" -frames:v 1 dist/slit.png`. Render it with the change and without, and compare.
 - In Xcode, open `LunteApp/Package.swift`, pick the `FuseKit` scheme and open `MenuFuse.swift` for the same previews and a live playground. The script needs no Xcode. Xcode's own preview-export tool didn't answer when the fuse was built.
 - The renders can't show the screen-wide blast or the dim. To see those, run `scripts/build-app.sh`, then `open dist/Lunte.app --args -FuseDemo YES`. It loops a session on the real menu bar, with the screen show and without the sound.
 
