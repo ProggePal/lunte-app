@@ -38,6 +38,7 @@ public struct FuseLook: Equatable {
 ///   so you can't tell if it'll stop in time. The flame burns on a few seconds, then goes out in a puff.
 /// - Cool feeds new fuse in at the start, left to right, green and twinkling, squeezing the coils together. One prompt
 ///   can do both.
+/// - A crawl into the last third dims the screen a little; the Boom's own burn takes it all the way dark.
 /// - The Boom's own burn starts slow and races faster and faster to the end, where the flame dies in a puff. Then
 ///   nothing, for a second or a few, and then it blows: a flash, a shockwave, sparks, smoke and a jolt, easing in from a
 ///   near stop, and once the smoke clears just a symbol and a word in the menu bar's own colour.
@@ -50,6 +51,8 @@ public struct FuseScene {
     public static let fuseWidth = 36.0
     /// How long the Boom's own burn takes, racing to the end. The silence after it is the game's to choose.
     public static let raceFor = 1.6
+    /// How long the light takes to come back after the bang.
+    static let lightBack = 2.4
     /// How long after the bang the word comes in, once the smoke has cleared.
     static let calmAfter = 1.6
     /// After the bang, time eases back up from a near stop over `speedUp` seconds, as on screen (`Blast.speed`).
@@ -132,7 +135,7 @@ public struct FuseScene {
     func busy(at t: Double) -> Bool {
         guard !still else { return false }
         return tweens.contains { $0.start <= t && !$0.done(t) } || effects.contains { $0.start <= t && t < $0.end }
-            || captions.contains { $0.at <= t && t < $0.at + 0.6 }
+            || captions.contains { $0.at <= t && t < $0.at + 0.6 } || t < bangT + Self.lightBack
     }
 
     /// Something's alive: the flame, the breeze. A low frame rate is plenty.
@@ -159,6 +162,19 @@ public struct FuseScene {
     }
 
     func length(_ t: Double) -> Double { max(0, tail.value(t) - head.value(t)) }
+
+    /// How dark the screen gets, 0...1. A burn crawling through the last third dims it a little, deeper the nearer the
+    /// end, until the flame goes out or the fuse grows back. The Boom's fuse takes it all the way dark as it empties,
+    /// keeps it dark through the silence, and the bang lets the light back in. A close call and a Boom start the same.
+    func dark(at t: Double) -> Double {
+        let danger = min(1, max(0, 1 - 3 * length(t))) // nothing a third from the end, all at the end
+        switch look.phase {
+        case .offline: return 0
+        case .fusing: return danger * danger
+        case .blown: return t < bangT + Self.lightBack ? 1 - Ease.outCubic(max(0, t - bangT) / Self.lightBack) : 0
+        case .lit: return burning(at: t) ? 0.4 * danger * min(1, (litUntil - t) / 0.8) : 0
+        }
+    }
 
     private func burning(at t: Double) -> Bool { look.phase != .blown && length(t) > 0.002 && t < litUntil }
 
@@ -744,6 +760,7 @@ public final class FuseView: NSView {
     private var link: CADisplayLink?
     private var alarm: Timer?
     private var width: CGFloat = 0
+    private var shade: NSPanel?
 
     public func show(_ look: FuseLook) {
         guard !shown || look != scene.look else { return }
@@ -796,7 +813,42 @@ public final class FuseView: NSView {
         let t = CACurrentMediaTime()
         ctx.translateBy(x: bounds.width - Self.margin, y: ((bounds.height - 18) / 2).rounded())
         scene.draw(ctx, at: t, ink: NSColor.labelColor.cgColor)
+        dim(scene.dark(at: t))
         pace(t)
+    }
+
+    /// Dims the screen under the menu bar, darker at the edges, so the fuse stays bright in the dark. Plain black.
+    private func dim(_ level: Double) {
+        guard level > 0.003, let (screen, at) = startOnScreen() else { shade?.orderOut(nil); return }
+        if shade?.screen != screen {
+            shade?.close()
+            let panel = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = false
+            panel.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue - 1) // under the menu bar and the fuse
+            panel.ignoresMouseEvents = true
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            panel.setFrame(screen.frame, display: false)
+            let view = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            view.wantsLayer = true
+            let dark = CAGradientLayer()
+            dark.type = .radial
+            dark.frame = view.bounds
+            dark.colors = [CGColor(gray: 0, alpha: 0.6), CGColor(gray: 0, alpha: 0.86)]
+            view.layer?.addSublayer(dark)
+            panel.contentView = view
+            shade = panel
+        }
+        guard let shade, let dark = shade.contentView?.layer?.sublayers?.first as? CAGradientLayer else { return }
+        let size = screen.frame.size, centre = CGPoint(x: (at.x - screen.frame.minX) / size.width, y: (at.y - screen.frame.minY) / size.height)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        dark.startPoint = centre
+        dark.endPoint = CGPoint(x: centre.x + 1.1, y: centre.y + 1.1 * size.width / size.height)
+        dark.opacity = Float(level)
+        CATransaction.commit()
+        shade.orderFrontRegardless()
     }
 }
 
@@ -926,6 +978,7 @@ struct FuseFrame: View {
             }
         }
         .frame(width: w * zoom, height: 24 * zoom)
+        .background(Color.black.opacity(0.75 * scene.dark(at: t))) // the screen's dim, behind the fuse
         .background(dark ? Color(white: 0.16) : Color(white: 0.93))
     }
 }
