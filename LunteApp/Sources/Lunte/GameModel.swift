@@ -492,6 +492,9 @@ final class GameModel: ObservableObject {
             mine.insert(boom.id)
             defaults.set(secrets, forKey: "Secrets")
             defaults.set(Array(mine), forKey: "Mine")
+            // A comment typed while the fuse burned waited for the Boom. From here on, `justify` sends it, so it goes once.
+            guard let line = justifications[boom.id] else { return }
+            try? await Relay.post(["type": "why", "boom": boom.id, "text": line, "secret": secret]) // ponytail: no retry either
         }
     }
 
@@ -540,8 +543,8 @@ final class GameModel: ObservableObject {
         saveClub()
     }
 
-    /// Justify a Boom: saved on this Mac, and sent to your Club (the relay's "why") when the Boom reached it.
-    /// Returns a message when the Club couldn't get it, or nil.
+    /// Justify a Boom: saved on this Mac, and sent to your Club (the relay's "why") once the Boom has reached it. While
+    /// its fuse still burns, `post` sends it right after the Boom. Returns a message when the Club couldn't get it, or nil.
     func justify(_ boom: String, _ text: String) async -> String? {
         let line = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.justifyLimit))
         guard !line.isEmpty else { return nil }
