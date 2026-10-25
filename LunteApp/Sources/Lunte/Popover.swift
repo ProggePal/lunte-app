@@ -3,9 +3,10 @@ import LunteCore
 import Sparkle
 import SwiftUI
 
-/// The whole UI. Onboarding until you've owned your first (test) Boom; then the stick or the Boom on top, one text slot
-/// for the message you're looking at, the session's vibe, the session as dots, the Club, a gear. Between sessions, the
-/// first open shows the last session's summary instead of the slot and the dots.
+/// Everything but the fuse, which lives in the menu bar. Onboarding until you've owned your first (test) Boom; then the
+/// Boom on top when there is one, one text slot for the message you're looking at, the session's vibe, the session as
+/// dots, the Club, a gear. Between sessions, the first open shows the last session's summary instead of the slot and
+/// the dots.
 struct PopoverView: View {
     @ObservedObject var model: GameModel
     let updater: SPUStandardUpdaterController?
@@ -25,9 +26,8 @@ struct PopoverView: View {
             } else {
                 if let boom {
                     BoomHeader(model: model, boom: boom)
-                } else {
-                    StickBar(left: model.state.left)
-                    if model.heldTogether { HeldLine() }
+                } else if model.heldTogether {
+                    HeldLine()
                 }
                 if let summary = model.summary, model.state.sitting == nil {
                     SummaryCard(title: "Your last session", sitting: summary, events: model.messages(in: summary))
@@ -49,7 +49,6 @@ struct PopoverView: View {
         .padding(16)
         .frame(width: 290)
         .background { if boom != nil || firstBoom { BoomTint() } } // snaps on with the Boom, no fade
-        .background(OpenWatch { $0 ? model.popoverOpened() : model.popoverClosed() })
     }
 
     /// With nothing hovered: the message that set off the Boom, else the hottest one still burning, else your latest.
@@ -57,38 +56,6 @@ struct PopoverView: View {
         if let boom { return boom.litBy.last }
         let now = Date().timeIntervalSince1970
         return model.state.currentBurns.max { $0.heat(at: now) < $1.heat(at: now) } ?? model.session.last
-    }
-}
-
-/// Says when the popover opens and closes. MenuBarExtra has no binding for that, so this watches its window, which is
-/// key while the popover is open.
-private struct OpenWatch: NSViewRepresentable {
-    let changed: @MainActor (Bool) -> Void
-
-    func makeNSView(context: Context) -> Probe { Probe(changed) }
-    func updateNSView(_ probe: Probe, context: Context) { probe.changed = changed }
-
-    final class Probe: NSView {
-        var changed: @MainActor (Bool) -> Void
-        init(_ changed: @escaping @MainActor (Bool) -> Void) { self.changed = changed; super.init(frame: .zero) }
-        required init?(coder: NSCoder) { nil }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            NotificationCenter.default.removeObserver(self)
-            if let window {
-                for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
-                    NotificationCenter.default.addObserver(self, selector: #selector(keyChanged), name: name, object: window)
-                }
-            }
-            keyChanged() // out of a window counts as closed
-        }
-
-        /// On the next turn of the main queue, in order, so it never publishes from inside a view update.
-        @objc private func keyChanged() {
-            let open = window?.isKeyWindow == true, changed = changed
-            DispatchQueue.main.async { MainActor.assumeIsolated { changed(open) } }
-        }
     }
 }
 
@@ -240,30 +207,6 @@ private struct FirstBoomCard: View {
 
     private var trimmed: String { String(line.trimmingCharacters(in: .whitespacesAndNewlines).prefix(GameModel.justifyLimit)) }
     private func own() { if !trimmed.isEmpty { model.ownTest(trimmed) } }
-}
-
-/// The fuse in three pieces: what's left is filled, what burned is faint. Orange past half, red near the end, ✨ on the
-/// last third. The last third, by the 🧨, always has a faint red edge, so you see the danger before you're in it.
-private struct StickBar: View {
-    let left: Double
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text("🧨").font(.title2)
-            HStack(spacing: 4) {
-                ForEach(0..<3, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Double(i) < piecesLeft(left) ? fuseColor(left) : Color.secondary.opacity(0.15))
-                        .frame(height: 10)
-                        // Why: a close call needs the danger in sight (docs/why.md#close-call)
-                        .overlay { if i == 0 { RoundedRectangle(cornerRadius: 3).strokeBorder(Color.red.opacity(0.5), lineWidth: 1) } }
-                }
-            }
-            if Game.inLastThird(left) { Text("✨") }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(Int((left * 100).rounded()))% of the fuse left")
-    }
 }
 
 /// Just after a close call, for your eyes only: no sound, no notification.
@@ -555,45 +498,6 @@ func isCool(_ e: Event) -> Bool { (e.cool ?? 0) >= Game.coolPrompt }
 
 /// A Boom tier's emoji and name, by `Boom.tier`: 💥 Boom, 💥💥 Chain reaction, ☢️ Meltdown.
 func tier(_ n: Int) -> (emoji: String, name: String) { Game.tiers[min(max(n, 1), Game.tiers.count) - 1] }
-
-func fuseColor(_ left: Double) -> Color { left <= 0.2 ? .red : left <= 0.5 ? .orange : Color.primary.opacity(0.7) }
-
-/// How many of the three pieces are still lit: any part of a third keeps it lit.
-func piecesLeft(_ left: Double) -> Double { (left * 3 - 1e-9).rounded(.up) }
-
-/// The menu bar icon: 🧨 and the fuse as three tiny pieces, orange past half and red near the end; 🧨✨ while a Boom's
-/// fuse burns; the tier's emoji and BOOM after, until it quiets down to a faint grey 💥.
-@MainActor
-func menuBarImage(_ state: GameState, connected: Bool, fusing: Bool, blown: Bool, quiet: Bool) -> NSImage {
-    // ponytail: follows the system appearance at render time; re-renders on the next state change after a switch
-    let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    let view = HStack(spacing: 2) {
-        let boomed = (state.boomed || blown) && !fusing
-        let blast = state.boomed ? state.booms.last.map { tier($0.tier).emoji } ?? "💥" : "💥" // the test Boom has no tier
-        // Why: calm technology; after a while the Boom steps back into the periphery (docs/why.md#quiet-boom)
-        let hush = boomed && quiet
-        Text(!boomed ? "🧨" : hush ? "💥" : blast).font(.system(size: 13))
-            .grayscale(hush ? 1 : 0).opacity(hush ? 0.45 : 1)
-        if !connected {
-            Text("?").font(.system(size: 11, weight: .bold))
-        } else if fusing {
-            Text("✨").font(.system(size: 11))
-        } else if boomed {
-            if !hush { Text("BOOM").font(.system(size: 10, weight: .heavy)).foregroundStyle(.red) }
-        } else {
-            ForEach(0..<3, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Double(i) < piecesLeft(state.left) ? (state.left <= 0.5 ? fuseColor(state.left) : .primary) : Color.primary.opacity(0.2))
-                    .frame(width: 4, height: 9)
-            }
-        }
-    }
-    .padding(.horizontal, 1)
-    .environment(\.colorScheme, dark ? .dark : .light)
-    let renderer = ImageRenderer(content: view)
-    renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
-    return renderer.nsImage ?? NSImage()
-}
 
 func clock(_ ts: Double) -> String {
     Date(timeIntervalSince1970: ts).formatted(date: .omitted, time: .shortened)

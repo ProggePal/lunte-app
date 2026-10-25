@@ -1,4 +1,5 @@
 import AppKit
+import FuseKit
 import CryptoKit
 import LunteCore
 
@@ -145,6 +146,22 @@ final class GameModel: ObservableObject {
     var boomQuiet: Bool {
         guard state.boomed, let boom = state.booms.last else { return false }
         return Date().timeIntervalSince1970 - (boom.escalations.last ?? boom.ts) >= Self.loudFor
+    }
+
+    /// What the menu bar fuse shows. After a Boom, its heat is how far the burn has got toward the next tier.
+    var fuseLook: FuseLook {
+        guard connected else { return FuseLook(phase: .offline) }
+        if fusing { return FuseLook(phase: .fusing, left: 0) }
+        if testBlown { return FuseLook(phase: .blown, name: tier(1).name) } // the test Boom has no tier
+        guard state.boomed, let boom = state.booms.last else {
+            let last = session.last, now = Date().timeIntervalSince1970
+            let bite = last.map { (Game.burn($0, at: now) + Game.mend($0)) / state.fuse } ?? 0 // its heat alone
+            return FuseLook(left: state.left, prompt: last?.ts, rating: last?.awaitingRating(at: now) ?? false, bite: bite)
+        }
+        let stick = max(Game.minFuse, state.fuse - Game.boomGrowth) // ponytail: the stick that blew, unless a day ended since
+        let toward = state.burned / (Game.escalationStep * stick) - Double(boom.tier - 1)
+        return FuseLook(phase: .blown, name: tier(boom.tier).name, tier: boom.tier,
+                        heat: min(1, max(0, toward)), quiet: boomQuiet)
     }
 
     /// For VoiceOver: the vibe, and how much stick is left, or the Boom's tier.
@@ -359,9 +376,9 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// A random wait between your outburst and the bang, so the room has to guess who it was.
+    /// The silence between the fuse burning through and the bang, at random, so the room has to guess who it was.
     // Why: your own feedback is instant, the room's Boom is delayed (docs/why.md#two-clocks)
-    static let boomDelay = 5.0...60.0
+    static let silence = 1.0...6.0
 
     /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the
     /// bang, with `sound`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
@@ -449,7 +466,7 @@ final class GameModel: ObservableObject {
             guard burning[key] == nil else { continue } // its Sitting's fuse is burning, and that bang announces it
             // Older than 10 minutes, or its Sitting was lit already and a late rating moved the Boom: announced silently.
             guard now - boom.ts < 600, lit[key] == nil else { announce(boom.id); continue }
-            light(.random(in: Self.boomDelay), sound: soundOn, posting: boom)
+            light(FuseScene.raceFor + .random(in: Self.silence), sound: soundOn, posting: boom)
         }
     }
 
@@ -485,7 +502,7 @@ final class GameModel: ObservableObject {
         defaults.set(true, forKey: "Connected")
         defaults.set(Array(announced), forKey: "Announced")
         guard fresh.contains(where: { now - $0.ts < 600 }) else { return }
-        light(3, sound: soundOn, test: true)
+        light(FuseScene.raceFor + 2, sound: soundOn, test: true) // the whole show: the burn, the silence, the bang
     }
 
     /// Onboarding: you own the test Boom, and 10 seconds later you get your first fresh stick. Kept on this Mac only.

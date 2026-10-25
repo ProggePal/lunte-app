@@ -14,7 +14,7 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Source:** [Ryan, Rigby & Przybylski 2006](https://doi.org/10.1007/s11031-006-9051-8)
 
 ## two-clocks
-- **Rule:** The player's own feedback is instant: within 0.1 s, 1 s at worst. The room's Boom waits a random 5–60 s.
+- **Rule:** The player's own feedback is instant: within 0.1 s, 1 s at worst. The room's Boom comes after the fuse's 1.6 s race and a random 1–6 s of silence: enough to blur who it was, and short enough that the silence stays suspense rather than a wait.
 - **Principle:** Perceived causality. People see "that made that happen" only when the effect follows at once, and even a 160 ms stagger cut causal ratings by about a third. Instant keeps the player's sense of agency; the delay breaks the room's link to the culprit.
 - **Evidence:** strong for the effect, mixed on the exact window.
 - **Source:** [White 2017](https://doi.org/10.1007/s00426-017-0853-y)
