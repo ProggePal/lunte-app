@@ -102,3 +102,27 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Principle:** A broken streak lowers later engagement, more so when people blame themselves, and nudges to recover mostly don't help.
 - **Evidence:** mixed: field data and experiments, from one paper.
 - **Source:** [Silverman & Barasch 2023](https://doi.org/10.1093/jcr/ucac029)
+
+## whole-session-dots
+- **Rule:** The popover's dots cover the whole open session, not just the last 30 minutes. Past four rows, the oldest fold into a thin heat line, so a long session never grows the popover.
+- **Principle:** Persistence. Game feel leaves traces, such as skid marks, trails and debris, that encode the past in what's on screen now, so you can rebuild what happened after you missed it.
+- **Evidence:** weak: craft knowledge, collected in a survey.
+- **Source:** [Pichlmair & Johansen 2020](https://arxiv.org/abs/2011.09201)
+
+## quiet-boom
+- **Rule:** After a Boom, the menu bar shows the tier and BOOM for about 10 minutes from the Boom or its last escalation, then quiets down to a faint grey 💥 until the fresh stick. The popover still says you're blown.
+- **Principle:** Calm technology. A tool should live in the periphery and move to the centre only when it matters. You stay blown until 30 quiet minutes, often well over an hour, and a 💥 that shouts all that time is noise in the corner of your eye.
+- **Evidence:** weak: a design frame, not an experiment.
+- **Source:** [Weiser & Brown 1995](https://calmtech.com/papers/designing-calm-technology)
+
+## summary-next-open
+- **Rule:** When a session closes, its summary waits for the next time you open the popover: how long it ran, its heat line, its one line, and its aura last. It shows once, then goes away, and History keeps it. Nothing pops up when a session closes.
+- **Principle:** The peak-end rule. We remember an experience by its peak and its end, so the summary ends on the recovery and what it earned. A session closes after you've left, so its summary is a memory device, there when you next look.
+- **Evidence:** strong, though in a meta-analysis the plain average predicted about as well.
+- **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x)
+
+## history-not-a-score
+- **Rule:** History lists your past sessions by day, each with its line and aura, and opens any one's summary again. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions.
+- **Principle:** Being watched doesn't help. Across 94 samples, electronic performance monitoring didn't improve performance and went with more stress. Hours added up would turn Lunte into a work monitor, for you or for a boss.
+- **Evidence:** mixed: a meta-analysis, with small effects that vary with how the monitoring is done.
+- **Source:** [Ravid et al. 2023](https://doi.org/10.1111/peps.12514)

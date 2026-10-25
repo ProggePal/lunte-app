@@ -19,8 +19,18 @@ final class GameModel: ObservableObject {
     @Published private(set) var onboarded = defaults.object(forKey: "Onboarded") as? Bool ?? defaults.bool(forKey: "Connected")
     /// Onboarding: what you owned your test Boom with, and when the 10-second fresh stick lands.
     @Published private(set) var ownedTest: (line: String, freshAt: Date)?
-    /// Your messages from the last 30 minutes (no onboarding test), for the timeline.
+    /// Your messages from the last 30 minutes (no onboarding test), for the vibe.
     @Published private(set) var recent: [Event] = []
+    /// Every message in the log (no onboarding test, no rest), oldest first, for heat lines.
+    @Published private(set) var messages: [Event] = []
+    /// The open session's messages, oldest first: the dots.
+    @Published private(set) var session: [Event] = []
+    /// Closed sessions with a message of yours in them (not just the onboarding test), oldest first. On this Mac only.
+    @Published private(set) var past: [Sitting] = []
+    /// The last session's summary, from the first time the popover opens after it closed until the popover closes.
+    @Published private(set) var summary: Sitting?
+    /// The start of the last session summarised, so each summary shows once.
+    private var summarised = defaults.double(forKey: "Summarised")
     /// The fuse is burning towards a Boom that hasn't gone off yet.
     @Published private(set) var fusing = false
     /// A test Boom has blown, so the menu bar says BOOM.
@@ -52,10 +62,10 @@ final class GameModel: ObservableObject {
     @Published private(set) var fuse: Scorer.Status = .untuned
     private var fuseSource: DispatchSourceFileSystemObject?
     private var fuseDebounce: Task<Void, Never>?
-    /// When you last sent a prompt: a break counts from here.
+    /// When you last sent a prompt: the 30 quiet minutes count from here.
     @Published private(set) var lastActivity: Double?
     private var promptCache: [Double: String] = [:]
-    /// Seconds shaved off the current break by tapping the countdown, and which break (last prompt) they belong to.
+    /// Seconds shaved off the wait for a fresh stick by tapping the emoji, and which wait (last prompt) they belong to.
     @Published private(set) var shaved: Double = 0
     private var shaveKey: Double?
     private var breakEnd: Task<Void, Never>?
@@ -109,11 +119,53 @@ final class GameModel: ObservableObject {
 
     // MARK: The menu
 
-    /// For VoiceOver: the vibe, and how much stick is left.
+    /// How long "Held it together" shows after the fuse climbs out of its last third.
+    static let heldFor: Double = 600
+
+    /// A close call in the last 10 minutes: the fuse got into its last third and climbed back out without a Boom.
+    /// The 60-second reload takes it away on time.
+    var heldTogether: Bool {
+        guard !state.boomed, let last = state.closeCalls.last else { return false }
+        return Date().timeIntervalSince1970 - last.cooled < Self.heldFor
+    }
+
+    /// How long the menu bar says BOOM after the Boom or its last escalation, before it quiets down.
+    // Why: calm technology; a Boom shouts once, then steps back (docs/why.md#quiet-boom)
+    static let loudFor: Double = 600
+
+    /// Blown for a while: the menu bar's 💥 has quieted down, while the popover still says you're blown. The 60-second
+    /// reload quiets it on time.
+    var boomQuiet: Bool {
+        guard state.boomed, let boom = state.booms.last else { return false }
+        return Date().timeIntervalSince1970 - (boom.escalations.last ?? boom.ts) >= Self.loudFor
+    }
+
+    /// Your Club's name, or nil without one.
+    var clubLabel: String? { club.map { clubName ?? $0 } }
+
+    /// For VoiceOver: the vibe, and how much stick is left, or the Boom's tier.
     var sentence: String {
         let vibe = self.vibe.map { $0.label + ". " } ?? ""
-        return state.boomed ? "Boom. " + vibe : vibe + "\(Int((state.left * 100).rounded()))% of the fuse left."
+        guard state.boomed, let boom = state.booms.last else { return vibe + "\(Int((state.left * 100).rounded()))% of the fuse left." }
+        return tier(boom.tier).name + ". " + vibe
     }
+
+    // MARK: Sessions
+
+    /// The popover opened: the first time after a session closed, and before the next one starts, its summary shows.
+    // Why: the peak-end rule; the summary waits for your next look (docs/why.md#summary-next-open)
+    func popoverOpened() {
+        guard onboarded, state.sitting == nil, let last = past.last, last.start > summarised else { return }
+        summary = last
+        summarised = last.start
+        defaults.set(summarised, forKey: "Summarised")
+    }
+
+    /// The popover closed: the summary goes away. History keeps it.
+    func popoverClosed() { summary = nil }
+
+    /// A session's messages, oldest first, for its heat line.
+    func messages(in s: Sitting) -> [Event] { messages.filter { $0.ts >= s.start && $0.ts <= s.end } }
 
     // MARK: The vibe
 
@@ -195,7 +247,8 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// After a Boom: seconds until a fresh stick, whichever comes first of 10 quiet minutes or 30 minutes without heat.
+    /// After a Boom: seconds until a fresh stick, which comes when the session closes after 30 quiet minutes
+    /// (`freshAt`), less what the hurry easter egg shaved off.
     func freshLeft(at now: Date) -> Double? {
         state.freshAt.map { max(0, $0 - shaved - now.timeIntervalSince1970) }
     }
@@ -366,10 +419,14 @@ final class GameModel: ObservableObject {
         let now = Date().timeIntervalSince1970
         let events = EventLog.read(log)
         state = Game.replay(events, now: now)
-        recent = Array(events.filter { $0.burn != .test && $0.burn != .rest && now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
+        messages = events.filter { $0.burn != .test && $0.burn != .rest }
+        session = state.sittingStart.map { start in messages.filter { $0.ts >= start } } ?? []
+        let tests = events.filter { $0.burn == .test }.map(\.ts)
+        past = state.sittings.filter { s in !s.isOpen && s.prompts > tests.filter { $0 >= s.start && $0 <= s.end }.count }
+        recent = Array(messages.filter { now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
         updateVibe(now)
         lastActivity = events.last { $0.burn != .rest }?.ts
-        if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the break
+        if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the wait
         onboard(events.filter { $0.burn == .test }, now: now)
         scheduleBreakEnd()
         let fresh = state.booms.filter { !announced.contains($0.id) }
