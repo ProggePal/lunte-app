@@ -79,7 +79,6 @@ final class GameModel: ObservableObject {
     private var watchedInode: Int?
     private var debounce: Task<Void, Never>?
     private var polling = false
-    private var sound: NSSound?
 
     init() {
         Notifier.setUp()
@@ -300,14 +299,15 @@ final class GameModel: ObservableObject {
     /// A random wait between your outburst and the bang, so the room has to guess who it was (GAME.md).
     static let boomDelay = 5.0...60.0
 
-    /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon, with the sound.
+    /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the
+    /// bang, with `sound`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
     /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
-    private func light(_ seconds: Double, sound: Bool, test: Bool = false) {
+    private func light(_ seconds: Double, sound: Bool, test: Bool = false, posting boom: Boom? = nil) {
         fusing = true
-        Blast.run(fuse: seconds) { [weak self] in
+        Blast.run(fuse: seconds, sound: sound) { [weak self] in
             guard let self else { return }
             fusing = false
-            if sound { playBoom() }
+            if let boom, club != nil { post(boom) }
             guard test else { return }
             testBlown = true
             if onboarded { Task { try? await Task.sleep(for: .seconds(10)); self.testBlown = false } }
@@ -329,12 +329,6 @@ final class GameModel: ObservableObject {
             }
             if connected { Alerts.tell(result.ok ? "Connected to Claude Code" : "Couldn't connect to Claude Code", connectError ?? "") }
         }
-    }
-
-    func playBoom() {
-        guard let url = Bundle.main.url(forResource: "boom", withExtension: "wav") else { return }
-        sound = NSSound(contentsOf: url, byReference: true) // kept so it isn't freed mid-boom
-        sound?.play()
     }
 
     // MARK: Watching the log
@@ -382,8 +376,7 @@ final class GameModel: ObservableObject {
         for boom in fresh {
             announced.insert(boom.id)
             guard now - boom.ts < 600 else { continue } // older than 10 minutes: announced silently
-            light(.random(in: Self.boomDelay), sound: soundOn)
-            if club != nil { post(boom) } // anonymous, and the Club polls every 30 s, so posting now gives nothing away
+            light(.random(in: Self.boomDelay), sound: soundOn, posting: boom)
         }
         defaults.set(Array(announced), forKey: "Announced")
     }
@@ -430,6 +423,7 @@ final class GameModel: ObservableObject {
         defaults.set(false, forKey: "Onboarded")
     }
 
+    /// Sent at the bang (`light`). ponytail: a Boom whose fuse is still burning when Lunte quits never reaches the Club.
     private func post(_ boom: Boom) {
         let secret = (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         let proof = SHA256.hash(data: Data(secret.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -536,13 +530,12 @@ final class GameModel: ObservableObject {
         saveClub()
     }
 
+    /// Reactions never notify: those on your own Boom pile up on its card, so nothing pops up to say it was yours.
     private func notify(about e: ClubEvent) {
         let who = e.from ?? "Someone"
         switch e.type {
         case "boom" where !isMine(e):
             Notifier.post("💥 Boom in your Club", "Someone lost it. Throw them something.", boom: e.boom)
-        case "react" where isMine(e):
-            Notifier.post("\(e.emoji ?? "") from \(who)", "On your Boom")
         case "why" where !isMine(e): // only a Boom's owner can justify it, so a why on your own Boom is yours
             Notifier.post("\(who): \(e.text ?? "")")
         case "join":

@@ -9,13 +9,20 @@ enum Blast {
     private static var panel: NSPanel?
     private static var job: Task<Void, Never>?
 
-    /// Burns for `fuse` seconds, then blows and calls `boom` (the sound, the Club). A new Blast replaces a running one.
-    static func run(fuse: Double, boom: @escaping @MainActor () -> Void) {
+    /// Burns for `fuse` seconds, then blows and calls `boom` (the Club). With `sound`, the fizz starts `Bang.fizz`
+    /// seconds early, so the bang lands with the burst. A new Blast replaces a running one.
+    static func run(fuse: Double, sound: Bool, boom: @escaping @MainActor () -> Void) {
         job?.cancel()
         panel?.close()
         panel = nil
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let (screen, icon) = iconOnScreen() else {
-            job = Task { try? await Task.sleep(for: .seconds(fuse)); if !Task.isCancelled { boom() } }
+            job = Task {
+                try? await Task.sleep(for: .seconds(max(0, fuse - Bang.fizz)))
+                guard !Task.isCancelled else { return }
+                if sound { Bang.play() }
+                try? await Task.sleep(for: .seconds(Bang.fizz))
+                if !Task.isCancelled { boom() }
+            }
             return
         }
         let p = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -47,7 +54,10 @@ enum Blast {
             guard !Task.isCancelled else { return }
             fade(dim, to: 0.35, over: 0.9) // the last second
             drip.birthRate = 4
-            try? await Task.sleep(for: .seconds(1))
+            try? await Task.sleep(for: .seconds(1 - Bang.fizz))
+            guard !Task.isCancelled else { return }
+            if sound { Bang.play() } // the fizz, then the bang right on the burst
+            try? await Task.sleep(for: .seconds(Bang.fizz))
             guard !Task.isCancelled else { return }
             drip.birthRate = 0
             fade(dim, to: 0, over: 0.5)

@@ -1,7 +1,8 @@
 import Foundation
 import UserNotifications
 
-/// Club notifications. Off when there's no bundle id (a bare `swift run`), where UserNotifications crashes.
+/// Club notifications, as silent banners: a ding on every Mac but the Boomer's would say who it was, so the bang
+/// stays the only sound in the room. Off when there's no bundle id (a bare `swift run`), where UserNotifications crashes.
 enum Notifier {
     static let reacts = ["🧯", "😂", "🫂"]
     private static let delegate = Delegate() // the center holds its delegate weakly
@@ -13,7 +14,7 @@ enum Notifier {
         center.delegate = delegate
         let actions = reacts.map { UNNotificationAction(identifier: $0, title: $0) }
         center.setNotificationCategories([UNNotificationCategory(identifier: "boom", actions: actions, intentIdentifiers: [])])
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        center.requestAuthorization(options: [.alert]) { _, _ in } // no .sound, ever
     }
 
     /// With `boom`, the notification gets the 🧯 😂 🫂 actions, each of which reacts to that Boom.
@@ -22,7 +23,6 @@ enum Notifier {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = .default
         if let boom {
             content.categoryIdentifier = "boom"
             content.userInfo = ["boom": boom]
@@ -33,7 +33,7 @@ enum Notifier {
     private final class Delegate: NSObject, UNUserNotificationCenterDelegate {
         func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                     withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
-            done([.banner, .sound])
+            done([.banner])
         }
 
         func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
