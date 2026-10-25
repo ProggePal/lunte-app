@@ -13,7 +13,7 @@
   <a href="https://github.com/ProggePal/lunte-app/releases/latest"><img src="https://img.shields.io/github/v/release/ProggePal/lunte-app?label=Download%20for%20Mac&logo=apple&style=for-the-badge&color=e8590c" alt="Download for Mac"></a>
 </p>
 
-<p align="center"><sub>Lunte never stores or sends your prompts. A small model on your Mac, <a href="https://huggingface.co/convaiinnovations/laya-multilingual">Laya</a>, reads the heat and the cool.</sub></p>
+<p align="center"><sub>Your prompts stay <a href="#privacy">private</a>.</sub></p>
 
 Ask your agent to install it:
 
