@@ -376,10 +376,9 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// A random wait between your outburst and the bang, so the room has to guess who it was. The fuse races down in the
-    /// first second or two, and the rest is silence, as if it went out.
+    /// The silence between the fuse burning through and the bang, at random, so the room has to guess who it was.
     // Why: your own feedback is instant, the room's Boom is delayed (docs/why.md#two-clocks)
-    static let boomDelay = 5.0...12.0
+    static let silence = 1.0...6.0
 
     /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the
     /// bang, with `sound`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
@@ -467,7 +466,7 @@ final class GameModel: ObservableObject {
             guard burning[key] == nil else { continue } // its Sitting's fuse is burning, and that bang announces it
             // Older than 10 minutes, or its Sitting was lit already and a late rating moved the Boom: announced silently.
             guard now - boom.ts < 600, lit[key] == nil else { announce(boom.id); continue }
-            light(.random(in: Self.boomDelay), sound: soundOn, posting: boom)
+            light(FuseScene.raceFor + .random(in: Self.silence), sound: soundOn, posting: boom)
         }
     }
 
@@ -503,7 +502,7 @@ final class GameModel: ObservableObject {
         defaults.set(true, forKey: "Connected")
         defaults.set(Array(announced), forKey: "Announced")
         guard fresh.contains(where: { now - $0.ts < 600 }) else { return }
-        light(7, sound: soundOn, test: true) // the whole show: the burn, the silence, the bang
+        light(FuseScene.raceFor + 2, sound: soundOn, test: true) // the whole show: the burn, the silence, the bang
     }
 
     /// Onboarding: you own the test Boom, and 10 seconds later you get your first fresh stick. Kept on this Mac only.

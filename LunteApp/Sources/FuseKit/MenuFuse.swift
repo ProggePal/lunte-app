@@ -36,8 +36,8 @@ public struct FuseLook: Equatable {
 /// - Cool feeds new fuse in at the start, left to right, green and twinkling, squeezing the coils together. One prompt
 ///   can do both.
 /// - The Boom's own burn starts slow and races faster and faster to the end, where the flame dies in a puff. Then
-///   nothing, for a few seconds, as if it went out, and then it blows: a flash, a shockwave, sparks, smoke and a jolt,
-///   easing in from a near stop, and once the smoke clears just a symbol and a word in the menu bar's own colour.
+///   nothing, for a second or a few, and then it blows: a flash, a shockwave, sparks, smoke and a jolt, easing in from a
+///   near stop, and once the smoke clears just a symbol and a word in the menu bar's own colour.
 ///   The tier's name, "Still burning" while the heat keeps coming, "Cooled off" once it's quiet, swapped with a little
 ///   spring and nothing more.
 /// - A new session feeds in a fresh fuse.
@@ -45,8 +45,10 @@ public struct FuseLook: Equatable {
 /// Coordinates are points, y up, measured from the right edge (x ≤ 0), since a menu bar item grows to the left.
 public struct FuseScene {
     public static let fuseWidth = 36.0
-    /// How long after the bang the word comes in, once the smoke has cleared and the comic word has flown up to it.
-    static let calmAfter = 2.2
+    /// How long the Boom's own burn takes, racing to the end. The silence after it is the game's to choose.
+    public static let raceFor = 1.6
+    /// How long after the bang the word comes in, once the smoke has cleared.
+    static let calmAfter = 1.6
     /// After the bang, time eases back up from a near stop over `speedUp` seconds, as on screen (`Blast.speed`).
     // Why: a beat of stillness on impact (hq: docs/research/game-feel-and-motivation.md, hitstop)
     public static let speedUp = 0.9
@@ -95,7 +97,7 @@ public struct FuseScene {
             if mend > 0.001 { grow(mend, t, held: old.left <= 1.0 / 3 && new.left > 1.0 / 3) }
         case (.lit, .fusing), (.offline, .fusing):
             // It catches and races to the end, faster and faster; the flame dies at the start, and then nothing.
-            let from = tail.value(t), over = 1 + 1.6 * max(0, from - head.to)
+            let from = tail.value(t), over = Self.raceFor
             tail = Tween(from, head.to, at: t, over: over, Ease.inCubic)
             seed += 1
             effects.append(.char(t, tail, seed: seed))
@@ -821,7 +823,7 @@ public struct FusePreviews: View {
         ("Rated: both", FuseLook(left: 0.7, prompt: 1, rating: true), FuseLook(left: 0.6, prompt: 1, bite: 0.35), 5),
         ("Close call", FuseLook(left: 0.45), FuseLook(left: 0.08, prompt: 1, bite: 0.37), 10),
         ("Held it together", FuseLook(left: 0.2), FuseLook(left: 0.55), 2.4),
-        ("Blows", FuseLook(left: 0.3), FuseLook(phase: .fusing, left: 0), 8),
+        ("Blows", FuseLook(left: 0.3), FuseLook(phase: .fusing, left: 0), 4),
         ("Bang", FuseLook(phase: .fusing, left: 0), FuseLook(phase: .blown), 2),
         ("Chain reaction", FuseLook(phase: .blown, heat: 0.9), FuseLook(phase: .blown, name: "Chain reaction", tier: 2), 1),
         ("Still burning", FuseLook(phase: .blown, quiet: true), FuseLook(phase: .blown, heat: 0.5, quiet: true), 1),
@@ -841,7 +843,7 @@ public struct FusePreviews: View {
         (1.2, FuseLook(left: 0.95, prompt: 4, rating: true)), (5, FuseLook(left: 0.6, prompt: 4, bite: 0.5)), // both
         (1.2, FuseLook(left: 0.6, prompt: 5, rating: true)), (10, FuseLook(left: 0.1, prompt: 5, bite: 0.5)), // a close call
         (1.2, FuseLook(left: 0.1, prompt: 6, rating: true)), (3.5, FuseLook(left: 0.45, prompt: 6)), // held it together
-        (1.2, FuseLook(left: 0.45, prompt: 7, rating: true)), (8, FuseLook(phase: .fusing, left: 0)), // it blows
+        (1.2, FuseLook(left: 0.45, prompt: 7, rating: true)), (4.6, FuseLook(phase: .fusing, left: 0)), // it blows
         (8, FuseLook(phase: .blown)), (5, FuseLook(phase: .blown, heat: 0.6)),
         (7, FuseLook(phase: .blown, name: "Chain reaction", tier: 2)), (4, FuseLook(phase: .blown, name: "Chain reaction", tier: 2, quiet: true)),
         (1, FuseLook())]
