@@ -47,6 +47,7 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         }
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "FuseDemo") { return demo() }
+        if let clip = UserDefaults.standard.string(forKey: "HeroDemo") { return hero(clip) }
         #endif
         watching = model.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
         render()
@@ -79,6 +80,83 @@ final class MenuBar: NSObject, NSApplicationDelegate {
                     if look.phase == .fusing { Blast.run(fuse: wait, sound: false) { _ in } } // the screen's show too, without the sound
                     fuse.show(look)
                     try? await Task.sleep(for: .seconds(wait))
+                }
+            }
+        }
+    }
+
+    private static var entrance: DispatchSourceSignal?
+
+    /// The README's clips (scripts/hero.sh): where the fuse starts, then the look each prompt brings.
+    static let clips: [String: [FuseLook]] = [
+        "fuse": [FuseLook(), FuseLook(left: 0.6, prompt: 1, bite: 0.4), FuseLook(left: 0.15, prompt: 2, bite: 0.45),
+                 FuseLook(left: 0.5, prompt: 3), FuseLook(left: 1, prompt: 4)], // back where it started, so it loops
+        "heat": [FuseLook(), FuseLook(left: 0.6, prompt: 1, bite: 0.4)],
+        "cool": [FuseLook(left: 0.4), FuseLook(left: 0.8, prompt: 1)],
+        "close": [FuseLook(left: 0.55), FuseLook(left: 0.12, prompt: 1, bite: 0.43), FuseLook(left: 0.5, prompt: 2)],
+        "boom": [FuseLook(), FuseLook(left: 0.6, prompt: 1, bite: 0.4), FuseLook(left: 0.2, prompt: 2, bite: 0.4),
+                 FuseLook(phase: .fusing, left: 0)],
+        "chain": [FuseLook(phase: .blown), FuseLook(phase: .blown, heat: 0.6), FuseLook(phase: .blown, name: "Chain reaction", tier: 2),
+                  FuseLook(phase: .blown, name: "Meltdown", tier: 3)],
+    ]
+
+    /// `LUNTE_LOG=<spare dir>/events.jsonl Lunte -HeroDemo boom` (scripts/hero.sh): prompts from the hook play one of
+    /// `clips` instead of the game, and a Boom blows after a second of silence. The prompt after the last starts it over.
+    /// Nothing is rated, logged or sent. The item keeps one width, so nothing beside it moves, and it prints where it
+    /// sits, for the recording: `at minX maxX barHeight screenWidth`.
+    private func hero(_ clip: String) {
+        guard let script = Self.clips[clip] else { return print("HeroDemo: no clip \(clip); try \(Self.clips.keys.sorted())") }
+        let fd = ScorerSocket.listen()
+        guard fd >= 0 else { print("HeroDemo: can't listen at \(ScorerSocket.url.path)"); return NSApp.terminate(nil) }
+        let prompts = AsyncStream<Void> { prompt in
+            DispatchQueue.global().async {
+                while true {
+                    let conn = accept(fd, nil, nil)
+                    guard conn >= 0 else { continue }
+                    var wait = timeval(tv_sec: 1, tv_usec: 0)
+                    setsockopt(conn, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
+                    _ = FileHandle(fileDescriptor: conn, closeOnDealloc: true).readDataToEndOfFile() // what it says doesn't matter
+                    prompt.yield()
+                }
+            }
+        }
+        // `-HeroItem` wide, 180 by default: enough for "Chain reaction", with an empty left end for macOS's recording badge,
+        // which it draws over the item, so the recording can start past it with the fuse in view. Too wide for the menu
+        // bar, and macOS hides the fuse to make room for the badge.
+        fuse.resize = { _ in }
+        item.length = UserDefaults.standard.object(forKey: "HeroItem") as? Double ?? 180
+        if script[0].phase == .lit {
+            // It opens as a new session does, laying out a fresh fuse, once the recording has started (SIGUSR1). Till
+            // then it's out of sight, and a quiet Boom, which a fresh fuse comes after.
+            fuse.alphaValue = 0
+            fuse.show(FuseLook(phase: .blown, quiet: true))
+            signal(SIGUSR1, SIG_IGN)
+            let start = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+            start.setEventHandler { [fuse] in
+                fuse.show(script[0])
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { fuse.alphaValue = 1 } // once the Boom's word is gone
+            }
+            start.resume()
+            Self.entrance = start
+        } else {
+            fuse.show(script[0])
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(1)) // the menu bar places the item first
+            let frame = item.button?.window?.frame ?? .zero
+            print("at", Int(frame.minX), Int(frame.maxX), Int(frame.height), Int(NSScreen.main?.frame.width ?? 0))
+            fflush(stdout)
+            var at = 0
+            for await _ in prompts {
+                at += 1
+                guard at < script.count else { at = 0; fuse.show(script[0]); continue }
+                if script[at - 1].phase == .lit { // the breeze while it's "rated"
+                    fuse.show(FuseLook(left: script[at - 1].left, prompt: Double(at), rating: true))
+                }
+                try? await Task.sleep(for: .seconds(0.8))
+                fuse.show(script[at])
+                if script[at].phase == .fusing {
+                    Blast.run(fuse: FuseScene.raceFor + 1, sound: false) { [fuse] _ in fuse.show(FuseLook(phase: .blown)) }
                 }
             }
         }
