@@ -296,7 +296,8 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// A random wait between your outburst and the bang, so the room has to guess who it was (GAME.md).
+    /// A random wait between your outburst and the bang, so the room has to guess who it was.
+    // Why: your own feedback is instant, the room's Boom is delayed (docs/why.md#two-clocks)
     static let boomDelay = 5.0...60.0
 
     /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the

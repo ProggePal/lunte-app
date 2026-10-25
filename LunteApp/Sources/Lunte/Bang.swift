@@ -5,8 +5,10 @@ import AVFoundation
 @MainActor
 enum Bang {
     /// Seconds of fizz before the bang.
+    // Why: a faint sound just before a loud one softens the startle (docs/why.md#prepulse-fizz)
     static let fizz = 0.4
     /// The cap on the whole sound, as a share of the Mac's volume. ponytail: fixed, no slider.
+    // Why: a cartoon, not an alarm, or the sound gets switched off for good (docs/why.md#juice-inverted-u)
     private static let volume: Float = 0.6
     private static var engine: AVAudioEngine? // kept so it isn't freed mid-boom
 

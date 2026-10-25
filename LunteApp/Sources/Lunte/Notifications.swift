@@ -14,6 +14,7 @@ enum Notifier {
         center.delegate = delegate
         let actions = reacts.map { UNNotificationAction(identifier: $0, title: $0) }
         center.setNotificationCategories([UNNotificationCategory(identifier: "boom", actions: actions, intentIdentifiers: [])])
+        // Why: the Boom is the only sound in the room, so a ding never points at anyone (docs/why.md#silent-pings)
         center.requestAuthorization(options: [.alert]) { _, _ in } // no .sound, ever
     }
 
