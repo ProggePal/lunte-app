@@ -53,11 +53,12 @@ public struct FuseScene {
     /// How long after the bang the word comes in, once the smoke has cleared.
     static let calmAfter = 1.6
     /// After the bang, time eases back up from a near stop over `speedUp` seconds, as on screen (`Blast.speed`).
-    // Why: a beat of stillness on impact (hq: docs/research/game-feel-and-motivation.md, hitstop)
+    // Why: hitstop, a beat of stillness on impact (docs/why.md#boom-in-the-dark)
     public static let speedUp = 0.9
     /// How long the tier's name stays after the bang or a new tier, before the heat or the quiet takes over.
     static let nameFor = 5.0
     /// How long the flame burns on after a burn: with plenty left, past half, in the last third.
+    // Why: still between prompts, so motion means something just happened (docs/why.md#still-between-prompts)
     static let flameFor = [2.5, 3.5, 5.0]
     private(set) var look = FuseLook()
     /// No motion: Reduce Motion, or a still preview.
@@ -92,6 +93,7 @@ public struct FuseScene {
         case (.lit, .lit), (.offline, .lit), (.lit, .offline):
             let delta = new.left - old.left
             var bite = max(0, -delta), mend = max(0, delta)
+            // Why: heat burns the tip and cool feeds the start, so you see each cause (docs/why.md#burn-tip-feed-start)
             if new.prompt != nil, new.prompt != old.prompt || (old.rating && !new.rating) { // a prompt's verdict is in
                 bite = max(-delta, new.prompt == old.prompt ? max(0, new.bite - old.bite) : new.bite)
                 mend = delta + bite // its cool fed fuse in while its heat burnt the tip
@@ -100,6 +102,7 @@ public struct FuseScene {
             if mend > 0.001 { grow(mend, t, held: old.left <= 1.0 / 3 && new.left > 1.0 / 3) }
         case (.lit, .fusing), (.offline, .fusing):
             // It catches and races to the end, faster and faster; the flame dies at the start, and then nothing.
+            // Why: anticipation, then silence in the dark (docs/why.md#boom-in-the-dark)
             let from = tail.value(t), over = Self.raceFor
             tail = Tween(from, head.to, at: t, over: over, Ease.inCubic)
             seed += 1
@@ -163,6 +166,7 @@ public struct FuseScene {
     /// How dark the screen gets, 0...1. A burn crawling through the last third dims it a little, deeper the nearer the
     /// end, until the flame goes out or the fuse grows back. The Boom's fuse takes it all the way dark as it empties,
     /// keeps it dark through the silence, and the bang lets the light back in. A close call and a Boom start the same.
+    // Why: suspense lives in the doubt (docs/why.md#close-call-crawl)
     func dark(at t: Double) -> Double {
         let danger = min(1, max(0, 1 - 3 * length(t))) // nothing a third from the end, all at the end
         switch look.phase {
@@ -194,6 +198,7 @@ public struct FuseScene {
 
     /// Burns `bite` off the tip. Returns how long it takes: a bigger bite burns longer, and what's in the last third
     /// crawls, stopping and starting.
+    // Why: please stop, please stop: suspense lives in the doubt (docs/why.md#close-call-crawl)
     @discardableResult
     private mutating func burn(_ bite: Double, _ t: Double) -> Double {
         let from = tail.value(t), to = tail.to - bite, edge = head.to + 1.0 / 3
@@ -296,6 +301,7 @@ public struct FuseScene {
     func draw(_ ctx: CGContext, at t: Double, ink: CGColor = ink) {
         ctx.saveGState()
         if look.phase == .offline { ctx.setAlpha(0.4) }
+        ctx.translateBy(x: jolt(at: t), y: 0)
         let from = head.value(t), to = tail.value(t)
         if to - from > 0.002 { stroke(ctx, from, to, t, ink, width: 1.5) }
         for e in effects { drawUnder(e, ctx, clock(e, t), ink: ink) }
@@ -303,6 +309,15 @@ public struct FuseScene {
         if boom.value(t) > 0.01 { drawBoom(ctx, t, ink: ink) }
         for e in effects { drawOver(e, ctx, clock(e, t), ink: ink) }
         ctx.restoreGState()
+    }
+
+    /// How far the bang jolts everything sideways at `t`, in points: in its own slowed time, so it starts in the
+    /// stillness too.
+    func jolt(at t: Double) -> Double {
+        effects.reduce(0.0) { sum, e in
+            guard case .shake(let t0, let s) = e, case let x = clock(e, t) - t0, x >= 0 else { return sum }
+            return sum + s * exp(-9 * x) * sin(70 * x)
+        }
     }
 
     /// The time `e` is drawn at: the bang's own effects start in the stillness and ease back up to speed.
@@ -360,6 +375,7 @@ public struct FuseScene {
     }
 
     // MARK: The calm Boom
+    // Why: calm technology; no fire after the bang, just the menu bar's own colour and font (docs/why.md#quiet-boom)
 
     /// What the Boom says: an SF Symbol and a word.
     struct Caption: Equatable {
@@ -386,21 +402,19 @@ public struct FuseScene {
         guard let now = captions.last(where: { $0.at <= t }) ?? captions.first else { return }
         let before = captions.last { $0.at < now.at }?.caption
         let k = still ? 1 : min(1, max(0, (t - now.at) / 0.45))
-        var pop = 1.0, shake = 0.0
+        var pop = 1.0
         for e in effects {
             if case .pop(let t0, let s) = e, t >= t0 { let x = t - t0; pop *= 1 + s * exp(-6 * x) * sin(17 * x) }
-            if case .shake(let t0, let s) = e, t >= t0 { let x = t - t0; shake += s * exp(-9 * x) * sin(70 * x) }
         }
         let alpha = 1 - 0.3 * hush.value(t), size = boom.value(t) * pop, word = named.value(t)
-        let x = { (spot: Double) in spot + shake } // each symbol keeps to its own word
         // One after the other: the old caption rises away in the first 40%, the new one springs up from below after it.
         let leaving = max(0, 1 - k / 0.4), arriving = before == nil ? 1 : max(0, (k - 0.3) / 0.7)
         if let before, leaving > 0 {
-            Self.symbol(ctx, before.symbol, at: CGPoint(x: x(before.spot), y: 9 + 4 * (1 - leaving)), scale: size * (0.7 + 0.3 * leaving), ink: ink, alpha: alpha * leaving)
+            Self.symbol(ctx, before.symbol, at: CGPoint(x: before.spot, y: 9 + 4 * (1 - leaving)), scale: size * (0.7 + 0.3 * leaving), ink: ink, alpha: alpha * leaving)
             Self.text(ctx, before.text, y: 4 * (1 - leaving), ink: ink, alpha: alpha * word * leaving)
         }
         let rise = before == nil ? 0 : -4 * (1 - Ease.outBack(arriving))
-        Self.symbol(ctx, now.caption.symbol, at: CGPoint(x: x(now.caption.spot), y: 9 + rise), scale: size * (before == nil ? 1 : 0.6 + 0.4 * Ease.outBack(arriving)),
+        Self.symbol(ctx, now.caption.symbol, at: CGPoint(x: now.caption.spot, y: 9 + rise), scale: size * (before == nil ? 1 : 0.6 + 0.4 * Ease.outBack(arriving)),
                     ink: ink, alpha: alpha * min(1, arriving))
         Self.text(ctx, now.caption.text, y: rise, ink: ink, alpha: alpha * word * min(1, arriving))
     }
@@ -611,6 +625,7 @@ public struct FuseScene {
     }
 
     // MARK: The coil
+    // Why: a spring you can read at a glance, and a little uneven, so it's alive (docs/why.md#just-the-fuse)
 
     public static let start = -33.0  // where the fuse is fixed, from the right edge
     static let pitch = 26.0   // how far a whole stick of fuse reaches, squeezed tight

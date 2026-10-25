@@ -22,6 +22,16 @@ final class FuseKitTests: XCTestCase {
         }
     }
 
+    /// The bang jolts what's in the menu bar while there's something to see, and has settled by the time the word lands.
+    func testTheBangJolts() {
+        var scene = FuseScene()
+        scene.update(FuseLook(phase: .fusing, left: 0), at: 0, animated: false)
+        scene.update(FuseLook(phase: .blown), at: 10)
+        let jolts = stride(from: 10.0, to: 11, by: 0.01).map { abs(scene.jolt(at: $0)) }
+        XCTAssertGreaterThan(jolts.max()!, 1)
+        XCTAssertLessThan(abs(scene.jolt(at: 10 + FuseScene.calmAfter)), 0.01)
+    }
+
     /// The item widens for the Boom's words at once, never narrows while blown, and narrows after the fresh fuse is in.
     func testWidthOnlyNarrowsAfterTheBoom() {
         var scene = FuseScene()
