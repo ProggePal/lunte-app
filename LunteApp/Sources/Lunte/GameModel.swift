@@ -81,9 +81,12 @@ final class GameModel: ObservableObject {
     }
     /// Booms done with for good (`announce`), and the onboarding tests.
     private var announced = Set(defaults.stringArray(forKey: "Announced") ?? [])
-    /// Booms whose fuse is burning, in memory only: each is announced at its bang, so one whose fuse is still burning
-    /// when Lunte quits, crashes or updates lights again when it opens, if it's under 10 minutes old.
-    private var burning: Set<String> = []
+    /// Sittings whose fuse was lit (`sittingKey`) → the Boom id it banged under. A Sitting bangs once, even when a late
+    /// rating moves its Boom to an earlier prompt, which gives it a new id.
+    private var lit = defaults.dictionary(forKey: "Lit") as? [String: String] ?? [:]
+    /// The same for the fuse that's burning, in memory only: it's announced at its bang, so a Boom whose fuse is still
+    /// burning when Lunte quits, crashes or updates lights again when it opens, if it's under 10 minutes old.
+    private var burning: [String: String] = [:]
     private var secrets = defaults.dictionary(forKey: "Secrets") as? [String: String] ?? [:] // ponytail: UserDefaults, not the Keychain
     private var lastSeq = defaults.integer(forKey: "LastSeq")
 
@@ -363,12 +366,13 @@ final class GameModel: ObservableObject {
     /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
     private func light(_ seconds: Double, sound: Bool, test: Bool = false, posting boom: Boom? = nil) {
         fusing = true
-        for id in burning { announce(id) } // a new Blast replaces a running one, so that Boom never bangs
-        if let boom { burning.insert(boom.id) }
+        for (sitting, id) in burning { announce(id, sitting: sitting) } // a new Blast replaces a running one: no bang for it
+        let key = boom.map(sittingKey)
+        if let boom, let key { burning[key] = boom.id }
         Blast.run(fuse: seconds, sound: sound) { [weak self] blew in
             guard let self else { return }
             fusing = false
-            if let boom { announce(boom.id) }
+            if let boom { announce(boom.id, sitting: key) }
             if blew, let boom, club != nil { post(boom) }
             guard test else { return }
             testBlown = true
@@ -437,17 +441,36 @@ final class GameModel: ObservableObject {
         if shaveKey != lastActivity { shaveKey = nil; shaved = 0 } // a new prompt restarts the wait
         onboard(events.filter { $0.burn == .test }, now: now)
         scheduleBreakEnd()
-        for boom in state.booms where !announced.contains(boom.id) && !burning.contains(boom.id) {
-            guard now - boom.ts < 600 else { announce(boom.id); continue } // older than 10 minutes: announced silently
+        for boom in state.booms where !announced.contains(boom.id) {
+            let key = sittingKey(boom)
+            guard burning[key] == nil else { continue } // its Sitting's fuse is burning, and that bang announces it
+            // Older than 10 minutes, or its Sitting was lit already and a late rating moved the Boom: announced silently.
+            guard now - boom.ts < 600, lit[key] == nil else { announce(boom.id); continue }
             light(.random(in: Self.boomDelay), sound: soundOn, posting: boom)
         }
     }
 
     /// Done with a Boom for good: it banged, the Mac slept through it, a new fuse replaced its own, or it's too old.
-    private func announce(_ id: String) {
-        burning.remove(id)
+    /// With its Sitting, that Sitting has been lit, under this id.
+    private func announce(_ id: String, sitting: String? = nil) {
         announced.insert(id)
         defaults.set(Array(announced), forKey: "Announced")
+        guard let sitting else { return }
+        burning[sitting] = nil
+        lit[sitting] = id
+        defaults.set(lit, forKey: "Lit")
+    }
+
+    /// A Boom's Sitting, by its start written the way a Boom id is: what gets lit once.
+    private func sittingKey(_ boom: Boom) -> String {
+        String(Int((state.sittings.first { $0.boom?.id == boom.id }?.start ?? boom.ts) * 1000))
+    }
+
+    /// The id a Boom's fuse was lit for, which its comment, its reactions and the Club keep, even if a late rating has
+    /// moved the Boom to an earlier prompt since. Its own id until its fuse is lit.
+    func litID(_ boom: Boom) -> String {
+        let key = sittingKey(boom)
+        return lit[key] ?? burning[key] ?? boom.id
     }
 
     /// The first Boom is the onboarding: "this is a test 3 2 1 pow" proves the hook reaches the app. Never posted to the Club.

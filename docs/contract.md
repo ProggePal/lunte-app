@@ -188,6 +188,8 @@ Base URL comes from Info.plist `LunteRelayURL`, overridable with `defaults write
 
 A Boom counts as announced at its bang, or when the Mac slept through it. So one whose fuse is still burning when Lunte quits, crashes or updates lights again, with a new wait, when it opens, if it's still under 10 minutes old.
 
+A Sitting bangs once. A late rating, or a word-list decision after `ratingWait`, can move a Sitting's Boom to an earlier prompt, which gives it a new id; a Boom whose Sitting has been lit already is marked announced silently. The app keeps the lit Sittings by start, with the id each was lit for, in UserDefaults (`Lit`, next to `Announced`), and the Boom's comment and reactions stay with that id.
+
 The app keeps each Boom's secret and its "mine" flag in UserDefaults.
 
 **The model.** `Scorer` rates prompts with Laya on the Neural Engine, untuned for now: heat is its P(frustrated) for one short mood question, "The writer's mood toward their AI assistant?", with six options (frustrated, confused, hyped, grateful, tired, neutral), each with a two-word description.

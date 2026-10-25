@@ -284,7 +284,7 @@ private struct BoomHeader: View {
     var body: some View {
         let level = tier(boom.tier), quiet = Int(Game.sittingGap / 60)
         VStack(spacing: 2) {
-            Button { if !model.canJustify(boom.id) { model.hurry() } } label: { Text(level.emoji).font(.system(size: 44)) }
+            Button { if !model.canJustify(model.litID(boom)) { model.hurry() } } label: { Text(level.emoji).font(.system(size: 44)) }
                 .buttonStyle(.plain)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 VStack(spacing: 2) {
@@ -365,20 +365,21 @@ private struct JustifyRow: View {
     @State private var why = ""
     @State private var error: String?
     @State private var sending = false
+    private var boomID: String { model.litID(boom) } // the id its fuse was lit for, if a late rating moved it
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if model.canJustify(boom.id) {
+            if model.canJustify(boomID) {
                 HStack {
                     TextField("it deleted my migrations again", text: $why).textFieldStyle(.roundedBorder).onSubmit(send)
                         .onChange(of: why) { _, new in if new.count > GameModel.justifyLimit { why = String(new.prefix(GameModel.justifyLimit)) } }
                     Button("Comment", action: send).disabled(why.isEmpty || sending)
                 }
-            } else if let line = model.justifications[boom.id] {
+            } else if let line = model.justifications[boomID] {
                 Text("“\(line)”").font(.callout).frame(maxWidth: .infinity)
             }
             // ponytail: silence is the mystery, so nothing invites staying quiet
-            if let reacted = model.reactionSummary(boom.id) {
+            if let reacted = model.reactionSummary(boomID) {
                 Text(reacted).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
             }
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
@@ -389,7 +390,7 @@ private struct JustifyRow: View {
         guard !why.isEmpty, !sending else { return }
         sending = true
         Task {
-            error = await model.justify(boom.id, why)
+            error = await model.justify(boomID, why)
             sending = false
             why = "" // it's saved either way; error only says the Club missed it
         }

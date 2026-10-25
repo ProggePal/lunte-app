@@ -11,6 +11,7 @@ What changed for you in each version of Lunte.
 - **Club notifications never give you away.** They used to ding on every Mac but yours, sometimes before the bang. Now your Club hears about a Boom only once it has gone off, in a silent banner you can still throw a 🧯, 😂 or 🫂 from.
 - Reactions to your Boom show up on its card, without a notification.
 - **Quitting doesn't lose your Boom.** Quitting or updating Lunte while the fuse burned used to lose the bang. Now the fuse lights again when Lunte opens, if the Boom is under 10 minutes old.
+- **One bang per session.** A rating that came in late could move your Boom to an earlier message and set it off again, bang and all. Now a session bangs once, and your comment and your Club's reactions stay with it.
 - **Shutting the lid doesn't give you away.** If your Mac went to sleep while the fuse burned, the bang used to go off the moment you opened it. Now that Boom stays quiet: it's on your card, with no sound or sparks, and your Club never hears of it.
 
 ## 0.2.2
