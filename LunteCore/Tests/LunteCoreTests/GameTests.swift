@@ -197,6 +197,22 @@ final class GameTests: XCTestCase {
                        [CloseCall(ts: t0 + 60, cooled: t0 + 120), CloseCall(ts: t0 + 180, cooled: t0 + 240)])
     }
 
+    /// Guards docs/why.md#close-call: a heat-1 burn on a 1.5 stick leaves exactly a third, which floats a hair above it.
+    func testCloseCallAtExactlyOneThird() {
+        let day = 86_400.0
+        XCTAssertGreaterThan(1 - 1.0 / 1.5, Game.closeCallLeft) // the float edge
+        XCTAssertTrue(Game.inLastThird(1 - 1.0 / 1.5))
+        XCTAssertFalse(Game.inLastThird(0.334))
+        // a Boom (1.75), a calm workday (1.5), then a furious prompt on Saturday
+        let events = log([.lose, .none, .none], at: [0, day, 2 * day]) + [Event(ts: t0 + 2 * day + 60, burn: .none, heat: 1)]
+        let dipped = Game.replay(events, now: t0 + 2 * day + 120, timeZone: utc)
+        XCTAssertEqual(dipped.fuse, 1.5)
+        XCTAssertEqual(dipped.burned, 1)
+        XCTAssertEqual(Game.stickText(dipped), "🧨✨")
+        let s = Game.replay(events, now: t0 + 3 * day, timeZone: utc) // walked away: the burn cooled off
+        XCTAssertEqual(s.closeCalls, [CloseCall(ts: t0 + 2 * day + 60, cooled: t0 + 2 * day + 60 + 1800)])
+    }
+
     func testSessionSummaries() {
         let calm = (0..<6).map { Event(ts: t0 + Double($0) * 60, burn: .none, heat: 0.1, cool: $0 < 2 ? 0.8 : 0.2) }
         let hot = log([.tell, .lose, .none], at: [4000, 4060, 4120])

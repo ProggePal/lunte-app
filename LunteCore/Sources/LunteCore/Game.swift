@@ -16,6 +16,7 @@ public enum Game {
     public static let maxTier = 3               // Boom, Chain reaction, Meltdown
     // Why: competence, and relief right after the act (docs/why.md#close-call)
     public static let closeCallLeft = 1.0 / 3   // a close call dips into the last third of the stick
+    static let epsilon = 1e-9                   // float slack: a heat-1 burn on a 1.5 stick leaves 0.33333333333333337
     public static let coolPrompt = 1.0 / 3      // a prompt counts as cool from here: your AI's 1 of 3
     public static let ratingWait: Double = 90   // how long a rated message waits for the model before the word list decides
     static let spark = 0.01                     // heat² or cool² below this does nothing: a neutral message
@@ -57,7 +58,7 @@ public enum Game {
         func settle(at t: Double) {
             s.burned = burning.reduce(0) { max(0, $0 + burn($1, at: now)) }
             guard !s.boomed else { return }
-            if s.left <= closeCallLeft {
+            if inLastThird(s.left) {
                 dip = dip ?? t
             } else if let d = dip {
                 sitting?.closeCalls.append(CloseCall(ts: d, cooled: t))
@@ -161,9 +162,13 @@ public enum Game {
         return s
     }
 
+    // Why: competence; a close call is never missed by a rounding error (docs/why.md#close-call)
+    /// In the stick's last third: `closeCallLeft` or less left, give or take float rounding.
+    public static func inLastThird(_ left: Double) -> Bool { left <= closeCallLeft + epsilon }
+
     public static func stickText(_ state: GameState) -> String {
         if state.boomed { return "💥" }
-        return "🧨" + (state.left <= 1.0 / 3 ? "✨" : String(repeating: "━", count: Int((state.left * 3).rounded(.up))))
+        return "🧨" + (inLastThird(state.left) ? "✨" : String(repeating: "━", count: Int((state.left * 3).rounded(.up))))
     }
 
     /// cool, mild, warm, hot, boiling.

@@ -56,9 +56,9 @@ One entry per game rule: the rule, the principle behind it, how strong the evide
 - **Source:** [Samson & Gross 2012](https://doi.org/10.1080/02699931.2011.585069)
 
 ## close-call
-- **Rule:** When the fuse gets into its last third and climbs back out without a Boom, that's a close call: one per dip, credited the moment it climbs out, and worth aura. It's never faked, and the fuse is never shown closer than it was.
+- **Rule:** When the fuse gets into its last third and climbs back out without a Boom, that's a close call: one per dip, credited the moment it climbs out, and worth aura. Exactly a third left counts, whatever the floating point says. It's never faked, and the fuse is never shown closer than it was.
 - **Principle:** Competence and relief. "I held it together" feeds competence, one of the needs that predicts enjoyment, and a reward works best right after the act.
-- **Evidence:** strong for competence, mostly correlational.
+- **Evidence:** strong for competence, mostly correlational. Tuned on a replay of 13 weeks of one player's real prompts: the last third gives 1.3 close calls a week (2 in the hot last month), about 1.3 per Boom, rare enough to mean something and common enough to happen. The last quarter gave 0.9 a week, and the last half 3.2, which is too cheap.
 - **Source:** [Ryan, Rigby & Przybylski 2006](https://doi.org/10.1007/s11031-006-9051-8)
 
 ## peak-end
