@@ -156,7 +156,7 @@ final class GameModel: ObservableObject {
         guard state.boomed, let boom = state.booms.last else {
             let last = session.last, now = Date().timeIntervalSince1970
             let bite = last.map { (Game.burn($0, at: now) + Game.mend($0)) / state.fuse } ?? 0 // its heat alone
-            return FuseLook(left: state.left, prompt: last?.ts, bite: bite)
+            return FuseLook(left: state.left, prompt: last?.ts, rating: last?.awaitingRating(at: now) ?? false, bite: bite)
         }
         let stick = max(Game.minFuse, state.fuse - Game.boomGrowth) // ponytail: the stick that blew, unless a day ended since
         let toward = state.burned / (Game.escalationStep * stick) - Double(boom.tier - 1)

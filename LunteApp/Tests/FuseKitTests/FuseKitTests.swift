@@ -13,6 +13,8 @@ final class FuseKitTests: XCTestCase {
             FuseLook(left: 0.7),                        // a burn cooled off
             FuseLook(left: 0.3, prompt: 4, bite: 0.4),
             FuseLook(left: 1, prompt: 5),               // back to whole
+            FuseLook(left: 1, prompt: 6, rating: true), // being rated: nothing yet
+            FuseLook(left: 0.8, prompt: 6, bite: 0.3),  // rated: burns 0.3, feeds in 0.1
         ]
         for (i, look) in looks.enumerated() {
             scene.update(look, at: Double(i) * 0.2) // each lands mid-move of the last

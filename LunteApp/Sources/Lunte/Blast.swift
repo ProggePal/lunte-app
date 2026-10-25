@@ -2,10 +2,11 @@ import AppKit
 import FuseKit
 import QuartzCore
 
-/// The Boom on screen, from the menu bar icon, in native Core Animation particles. While the fuse burns, sparks drip
-/// from the icon. In the last second the screen dims and the sparks slow down until they almost hang, as the menu bar
-/// fuse does. Then it blows at full speed from the icon: a burst of sparks falling down the screen and a shockwave.
-/// Clicks pass through. With Reduce Motion it's just the wait.
+/// The Boom on screen, from the menu bar icon, in native Core Animation particles: the one show. While the fuse burns,
+/// sparks drip from the icon. In the last 3 seconds the room darkens around a warm glow at the fuse and the sparks spit
+/// harder; in the last 1.4 they slow down until they almost hang, as the menu bar fuse does. Then it blows at full speed
+/// from the icon: a flash, two shockwaves, and a burst of sparks and embers falling down the screen, as the dark drains
+/// away. Clicks pass through. With Reduce Motion it's just the wait.
 @MainActor
 enum Blast {
     private static var panel: NSPanel?
@@ -53,23 +54,39 @@ enum Blast {
         let root = view.layer!
         // Under where the fuse starts, which is where it fizzes and blows; y points up.
         let at = CGPoint(x: icon.maxX - FuseView.margin + FuseScene.start - screen.frame.minX, y: icon.minY - screen.frame.minY)
-        let dim = CALayer()
-        dim.frame = root.bounds
-        dim.backgroundColor = NSColor.black.cgColor
-        dim.opacity = 0
-        root.addSublayer(dim)
+        // The room darkens toward the bang: a warm glow around the fuse, dark at the edges.
+        let tint = CAGradientLayer()
+        tint.type = .radial
+        tint.frame = root.bounds
+        let centre = CGPoint(x: at.x / root.bounds.width, y: at.y / root.bounds.height), reach = 1.1
+        tint.startPoint = centre
+        tint.endPoint = CGPoint(x: centre.x + reach, y: centre.y + reach * root.bounds.width / root.bounds.height)
+        tint.colors = [NSColor(srgbRed: 1, green: 0.45, blue: 0.12, alpha: 0.25).cgColor,
+                       NSColor(srgbRed: 0.14, green: 0.02, blue: 0, alpha: 0.62).cgColor]
+        tint.opacity = 0
+        root.addSublayer(tint)
+        let flash = CALayer()
+        flash.frame = root.bounds
+        flash.backgroundColor = NSColor(srgbRed: 1, green: 0.88, blue: 0.68, alpha: 1).cgColor
+        flash.opacity = 0
+        root.addSublayer(flash)
         let drip = emitter(at: at, cells: sparks(birthRate: 14, velocity: 50, range: .pi / 4, down: true, lifetime: 1.6))
         root.addSublayer(drip)
 
-        let fizzle = { p.close(); if panel === p { panel = nil }; boom(false) } // slept through: no dim, no sound, no burst
+        let fizzle = { p.close(); if panel === p { panel = nil }; boom(false) } // slept through: no tint, no sound, no burst
+        let slowMo = FuseScene.slowMo, build = min(3, fuse) // the build-up, then its slow last moments, like the menu bar's
         job = Task {
-            try? await Task.sleep(for: .seconds(max(0, fuse - 1)))
+            try? await Task.sleep(for: .seconds(max(0, fuse - build)))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
-            fade(dim, to: 0.35, over: 0.9) // the last second
-            drip.birthRate = 4
+            fade(tint, to: 0.55, over: max(0.1, build - slowMo))
+            drip.birthRate = 24 // spitting harder
+            try? await Task.sleep(for: .seconds(max(0, build - slowMo)))
+            guard !Task.isCancelled else { return }
+            if late() { return fizzle() }
+            fade(tint, to: 1, over: slowMo)
             pace(drip, 0.3) // slowing down
-            try? await Task.sleep(for: .seconds(1 - Bang.fizz))
+            try? await Task.sleep(for: .seconds(slowMo - Bang.fizz))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
             if sound { Bang.play() } // the fizz, then the bang right on the burst
@@ -78,14 +95,20 @@ enum Blast {
             guard !Task.isCancelled else { return }
             drip.birthRate = 0
             pace(drip, 1) // and time comes back with the bang
-            fade(dim, to: 0, over: 0.5)
+            pulse(flash, to: 0.45, over: 0.4)
+            fade(tint, to: 0, over: 1.8)
             let burst = emitter(at: at, cells: sparks(birthRate: 500, velocity: 420, range: .pi * 2, down: false, lifetime: 2.6))
+            let embers = emitter(at: at, cells: sparks(birthRate: 160, velocity: 150, range: .pi * 2, down: false, lifetime: 4.5))
+            root.addSublayer(embers)
             root.addSublayer(burst)
-            root.addSublayer(shockwave(at: at))
+            root.addSublayer(shockwave(at: at, colour: .systemOrange, to: 260, width: 10))
             boom(true)
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(90))
+            root.addSublayer(shockwave(at: at, colour: .white, to: 180, width: 3))
+            try? await Task.sleep(for: .milliseconds(30))
             burst.birthRate = 0 // one burst, then gravity does the rest
-            try? await Task.sleep(for: .seconds(3))
+            embers.birthRate = 0
+            try? await Task.sleep(for: .seconds(4.5))
             p.close()
             if panel === p { panel = nil }
         }
@@ -132,24 +155,24 @@ enum Blast {
         }
     }
 
-    private static func shockwave(at point: CGPoint) -> CAShapeLayer {
+    private static func shockwave(at point: CGPoint, colour: NSColor, to radius: CGFloat, width: CGFloat) -> CAShapeLayer {
         let ring = CAShapeLayer()
         ring.fillColor = nil
-        ring.strokeColor = NSColor.systemOrange.cgColor
+        ring.strokeColor = colour.cgColor
         ring.lineWidth = 2
         ring.opacity = 0
         let circle = { (r: CGFloat) in CGPath(ellipseIn: CGRect(x: point.x - r, y: point.y - r, width: r * 2, height: r * 2), transform: nil) }
         let grow = CABasicAnimation(keyPath: "path")
         grow.fromValue = circle(6)
-        grow.toValue = circle(260)
-        let width = CABasicAnimation(keyPath: "lineWidth")
-        width.fromValue = 10
-        width.toValue = 1
+        grow.toValue = circle(radius)
+        let thin = CABasicAnimation(keyPath: "lineWidth")
+        thin.fromValue = width
+        thin.toValue = 1
         let fadeOut = CABasicAnimation(keyPath: "opacity")
         fadeOut.fromValue = 0.9
         fadeOut.toValue = 0
         let group = CAAnimationGroup()
-        group.animations = [grow, width, fadeOut]
+        group.animations = [grow, thin, fadeOut]
         group.duration = 0.7
         group.timingFunction = CAMediaTimingFunction(name: .easeOut)
         ring.add(group, forKey: "shockwave")
@@ -162,6 +185,15 @@ enum Blast {
         layer.timeOffset = layer.convertTime(now, from: nil)
         layer.beginTime = now
         layer.speed = speed
+    }
+
+    /// Flashes `layer` up to `opacity` and back down to nothing.
+    private static func pulse(_ layer: CALayer, to opacity: Float, over seconds: Double) {
+        let a = CAKeyframeAnimation(keyPath: "opacity")
+        a.values = [0, opacity, 0]
+        a.keyTimes = [0, 0.15, 1]
+        a.duration = seconds
+        layer.add(a, forKey: "pulse")
     }
 
     private static func fade(_ layer: CALayer, to opacity: Float, over seconds: Double) {
