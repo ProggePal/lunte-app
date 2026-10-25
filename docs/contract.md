@@ -85,18 +85,31 @@ These cases must pass:
 
 Pure and deterministic, over the whole log.
 
-Every message has **heat**, 0…1, and burns heat² of the fuse, so calm messages barely touch it and hot ones eat it. A burn cools off after 30 minutes. Too much heat at once and it blows.
+Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fuse and cool mends some of it back, so calm messages barely touch it and hot ones eat it. A burn cools off after 30 minutes. Too much heat at once and it blows: once per Sitting, and more heat after that escalates the same Boom.
 
-- **Heat** (`Event.heat(at: now)`): the model's rating from the merged `heat` line. Without one, the word list: `tell` 0.6, `lose` 1, anything else 0. A `rated` prompt still waiting for its rating counts as 0 for `ratingWait` (90 s), so the word list can't Boom before the model speaks; after that the word list decides.
-- **Sitting:** consecutive events less than 10 minutes (600 s) apart. A gap of 600 s or more (a break) starts a new Sitting with a fresh stick.
+- **Heat** (`Event.heat(at: now)`): the model's rating from the merged `heat` line. Heat is anger, not volume. Without one, the word list: `tell` 0.6, `lose` 1, anything else 0. A `rated` prompt still waiting for its rating counts as 0 for `ratingWait` (90 s), so the word list can't Boom before the model speaks; after that the word list decides.
+- **Cool** (`Event.cool`): the model's cool from the same `heat` line (§8): talking to your agent like a best bud. Nil without a cool model and in older logs, and nil counts as 0. A message counts as cool from `coolPrompt` (1/3, your AI's 1 of 3).
+- **Burn** (`Game.burn(_:at:)`): heat² less `coolMend` (0.5) × cool², where either part below 0.01 counts as 0. So a cool message is negative, and a hot and cool one ("you absolute clown 😂") burns less than the heat alone.
+- **Sitting** (a session in GAME.md): it starts with a message and closes after 30 minutes (`sittingGap`, 1800 s) without one. It has no length cap. The next message after that starts a new Sitting with a fresh stick.
 - **Fuse** is how much heat² the stick takes: 1 (`minFuse`) to start, +0.5 per Boom (`boomGrowth`), −0.5 per Sitting that ends without a Boom, never below 1.
-- **Burning:** a message whose heat² is at least 0.01 joins the Sitting's `currentBurns`. `burned` is the sum of heat² over the burns from the last 30 minutes (`cooling`); older ones drop out.
-- **Boom:** when `burned >= fuse` and the stick isn't already blown. `fuse += 0.5`. More heat while it's blown keeps it blown.
-- **Fresh stick after a Boom:** a 10-minute break, or 30 minutes after the last burn (every burn has cooled off), whichever comes first. `freshAt` is that time for the open Sitting.
-- **`.test` events** count as activity for Sittings but never burn, never Boom and never change the fuse.
-- **`.rest` events** close the open Sitting on the spot, exactly like a break. The next prompt then starts a fresh Sitting, without counting the empty stretch in between as a calm Sitting.
-- **`Boom`** is `{id, ts, litBy}`. `id = String(Int(ts * 1000))`, so it stays stable across replays. `litBy` holds the burns still burning when it blew, up to and including the Boom.
-- **`GameState`** is `{fuse, burned, boomed, sittingOpen, currentBurns, booms, sittingStart, freshAt}`, and `left` is the share of stick left (0 when blown). With no open Sitting, `burned == 0` and `boomed == false`.
+- **Burning:** a message whose burn isn't 0 joins what's burning, and `burned` adds each one's burn in turn, never going below 0, so cool can't be banked before the heat. Only messages from the last 30 minutes (`cooling`) count; each drops out when its 30 minutes are up. The messages with heat² of 0.01 or more are the Sitting's `currentBurns`.
+- **Boom:** when `burned >= fuse` in a Sitting that hasn't Boomed. `fuse += 0.5`. A Sitting Booms once and stays blown until it closes.
+- **Tiers:** after the Boom the burn starts again from 0, and each time it fills the stick that blew again, the same Boom goes up a tier: 1 Boom, 2 Chain reaction, 3 Meltdown (`maxTier`; names and emoji in `Game.tiers`). Each escalation's time goes in `Boom.escalations`. It's still one Boom, with the same id, and more heat at Meltdown changes nothing.
+- **Fresh stick after a Boom:** only when the Sitting closes. `freshAt` is the last message + 30 minutes.
+- **Close call:** the stick gets into its last third (`left <= 1/3`, `closeCallLeft`) and climbs back out (`left > 1/3`) without a Boom in between, because a cool message mended it or the burn that put it there cooled off. Cooling is timed when the burn's 30 minutes are up, also after the last message, so walking away from a dip counts. `CloseCall` is `{ts, cooled}`: when it dipped and when it climbed out. One per dip; a dip that Booms, or that a `rest` cuts short, is none.
+- **`.test` events** count as messages for Sittings but never burn, never Boom and never change the fuse.
+- **`.rest` events** close the open Sitting on the spot. The next prompt then starts a fresh Sitting, without counting the empty stretch in between as a calm Sitting.
+- **`Boom`** is `{id, ts, litBy, escalations}` with `tier` (1–3). `id = String(Int(ts * 1000))`, so it stays stable across replays. `litBy` holds the burns still burning when it blew, up to and including the Boom.
+- **`Sitting`** is `{start, end, prompts, peakHeat, coolPrompts, boom, closeCalls, lastBurn, isOpen}`, with `tier` (0 without a Boom) and `cooledOff`. `end` is its last message. `coolPrompts` counts messages with cool of at least `coolPrompt`. `cooledOff` is when the last burn had cooled off (`lastBurn` + 30 minutes), if you were still at it then. Sittings are facts about your day and stay on your Mac.
+- **`GameState`** is `{fuse, burned, boomed, sittingOpen, currentBurns, booms, sittingStart, freshAt, sittings}`. `left` is the share of stick left (0 when blown), `sitting` the open Sitting, and `closeCalls` every close call. `sittings` holds every Sitting, oldest first: the closed ones, then the open one. After a Boom, `burned` counts toward the next tier. With no open Sitting, `burned == 0` and `boomed == false`.
+- **`Game.sessionLine(_:)`:** one line about a Sitting, built from what happened, never a guess at your mood. It ends on the recovery when there is one (the peak-end rule). Four templates:
+  - no Boom and no close call: "Cool all the way. 42 prompts."
+  - close calls: "Close call at 14:12. Cooled off." or "3 close calls, the last at 15:03. Cooled off."
+  - a Boom: "Boomed at 14:12.", with "Slow burn. " in front when its burns built up over 10 minutes or more (`slowBurn`)
+  - an escalated Boom, by its top tier: "Chain reaction at 15:03." or "Meltdown at 15:20."
+
+  A Boom line ends with "Cooled off by 14:40." when `cooledOff` is set.
+- **Aura** (`Game.aura(_:)`), per Sitting, without roasts: `closeCallAura` (2) per close call, plus `coolSittingAura` (1) once a Sitting of `coolSittingPrompts` (5) or more messages closes without a Boom. An open Sitting's cool point waits for the close, so aura never goes down. A roast is worth `roastAura` (5), but the Club's reactions decide roasts, in the app and the relay, not the replay.
 - **`Game.stickText`:** `💥` when blown, otherwise `🧨` plus one `━` per third left, or `🧨✨` at a third or less.
 - **`Game.heatWord`:** cool (< 0.15), mild (< 0.35), warm (< 0.6), hot (< 0.85), boiling.
 - **The vibe** (`Vibe`): one dry line about the last 30 minutes, shown in the popover only, never sent.
@@ -112,20 +125,26 @@ Every message has **heat**, 0…1, and burns heat² of the fuse, so calm message
 - **`Classifier.signals(_:)`:** the reasons behind a classification, for display only, such as `["told off: why did you", "swear", "CAPS"]`.
 - **`Transcript.prompt(sid:ts:)`:** the prompt text for an event, read from Claude Code's own transcript (`~/.claude/projects/*/<sid>.jsonl`, the human prompt within 5 s of `ts`). It's used for display only and never stored. Claude Code deletes old transcripts, so it can come back nil.
 
-Fixtures that must pass (GameTests):
+Fixtures that must pass (GameTests, SittingTests):
 1. One `lose` on a fresh stick: a Boom, then fuse 1.5.
 2. `tell`, `tell`: no Boom, 0.72 burned.
 3. `tell`, `lose` Booms, and so do three `tell`s.
 4. More heat after a Boom: still one Boom.
 5. A calm Sitting after a Boom shortens the fuse back, never below 1.
-6. A gap of 599 s is the same Sitting; a gap of 600 s is a fresh stick.
+6. A gap of 1,799 s is the same Sitting; a gap of 1,800 s closes it. A message every 20 minutes for 5 hours is one Sitting.
 7. Last event 31 minutes before `now`: `sittingOpen == false`, the whole stick left.
 8. Replaying twice gives the same Boom ids.
 9. A burn cools off after 30 minutes, so the third `tell` doesn't Boom when the first has cooled.
-10. A Boom heals after 30 calm minutes of chatting, without a break; the fuse keeps its growth.
+10. Blown until the Sitting closes, however long ago the burn cooled; the fuse keeps its growth.
 11. The model's heat beats the word list both ways.
 12. A rated prompt waits for its rating, then the word list decides.
-13. `freshAt` is the sooner of the break and the cooling.
+13. `freshAt` is the last message + 30 minutes, and only after a Boom.
+14. Cool mends the fuse, never below 0, and can't be banked; a hot and cool message burns less than the heat alone.
+15. One Boom per Sitting: the burn starts again from 0 against the stick that blew, and escalates to Chain reaction and Meltdown, then stops.
+16. Close calls: mended by cool, cooled off, or walked away from; none when it Booms; one per dip.
+17. Sitting summaries: start, end, prompts, peak heat, cool prompts, the Boom, open or closed.
+18. Each session line template, its variants and the recovery.
+19. Aura: a cool Sitting, close calls, an open Sitting, and a Boom.
 
 ## 5. The relay (HTTP + JSON)
 

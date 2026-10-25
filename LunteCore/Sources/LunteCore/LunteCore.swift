@@ -87,6 +87,7 @@ public struct Sitting: Equatable, Sendable {
     /// 0 without a Boom, else `boom.tier`.
     public var tier: Int { boom?.tier ?? 0 }
     /// When the last burn had cooled off, if you were still at it by then: the recovery after a Boom.
+    // ponytail: by the clock only; cool messages that mend the burn sooner don't bring it forward
     public var cooledOff: Double? { lastBurn.map { $0 + Game.cooling }.flatMap { $0 <= end ? $0 : nil } }
 }
 
