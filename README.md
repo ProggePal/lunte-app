@@ -16,14 +16,14 @@ Lunte is a prototype. Version 0.2.2 has heat, a fuse tuned to you, the Boom, and
 
 ## Install
 1. Download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
-2. Open it, click the fuse in your menu bar, and install the Heat Detector (483 MB, once). Then follow the three steps: listen for new messages, activate the heat detector, and turn the heat up by typing `3 2 1 pow` in Claude Code.
-3. Join a Club with its six-letter code, or create one, from the house at the bottom of the popover.
+2. Open it, click the fuse in your menu bar, and follow the three steps: download the Heat Detector (483 MB, once), connect to Claude Code, and tune hot and cool to you. Then type `3 2 1 boom` in Claude Code for your first Boom.
+3. Join a Club with its six-letter code, or create one, from the Club row in the popover.
 
 You need a Mac with Apple Silicon and Claude Code.
 
 ## Privacy
 Lunte reads your prompts on your Mac and never stores or sends them. Only your Booms, reactions and comments go to your Club.
-- The Heat Detector is a small model that runs on your Mac. The first screen asks before downloading it, once, from Hugging Face (483 MB).
+- The Heat Detector is a small model that runs on your Mac. Setup asks before downloading it, once, from Hugging Face (483 MB).
 - During setup, one prompt asks your own AI to rate your recent messages, so Lunte learns how you normally talk. Those messages go to your AI provider like any other chat. Lunte keeps only the ratings.
 
 Read [the promise](docs/adr/0001-everything-runs-on-your-computer.md).

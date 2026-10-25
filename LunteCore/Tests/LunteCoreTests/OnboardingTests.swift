@@ -4,10 +4,10 @@ import XCTest
 /// The first Boom is the onboarding test, and the review's crash-loop fix.
 final class OnboardingTests: XCTestCase {
     func testPhrase() {
-        for prompt in ["this is a test 3 2 1 pow", "This is a test 3, 2, 1… POW!", "321 pow", "ok 3-2-1 pow wtf"] {
+        for prompt in ["3 2 1 boom", "3, 2, 1… BOOM!", "this is a test 3 2 1 pow", "This is a test 3, 2, 1… POW!", "321 pow", "ok 3-2-1 pow wtf"] {
             XCTAssertEqual(Classifier.classify(prompt), .test, prompt)
         }
-        for prompt in ["13 2 1 pow", "3 2 1 power up", "pow 3 2 1"] {
+        for prompt in ["13 2 1 pow", "3 2 1 power up", "pow 3 2 1", "3 2 1 boomer"] {
             XCTAssertNotEqual(Classifier.classify(prompt), .test, prompt)
         }
     }

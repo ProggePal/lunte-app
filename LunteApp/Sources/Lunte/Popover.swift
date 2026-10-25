@@ -1,61 +1,60 @@
 import AppKit
+import FuseKit
 import LunteCore
 import Sparkle
 import SwiftUI
 
-/// Everything but the fuse, which lives in the menu bar. Onboarding until you've owned your first (test) Boom; then the
-/// Boom on top when there is one, one text slot for the message you're looking at, the session's vibe, the session as
-/// dots, the Club, a gear. Between sessions, the first open shows the last session's summary instead of the slot and
-/// the dots.
+/// Everything but the fuse, which lives in the menu bar. Onboarding until you've owned your first (test) Boom; then one
+/// block for you: "Lunte" and what's left of the fuse, the way Battery shows its charge, a line or two of text, and the
+/// session as dots. Under it today's earlier sessions, then the ones before behind Previously, then the Club and
+/// Settings, a row each, with the margins of the system's own menus. Between sessions, the first open shows the last
+/// session instead.
 struct PopoverView: View {
     @ObservedObject var model: GameModel
     let updater: SPUStandardUpdaterController?
-    @State private var hovered: Double? // the hovered message's ts, so the slot always shows its latest rating
-    @State private var vibeHovered = false
+    @State private var hovered: Double? // the hovered message's ts, so the line always shows its latest rating
 
     var body: some View {
         let boom = model.state.boomed ? model.state.booms.last : nil
         let firstBoom = model.connected && !model.onboarded
-        VStack(alignment: .leading, spacing: 12) {
-            if model.detector == .notInstalled && !model.detectorLater {
-                DetectorLanding(model: model) // a new Mac starts here
-            } else if !model.connected {
-                OnboardingView(model: model)
+        let summary = model.state.sitting == nil ? model.summary : nil
+        VStack(alignment: .leading, spacing: 10) {
+            if !model.connected {
+                OnboardingView(model: model) // a new Mac starts here
             } else if firstBoom {
                 FirstBoomCard(model: model)
             } else {
-                if let boom {
-                    BoomHeader(model: model, boom: boom)
-                } else if model.heldTogether {
-                    HeldLine()
-                }
-                if let summary = model.summary, model.state.sitting == nil {
-                    SummaryCard(title: "Your last session", sitting: summary, events: model.messages(in: summary))
-                        .onAppear(perform: model.summaryShown)
+                if let summary {
+                    SummaryCard(model: model, sitting: summary, latest: true).onAppear(perform: model.summaryShown)
                 } else {
-                    MessageSlot(model: model, event: hovered.flatMap { ts in model.session.first { $0.ts == ts } } ?? fallback(boom), boom: boom, vibe: vibeHovered ? model.vibe : nil)
-                    if let boom { JustifyRow(model: model, boom: boom) }
-                    if model.vibesOn { VibeLine(vibe: model.vibe, isNew: model.vibeIsNew).onHover { vibeHovered = $0 && model.vibe != nil } }
-                    Strip(model: model, hovered: $hovered)
-                    Text(model.session.count == 1 ? "1 message from Claude Code" : "\(model.session.count) messages from Claude Code")
-                        .font(.caption2).foregroundStyle(.tertiary)
+                    FuseHeader(model: model, boom: boom, hovered: hovered)
+                    Strip(model: model, boom: boom, hovered: $hovered)
                 }
-                ForEach(model.clubFeed.suffix(2).reversed(), id: \.seq) { Text(model.describe($0)).font(.caption).foregroundStyle(.secondary) }
-                if !model.past.isEmpty { History(sessions: model.past, events: model.messages(in:)) }
+                History(model: model, sessions: model.past.filter { $0.start != summary?.start })
+                Divider()
+                ClubRow(model: model)
             }
             Divider()
             Footer(model: model, updater: updater)
         }
-        .padding(16)
-        .frame(width: 290)
+        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 9)
+        .frame(width: 308)
         .background { if boom != nil || firstBoom { BoomTint() } } // snaps on with the Boom, no fade
     }
+}
 
-    /// With nothing hovered: the message that set off the Boom, else the hottest one still burning, else your latest.
-    private func fallback(_ boom: Boom?) -> Event? {
-        if let boom { return boom.litBy.last }
-        let now = Date().timeIntervalSince1970
-        return model.state.currentBurns.max { $0.heat(at: now) < $1.heat(at: now) } ?? model.session.last
+/// A row you can click, lit while the pointer is on it, like the rows in the system's own menus. The light reaches
+/// past the row, so it never moves the layout.
+struct Lit: ViewModifier {
+    @State private var on = false
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .onHover { on = $0 }
+            .background {
+                RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(on ? 0.08 : 0)).padding(.horizontal, -7).padding(.vertical, -3)
+            }
     }
 }
 
@@ -63,29 +62,6 @@ struct PopoverView: View {
 private struct BoomTint: View {
     var body: some View {
         LinearGradient(colors: [Color.red.opacity(0.17), Color.red.opacity(0.05)], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.6))
-    }
-}
-
-/// The first screen on a new Mac: what the Heat Detector is, that your messages stay here, and one button.
-private struct DetectorLanding: View {
-    @ObservedObject var model: GameModel
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Text("🧨").font(.system(size: 40))
-            Text("Install the Heat Detector").font(.headline)
-            Text("Lunte reads the heat in your messages with a small model that runs on this Mac, so your messages stay on this computer.")
-                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            Button(action: model.installDetector) {
-                Text("Download · " + ByteCountFormatter.string(fromByteCount: HeatDetector.totalBytes, countStyle: .file))
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent).controlSize(.large)
-            Button("Not now", action: model.detectorNotNow).buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
     }
 }
 
@@ -112,298 +88,398 @@ private struct DetectorStatus: View {
     }
 }
 
+/// Onboarding, until your first (test) Boom: the title row, the game in one line, and three steps as rows, like
+/// networks in Wi-Fi, one at a time: the one you're on is blue and shows what to do, a done one has a check. Once the
+/// download has started you can move on: one ring fills around its circle, the download to 80 % and the install the
+/// rest, and tuning starts by itself once the model is in, filling a ring of its own. Then one row: ready for your first
+/// Boom? A step that finishes collapses as the next one opens, with the panel.
+// Why: a visible checklist, the download honestly a step of its own (hq: docs/research/game-feel-and-motivation.md)
 private struct OnboardingView: View {
     @ObservedObject var model: GameModel
-    static let phrase = "3 2 1 pow"
+    static let phrase = "3 2 1 boom"
     @State private var copied = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let done = [model.detector == .ready, model.pluginInstalled || model.connected, model.fuse.isTuned]
+        let downloading = model.detector == .settingUp || model.detector.share != nil
+        // The first step not done, passing the download while it runs, unless it's all that's left.
+        let now = done.indices.first { !done[$0] && !($0 == 0 && downloading) } ?? done.firstIndex(of: false)
+        let tuning: Double? = if case .tuning(let n, let of) = model.fuse { Double(n) / Double(max(of, 1)) } else { nil }
+        VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Light your first fuse").font(.headline)
-                Text("Lunte hears how you talk to your AI. Lose your temper, and it blows.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                TitleRow(trailing: now == nil ? "Ready" : "\(done.filter { $0 }.count) of 3")
+                Text("Keep it cool. Or go boom.").foregroundStyle(.secondary)
             }
-            // Each step has a to-do and a done title, written to read well together as you go down the list.
-            Step(done: model.pluginInstalled || model.connected, todo: "Listen for new messages", doneTitle: "Listening for new messages") {
-                if !model.pluginInstalled {
-                    Button(model.connecting ? "Connecting…" : "Connect", action: model.connect).disabled(model.connecting)
-                }
-                if let error = model.connectError {
-                    Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-                }
-            }
-            Step(done: model.fuse.isTuned, todo: "Activate the heat detector", doneTitle: "Heat detector on") {
-                if !model.fuse.isTuned {
-                    Button(copied ? "Copied. Paste it in Claude Code" : "Copy prompt") { model.copySetupPrompt(); copied = true }
-                }
-                if let line = model.fuseLine {
-                    Text(line).font(.caption).foregroundStyle(model.fuse.isFailed ? Color.red : Color.secondary)
-                }
-            }
-            // Your AI's last line in the chat tells you the test phrase; it shows here too, as a backup, once you're tuned.
-            Step(done: false, todo: "Turn the heat up", doneTitle: "Heat turned up") {
-                if model.fuse.isTuned {
-                    HStack(spacing: 6) {
-                        Text("Type").font(.caption).foregroundStyle(.secondary)
-                        Text(Self.phrase).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
-                        Button { copyToClipboard(Self.phrase) } label: { Image(systemName: "doc.on.doc") }
-                            .buttonStyle(.borderless).help("Copy")
+            Divider()
+            VStack(alignment: .leading, spacing: 14) {
+                if now == nil {
+                    Step(symbol: "flame", title: "Ready for your first Boom?", now: true) {
+                        Text("Open Claude Code and type “\(Self.phrase)”.").textSelection(.enabled)
+                    } action: {
+                        Button { copyToClipboard(Self.phrase) } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).help("Copy")
+                    }
+                } else {
+                    Text("Set up").fontWeight(.medium).foregroundStyle(.secondary)
+                    // One ring: the download to 80 %, then the install, which takes about 20 s, creeping on to 97 %.
+                    Step(symbol: "arrow.down", title: done[0] ? "Heat Detector installed" : "Heat Detector", done: done[0], now: now == 0,
+                         progress: model.detector == .settingUp ? 0.97 : model.detector.share.map { $0 * 0.8 },
+                         takes: model.detector == .settingUp ? 20 : 0.3) {
+                        detector
+                    } action: {
+                        detectorAction
+                    }
+                    Step(symbol: "link", title: done[1] ? "Connected to Claude Code" : "Connect to Claude Code", done: done[1], now: now == 1) {
+                        if let error = model.connectError { Text(error).foregroundStyle(.red).textSelection(.enabled) }
+                        else { Text("Adds Lunte's plugin, so it hears your prompts. Then start a new chat.") }
+                    } action: {
+                        Button(model.connecting ? "Connecting…" : "Connect", action: model.connect).disabled(model.connecting)
+                    }
+                    Step(symbol: "slider.horizontal.3", title: done[2] ? "Tuned to you" : "Tune hot and cool", done: done[2], now: now == 2,
+                         progress: tuning) {
+                        if let line = model.fuseLine, model.fuse.isFailed { Text(line).foregroundStyle(.red) }
+                        else if tuning == nil {
+                            Text("Paste the prompt into a new Claude Code chat. Your AI rates your recent prompts, and the model learns what hot and cool are for you.")
+                        }
+                    } action: {
+                        if tuning == nil { Button(copied ? "Copied" : "Copy prompt") { model.copySetupPrompt(); copied = true } }
                     }
                 }
             }
+            .animation(MenuPanel.expand, value: [now ?? 3] + done.map { $0 ? 1 : 0 })
+        }
+    }
+
+    /// What the Heat Detector is, with a link to it, or why it failed. While it downloads, the ring says how far.
+    @ViewBuilder private var detector: some View {
+        switch model.detector {
+        case .downloading, .settingUp, .ready: EmptyView()
+        case .failed(let why): Text(why).foregroundStyle(.red)
+        case .notInstalled:
+            Text(.init("Download a local model that measures the heat in your prompts, right on this Mac. "
+                + ByteCountFormatter.string(fromByteCount: HeatDetector.totalBytes, countStyle: .file)
+                + " from [Hugging Face](\(HeatDetector.page))."))
+        }
+    }
+
+    @ViewBuilder private var detectorAction: some View {
+        switch model.detector {
+        case .downloading, .settingUp, .ready: EmptyView()
+        case .failed: Button("Retry", action: model.installDetector)
+        case .notInstalled: Button("Download", action: model.installDetector)
         }
     }
 }
 
-private struct Step<Content: View>: View {
-    let done: Bool
-    let todo: String
-    let doneTitle: String
-    @ViewBuilder let content: Content
+/// One onboarding step as a row: its symbol in a circle, blue while it's the one you're on, a check once it's done,
+/// and while it runs, a blue ring filling around a grey circle, each move over `takes` seconds. Only the step you're on
+/// shows its button and a line under it on what to do.
+private struct Step<Detail: View, Action: View>: View {
+    let symbol: String
+    let title: String
+    var done = false
+    let now: Bool
+    var progress: Double?
+    var takes = 0.3
+    @ViewBuilder let detail: Detail
+    @ViewBuilder let action: Action
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(done ? Color.green : Color.secondary)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(done ? doneTitle : todo).font(.callout).foregroundStyle(done ? .secondary : .primary)
-                content
+        let lit = now && progress == nil // a running step stays grey, so its ring shows
+        HStack(alignment: .top, spacing: 9) {
+            ZStack {
+                Circle().fill(lit ? Color.accentColor : Color.primary.opacity(0.08))
+                if let progress {
+                    Circle().trim(from: 0, to: progress).stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90)).padding(1.25).animation(.linear(duration: takes), value: progress)
+                }
+                Image(systemName: done ? "checkmark" : symbol).font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(lit ? Color.white : now ? Color.accentColor : .secondary)
+            }
+            .frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(title).foregroundStyle(now ? .primary : .secondary)
+                    Spacer(minLength: 6)
+                    if now { action.controlSize(.small) }
+                }
+                .frame(minHeight: 26)
+                if now { detail.font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }
         }
     }
 }
 
-/// Onboarding's last two steps: the test Boom, owned with "it was a test", then a fresh stick in 10 seconds.
+/// Onboarding's last two steps: the test Boom, in the same words and field as a real one, owned with "it was a
+/// test", then a fresh fuse in 10 seconds.
 private struct FirstBoomCard: View {
     @ObservedObject var model: GameModel
     @State private var line = "it was a test"
 
     var body: some View {
-        VStack(spacing: 8) {
-            Text("💥").font(.system(size: 44))
-            if let owned = model.ownedTest {
-                Text("Your first Boom").font(.headline)
-                Text("“\(owned.line)”").font(.system(.callout, design: .serif))
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text("Fresh stick in " + countdown(max(0, owned.freshAt.timeIntervalSince(context.date))))
-                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                }
-            } else {
-                Text("Your first Boom").font(.headline)
-                Text("“\(OnboardingView.phrase)”").font(.system(.callout, design: .serif)).italic()
-                Text("Everyone heard that. Comment:").font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
-                HStack {
-                    TextField("", text: $line).textFieldStyle(.roundedBorder).onSubmit(own)
-                    Button("Comment", action: own).disabled(trimmed.isEmpty)
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                TitleRow(trailing: "Boom")
+                if let owned = model.ownedTest {
+                    Text("Your first Boom").foregroundStyle(.secondary)
+                    Text("“\(owned.line)”")
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text("Fresh fuse in " + countdown(max(0, owned.freshAt.timeIntervalSince(context.date)))).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("Your first Boom. Everyone heard that.").foregroundStyle(.secondary)
+                    Text("“\(OnboardingView.phrase)”")
                 }
             }
+            if model.ownedTest == nil { LineField(line: $line, send: own) }
         }
-        .frame(maxWidth: .infinity)
     }
 
-    private var trimmed: String { String(line.trimmingCharacters(in: .whitespacesAndNewlines).prefix(GameModel.justifyLimit)) }
-    private func own() { if !trimmed.isEmpty { model.ownTest(trimmed) } }
+    private func own() {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { model.ownTest(trimmed) }
+    }
 }
 
-/// Just after a close call, for your eyes only: no sound, no notification.
-// Why: competence, and relief right after the act (docs/why.md#close-call)
-private struct HeldLine: View {
+/// The line about a Boom: a plain field with a faint "What happened?" until the first letter, at most 40 characters,
+/// sent with return or the return button. Nothing labels it.
+struct LineField: View {
+    @Binding var line: String
+    let send: () -> Void
+
     var body: some View {
-        Text("Held it together").font(.callout.weight(.medium)).foregroundStyle(.green)
-            .help("The fuse got into its last third and you cooled off without a Boom: a close call.")
+        HStack(spacing: 6) {
+            TextField("", text: $line).textFieldStyle(.plain).onSubmit(send)
+                .overlay(alignment: .leading) { // an example, faint, gone at the first letter
+                    if line.isEmpty { Text("What happened?").foregroundStyle(.tertiary).allowsHitTesting(false) }
+                }
+                .onChange(of: line) { _, new in if new.count > GameModel.justifyLimit { line = String(new.prefix(GameModel.justifyLimit)) } }
+            Button(action: send) { Image(systemName: "return") }
+                .buttonStyle(.borderless).foregroundStyle(line.isEmpty ? .tertiary : .secondary)
+                .accessibilityLabel("Send")
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
     }
 }
 
-/// After a Boom: its tier (💥 Boom, 💥💥 Chain reaction, ☢️ Meltdown), when it last went off, and one timer to the
-/// fresh stick. Once you've justified, tapping the emoji is the hurry easter egg.
-// Why: venting feeds anger, so a tier changes the name and emoji, never the volume (docs/why.md#tiers-flavour-not-volume)
-private struct BoomHeader: View {
+/// "Lunte" on the left and, on the right, what's left of the fuse, the way Battery shows its charge; once it's empty,
+/// a word for what happened since.
+struct TitleRow: View {
+    let trailing: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Lunte").font(.headline)
+            Spacer()
+            Text(trailing).monospacedDigit().foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The title row, then one place for text: on its own it says what the fuse is doing and when the session ends, and
+/// the prompt still burning it most; point at a dot and it shows that prompt. Blown, the Boom stays picked until you
+/// point at another dot. Its height is fixed, so pointing never makes the popover jump.
+private struct FuseHeader: View {
     @ObservedObject var model: GameModel
-    let boom: Boom
+    let boom: Boom?
+    let hovered: Double?
 
     var body: some View {
-        let level = tier(boom.tier), quiet = Int(Game.sittingGap / 60)
-        VStack(spacing: 2) {
-            Button { if !model.canJustify(model.litID(boom)) { model.hurry() } } label: { Text(level.emoji).font(.system(size: 44)) }
-                .buttonStyle(.plain)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                VStack(spacing: 2) {
-                    (Text(level.name + " ").font(.headline) + Text(Date(timeIntervalSince1970: boom.escalations.last ?? boom.ts).formatted(.relative(presentation: .named))).foregroundStyle(.secondary))
-                    if let left = model.freshLeft(at: context.date) {
-                        // Why: a fresh start, when the session closes (docs/why.md#fresh-start)
-                        Text(left > 0 ? "Fresh stick after \(quiet) quiet minutes · \(countdown(left))" : "Fresh stick any second")
-                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
-                            .help("Every prompt starts the \(quiet) minutes over. Then the session closes, and the next one starts on a fresh stick.")
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let now = context.date.timeIntervalSince1970
+            let picked = hovered ?? boom?.ts
+            VStack(alignment: .leading, spacing: 2) {
+                TitleRow(trailing: trailing)
+                ZStack(alignment: .topLeading) { // a ZStack, not a background, so the room counts toward the height
+                    if model.state.sitting != nil { Room(ratings: model.showRatings) }
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let e = picked.flatMap({ ts in model.session.first { $0.ts == ts } }) {
+                            PromptLines(model: model, event: e, boom: boom, now: now, picked: hovered == nil)
+                        } else {
+                            Text(state(now)).foregroundStyle(.secondary)
+                                .help("If you send nothing else. Every prompt starts the \(Int(Game.sittingGap / 60)) minutes over.")
+                            if let hottest = model.state.currentBurns.max(by: { $0.heat(at: now) < $1.heat(at: now) }) {
+                                PromptText(model: model, event: hottest, lines: 1).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    /// What's left while there's any. Blown, the menu bar's word for what happened since: the tier's name, then Still
+    /// burning or Calmed down.
+    private var trailing: String { boom == nil ? percent(model.state.left) : model.fuseLook.word }
+
+    /// What the fuse is doing in a word, or "Held it together" for a while after a close call, never coloured; and in
+    /// the last 10 minutes, when the session ends if nothing else is sent.
+    private func state(_ now: Double) -> String {
+        guard let sitting = model.state.sitting else { return "Your next prompt starts a session" }
+        // Why: competence, and relief right after the act (docs/why.md#close-call)
+        let word = model.heldTogether ? "Held it together" : Game.word(model.state, now: now)
+        let left = sitting.end + Game.sittingGap - now
+        return left < Self.soon ? word + " · session ends in " + minutes(left) : word
+    }
+
+    /// How close the fresh fuse has to be before the popover counts down to it.
+    static let soon: Double = 600
+}
+
+/// The room the lines under the title always take while a session is open, whatever they show: two lines (and the
+/// model's numbers, when they're on).
+private struct Room: View {
+    let ratings: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(" \n ")
+            if ratings { Text(" \n \n ").font(.caption2) }
+        }
+        .hidden()
     }
 }
 
-/// The one place text lives: the hovered message (or the one that set off the Boom), or the vibe's story.
-/// Its height is fixed, so hovering never makes the popover jump.
-private struct MessageSlot: View {
+/// One prompt, under the title: how long ago and its heat in a word, then its text. The Boom, picked because you're
+/// blown and pointing at nothing, says when it went off and when a fresh fuse comes, and shows your line about it once
+/// you've written one.
+private struct PromptLines: View {
     @ObservedObject var model: GameModel
-    let event: Event?
+    let event: Event
     let boom: Boom?
-    let vibe: Vibe?
-    @State private var texts: [Double: String] = [:]
-    @State private var missing: Set<Double> = []
+    let now: Double
+    let picked: Bool
 
     var body: some View {
-        let center = boom != nil && vibe == nil
-        VStack(alignment: center ? .center : .leading, spacing: 2) {
-            if let vibe {
-                (Text(vibe.label + ". ") + Text(vibe.story).foregroundStyle(.secondary)).font(.system(.callout, design: .serif))
-            } else if let e = event {
-                let now = Date().timeIntervalSince1970, heat = e.heat(at: now), text = texts[e.ts]
-                let setItOff = boom?.ts == e.ts, cooled = heat >= 0.15 && !model.state.currentBurns.contains { $0.ts == e.ts }
-                let rating = e.awaitingRating(at: now), cool = isCool(e)
+        let heat = event.heat(at: now), rating = event.awaitingRating(at: now), cool = isCool(event)
+        let setItOff = boom?.ts == event.ts, cooled = heat >= 0.15 && !model.state.currentBurns.contains { $0.ts == event.ts }
+        let line = boom.flatMap { model.justifications[model.litID($0)] }
+        VStack(alignment: .leading, spacing: 2) {
+            if setItOff && picked {
+                // Why: a fresh start, when the session closes (docs/why.md#fresh-start)
+                let quiet = Int(Game.sittingGap / 60)
+                let fresh = model.freshLeft(at: Date(timeIntervalSince1970: now)).flatMap { $0 >= FuseHeader.soon ? nil : $0 > 0 ? "fresh fuse in " + countdown($0) : "fresh fuse any second" }
+                Text(([ago(event.ts, now: now)] + [fresh].compactMap { $0 }).joined(separator: " · "))
+                    .monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                    .help("Every prompt starts the \(quiet) minutes over. Then the session closes, and the next one starts on a fresh fuse.")
+            } else {
                 // A neutral message gets no word: heatWord's "cool" would read as the cool score.
                 let word = rating ? "rating…" : heat < 0.15 ? (cool ? "cool" : nil) : Game.heatWord(heat) + (cool ? " and cool" : "")
-                Text(([clock(e.ts)] + [word].compactMap { $0 } + (cooled ? ["cooled off"] : []) + (setItOff ? ["set it off"] : [])).joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
-                Group {
-                    if let text { Text("“\(text)”") } else { Text(missing.contains(e.ts) ? "Couldn’t find this message in Claude’s history." : "…") }
-                }
-                .font(setItOff ? .system(.callout, design: .serif).italic() : .callout)
-                .foregroundStyle(heat < 0.15 && !setItOff ? .secondary : .primary)
-                .lineLimit(2).truncationMode(.tail)
-                if model.showRatings {
-                    HStack(alignment: .top, spacing: 4) {
-                        if rating { ProgressView().controlSize(.mini) }
-                        Text(debug(e, heat: heat, text: text, rating: rating)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary).lineLimit(3)
-                    }
+                Text(([ago(event.ts, now: now)] + [word].compactMap { $0 } + (cooled ? ["cooled off"] : []) + (setItOff ? ["set it off"] : [])).joined(separator: " · "))
+                    .foregroundStyle(.secondary).lineLimit(1)
+            }
+            if setItOff && picked, let line {
+                Text("“\(line)”").lineLimit(1)
+            } else {
+                PromptText(model: model, event: event, lines: 1)
+                    .foregroundStyle(heat < 0.15 && !setItOff ? .secondary : .primary)
+            }
+            if model.showRatings {
+                HStack(alignment: .top, spacing: 4) {
+                    if rating { ProgressView().controlSize(.mini) }
+                    Text(debug(heat: heat, rating: rating)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary).lineLimit(3)
                 }
             }
-        }
-        .multilineTextAlignment(center ? .center : .leading)
-        .frame(maxWidth: .infinity, alignment: center ? .center : .leading)
-        .frame(height: model.showRatings ? 92 : 52, alignment: .top)
-        .task(id: event?.ts) {
-            guard let e = event, texts[e.ts] == nil, !missing.contains(e.ts) else { return }
-            if let found = await model.promptText(e) { texts[e.ts] = found } else { missing.insert(e.ts) }
         }
     }
 
     /// The numbers behind a dot: the model's heat (or the word list's), what it burns, the mood, and what the word list saw.
-    private func debug(_ e: Event, heat: Double, text: String?, rating: Bool) -> String {
-        let words = text.map(Classifier.signals).flatMap { $0.isEmpty ? nil : $0.joined(separator: ", ") } ?? e.burn.rawValue
+    private func debug(heat: Double, rating: Bool) -> String {
+        let words = model.cachedPrompt(event).map(Classifier.signals).flatMap { $0.isEmpty ? nil : $0.joined(separator: ", ") } ?? event.burn.rawValue
         if rating { return "Laya is rating it…\nwords: " + words }
-        let source = e.heat != nil ? "Laya" : e.rated == true ? "word list, Laya didn't answer" : "word list"
+        let source = event.heat != nil ? "Laya" : event.rated == true ? "word list, Laya didn't answer" : "word list"
         return "heat \(Int((heat * 100).rounded()))% (\(source)) · burns \(Int((heat * heat * 100).rounded()))%"
-            + (e.mood.map { " · \($0)" } ?? "") + "\nwords: " + words
+            + (event.mood.map { " · \($0)" } ?? "") + "\nwords: " + words
     }
 }
 
-/// Owning a Boom, open from the start: one short line, if you want. The Club's reactions sit beside it.
-private struct JustifyRow: View {
+/// A prompt's text in quotes, read from Claude Code's history the first time it shows, and kept in memory only.
+struct PromptText: View {
     @ObservedObject var model: GameModel
-    let boom: Boom
-    @State private var why = ""
-    @State private var error: String?
-    @State private var sending = false
-    private var boomID: String { model.litID(boom) } // the id its fuse was lit for, if a late rating moved it
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if model.canJustify(boomID) {
-                HStack {
-                    TextField("it deleted my migrations again", text: $why).textFieldStyle(.roundedBorder).onSubmit(send)
-                        .onChange(of: why) { _, new in if new.count > GameModel.justifyLimit { why = String(new.prefix(GameModel.justifyLimit)) } }
-                    Button("Comment", action: send).disabled(why.isEmpty || sending)
-                }
-            } else if let line = model.justifications[boomID] {
-                Text("“\(line)”").font(.callout).frame(maxWidth: .infinity)
-            }
-            // ponytail: silence is the mystery, so nothing invites staying quiet
-            if let reacted = model.reactionSummary(boomID) {
-                Text(reacted).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
-        }
-    }
-
-    private func send() {
-        guard !why.isEmpty, !sending else { return }
-        sending = true
-        Task {
-            error = await model.justify(boomID, why)
-            sending = false
-            why = "" // it's saved either way; error only says the Club missed it
-        }
-    }
-}
-
-/// The session's vibe, with ✨ the first time it ever shows up. Until there's enough to go on: "Reading the room…".
-private struct VibeLine: View {
-    let vibe: Vibe?
-    let isNew: Bool
+    let event: Event
+    var lines = 2
+    @State private var texts: [Double: String] = [:]
+    @State private var missing: Set<Double> = []
 
     var body: some View {
         Group {
-            if let vibe {
-                (Text(vibe.emoji + " " + vibe.label) + Text(isNew ? "  ✨ new" : "").foregroundStyle(.orange).font(.caption))
-                    .font(.callout.weight(.medium))
-            } else {
-                Text("Reading the room…").font(.callout).foregroundStyle(.secondary)
-                    .help("Send \(Vibe.minimumMessages) messages within half an hour to get the session's vibe.")
-            }
+            if let text = texts[event.ts] { Text("“\(text)”") }
+            else { Text(missing.contains(event.ts) ? "Couldn’t find this message in Claude’s history." : "…") }
         }
-        .padding(.horizontal, 4).padding(.vertical, 1)
-        .contentShape(Rectangle())
+        .lineLimit(lines).truncationMode(.tail)
+        .task(id: event.ts) {
+            guard texts[event.ts] == nil, !missing.contains(event.ts) else { return }
+            if let found = await model.promptText(event) { texts[event.ts] = found } else { missing.insert(event.ts) }
+        }
     }
 }
 
 /// The open session as dots that wrap, oldest first: grey neutral, orange heated, red boiling, a soft green ember for
-/// cool, and the tier's emoji where it blew. Past four rows the oldest fold into a heat line, so a long session never
-/// grows the popover. The dots touch (no dead space between them), so moving across them never drops the hover.
+/// cool, and the tier's emoji where it blew. Right after the Boom's dot the dots make room for your line about it, then
+/// for the Club's reactions, and carry on after. Past eight rows they scroll, newest at the bottom, fading out at the top;
+/// past 15 prompts, a caption counts them. The dots touch (no dead space between them), so moving across them never
+/// drops the hover.
 // Why: persistence; the whole session stays readable (docs/why.md#whole-session-dots)
 private struct Strip: View {
     @ObservedObject var model: GameModel
+    let boom: Boom?
     @Binding var hovered: Double?
+    @State private var height: CGFloat = 0
     private let cell: CGFloat = 18
-    static let dots = 56 // four rows of 14
+    static let rows: CGFloat = 8
 
     var body: some View {
         let session = model.session, now = Date().timeIntervalSince1970
-        if session.isEmpty {
-            Text("Nothing yet. Every message you send Claude shows up here.").font(.caption).foregroundStyle(.secondary)
-        } else {
-            let marks = blasts()
-            VStack(alignment: .leading, spacing: 4) {
-                if session.count > Self.dots {
-                    let folded = Array(session.dropLast(Self.dots))
-                    HStack(spacing: 6) {
-                        Text("\(folded.count) earlier").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                        HeatLine(events: folded).frame(height: 12)
-                    }
-                    .help("The session's first \(folded.count) messages, folded into a heat line")
-                }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: cell, maximum: cell), spacing: 0)], alignment: .leading, spacing: 0) {
-                    ForEach(session.suffix(Self.dots), id: \.ts) { e in
-                        Group {
-                            if let mark = marks[e.ts] { Text(mark).font(.system(size: 12)) }
-                            else if e.awaitingRating(at: now) { RatingDot() }
-                            else { Dot(heat: e.heat(at: now), cool: isCool(e)) }
-                        }
-                        .frame(width: cell, height: cell)
-                        .background(hovered == e.ts ? Color.secondary.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                        .contentShape(Rectangle())
-                        .onHover { if $0 { hovered = e.ts } } // leaving the whole grid clears it, not leaving one dot
+        let id = boom.map(model.litID)
+        let room = id.flatMap { id in model.canJustify(id) || model.reactionSummary(id) != nil ? id : nil }
+        let split = room.flatMap { _ in boom.flatMap { b in session.firstIndex { $0.ts == b.ts }.map { $0 + 1 } } }
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let split, let room {
+                        dots(session[..<split], now: now, id: id)
+                        BoomRow(model: model, boom: room)
+                        if split < session.count { dots(session[split...], now: now, id: id) }
+                    } else {
+                        dots(session[...], now: now, id: id)
                     }
                 }
-                .onHover { if !$0 { hovered = nil } }
+                .padding(.bottom, cell) // a free row for the next dots, at every length, so a new row never moves anything
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(session.count) messages this session, \(session.filter { $0.heat(at: now) >= 0.35 }.count) of them heated, \(session.filter(isCool).count) cool")
+            .defaultScrollAnchor(.bottom)
+            .scrollIndicators(.never) // the fade says there's more; a scroller only gets in the way
+            .modifier(EdgeFade(depth: cell))
+            .frame(height: min(height, Self.rows * cell))
+            .onHover { if !$0 { hovered = nil } } // leaving the dots clears it, not leaving one dot
+            // Always a line's room under the dots, so the count coming in at 16 never moves anything.
+            if let start = session.first?.ts {
+                Text(session.count > 15 ? "\(session.count) prompts in the last \(minutes(now - start))" : " ").font(.caption2).foregroundStyle(.tertiary)
+            }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(session.count) messages this session, \(session.filter { $0.heat(at: now) >= 0.35 }.count) of them heated, \(session.filter(isCool).count) cool")
+    }
+
+    private func dots(_ events: ArraySlice<Event>, now: Double, id: String?) -> some View {
+        let marks = blasts()
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: cell, maximum: cell), spacing: 0)], alignment: .leading, spacing: 0) {
+            ForEach(events, id: \.ts) { e in
+                Group {
+                    if let mark = marks[e.ts] { Text(mark).font(.system(size: 12)) }
+                    else if e.awaitingRating(at: now) { RatingDot() }
+                    else { Dot(heat: e.heat(at: now), cool: isCool(e)) }
+                }
+                .frame(width: cell, height: cell)
+                .background(hovered == e.ts || (hovered == nil && boom?.ts == e.ts) ? Color.secondary.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                .contentShape(Rectangle())
+                .onHover { if $0 { hovered = e.ts } }
+                // Easter egg: once you've written your line, each tap on the Boom shaves a little off the wait.
+                .onTapGesture { if e.ts == boom?.ts, let id, !model.canJustify(id) { model.hurry() } }
+            }
+        }
+        .accessibilityHidden(true)
     }
 
     /// Where it blew, and where it went up a tier: 💥, 💥 again, ☢️ (one emoji per dot).
@@ -413,6 +489,61 @@ private struct Strip: View {
             for (i, ts) in ([boom.ts] + boom.escalations).enumerated() { marks[ts] = tier(i + 1).emoji.last.map(String.init) ?? "💥" }
         }
         return marks
+    }
+}
+
+/// In the dots, right after the Boom: a line about it, if you want, sent with return. Nothing labels it and nothing
+/// asks twice. Then the Club's reactions take the same spot. It's saved on this Mac either way.
+// ponytail: silence is the mystery, so nothing invites staying quiet
+private struct BoomRow: View {
+    @ObservedObject var model: GameModel
+    let boom: String // the id its fuse was lit for
+    @State private var line = ""
+    @State private var sending = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if model.canJustify(boom) { LineField(line: $line, send: send) }
+            if let reacted = model.reactionSummary(boom) {
+                Text(reacted).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func send() {
+        guard !line.trimmingCharacters(in: .whitespaces).isEmpty, !sending else { return }
+        sending = true
+        Task {
+            if let error = await model.justify(boom, line) { Alerts.tell("Saved, but your Club didn't get it", error) }
+            sending = false
+        }
+    }
+}
+
+/// A scroll view's ends fade out softly where there's more to scroll, like the system's own lists, instead of cutting
+/// the rows off hard: at the top once you've scrolled down, at the bottom while there's more below.
+struct EdgeFade: ViewModifier {
+    var depth: CGFloat = 16
+    @State private var more = (top: false, bottom: false)
+
+    func body(content: Content) -> some View {
+        Group {
+            if #available(macOS 15, *) {
+                content.onScrollGeometryChange(for: [Bool].self) { g in
+                    [g.visibleRect.minY > 1, g.visibleRect.maxY < g.contentSize.height - 1]
+                } action: { _, new in more = (new[0], new[1]) }
+            } else {
+                content // ponytail: macOS 14 clips hard; it has no scroll geometry to know which end has more
+            }
+        }
+        .mask {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: more.top ? depth : 0)
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: more.bottom ? depth : 0)
+            }
+        }
     }
 }
 
@@ -441,52 +572,97 @@ private struct RatingDot: View {
     }
 }
 
-/// Sound on the left, the Club in the middle (a house and its name), everything else behind the gear.
+/// The Club in one row: a house, blue once you're in one, like the network you're on in Wi-Fi; its name; and a dot when
+/// something happened there since you last looked. It opens the Club's window. While the Heat Detector isn't ready,
+/// its download sits here instead.
+private struct ClubRow: View {
+    @ObservedObject var model: GameModel
+
+    var body: some View {
+        if model.detector != .ready {
+            DetectorStatus(model: model)
+        } else {
+            Button { ClubWindow.show(model) } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "house.fill").font(.system(size: 12)).foregroundStyle(model.club == nil ? Color.secondary : .white)
+                        .frame(width: 26, height: 26).background(model.club == nil ? Color.primary.opacity(0.08) : .accentColor, in: Circle())
+                    Text(model.club == nil ? "Join a Club" : model.clubName ?? model.club ?? "")
+                    Spacer()
+                    if model.clubNews {
+                        Circle().fill(Color.accentColor).frame(width: 8, height: 8).accessibilityLabel("Something new")
+                    }
+                }
+                .modifier(Lit())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+/// The last row, as in the system's own menus ("Battery Settings…"): Lunte Settings…, which opens its window.
 private struct Footer: View {
     @ObservedObject var model: GameModel
     let updater: SPUStandardUpdaterController?
 
     var body: some View {
-        HStack {
-            Button { model.soundOn.toggle() } label: { Image(systemName: model.soundOn ? "speaker.wave.2" : "speaker.slash") }
-                .buttonStyle(.borderless).help(model.soundOn ? "Sound on" : "Sound off")
-            Spacer()
-            if model.detector != .ready {
-                DetectorStatus(model: model)
-            } else {
-            Menu {
-                if let club = model.club {
-                    Button("Copy Club code \(club)") { copyToClipboard(club) }
-                    Button("Leave Club", action: model.leaveClub)
-                } else {
-                    Button("Create a Club…", action: model.createClub)
-                    Button("Join a Club…", action: model.joinClub)
-                }
-            } label: {
-                Label(model.club == nil ? "No Club" : (model.clubName ?? model.club ?? ""), systemImage: "house")
-                    .labelStyle(.titleAndIcon).font(.callout)
+        Button { SettingsWindow.show(model, updater) } label: {
+            HStack {
+                Text("Lunte Settings…")
+                Spacer()
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            }
-            Spacer()
-            Menu {
-                // Testing your Boom, connecting and tuning all live in onboarding, so the gear only starts or skips it.
-                if model.connected && model.onboarded {
-                    Button("Replay onboarding", action: model.replayOnboarding)
-                } else {
-                    Button("Skip onboarding", action: model.skipOnboarding)
-                }
-                Toggle("Vibes", isOn: $model.vibesOn)
-                Toggle("Show model ratings", isOn: $model.showRatings)
-                Button("Submit a prompt…", action: model.submitPrompt)
-                Button("Check for updates…") { updater?.checkForUpdates(nil) }.disabled(updater == nil)
-                Divider()
-                Button("Quit Lunte") { NSApp.terminate(nil) }
-            } label: {
-                Image(systemName: "gearshape")
-            }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .modifier(Lit())
         }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Lunte's settings in a window of their own: the Boom's sound, the model's ratings, onboarding, an idea for Lunte,
+/// updates, and Quit.
+@MainActor
+enum SettingsWindow {
+    private static var window: NSWindow?
+
+    static func show(_ model: GameModel, _ updater: SPUStandardUpdaterController?) {
+        if window == nil {
+            let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model, updater: updater)))
+            w.title = "Lunte Settings"
+            w.styleMask = [.titled, .closable]
+            w.isReleasedWhenClosed = false
+            w.center()
+            window = w
+        }
+        NSApp.activate()
+        window?.makeKeyAndOrderFront(nil)
+    }
+}
+
+struct SettingsView: View {
+    @ObservedObject var model: GameModel
+    let updater: SPUStandardUpdaterController?
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Sound", isOn: $model.soundOn)
+                Toggle("Show model ratings", isOn: $model.showRatings)
+            }
+            Section {
+                // Testing your Boom, connecting and tuning all live in onboarding, so Settings only starts or skips it.
+                if model.connected && model.onboarded {
+                    LabeledContent("Onboarding") { Button("Replay", action: model.replayOnboarding) }
+                } else {
+                    LabeledContent("Onboarding") { Button("Skip", action: model.skipOnboarding) }
+                }
+                LabeledContent("Something you want in Lunte?") { Button("Submit a prompt…", action: model.submitPrompt) }
+                LabeledContent("Updates") { Button("Check…") { updater?.checkForUpdates(nil) }.disabled(updater == nil) }
+            }
+            Section {
+                LabeledContent("Lunte") { Button("Quit") { NSApp.terminate(nil) } }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 400)
+        .fixedSize()
     }
 }
 
@@ -498,6 +674,24 @@ func isCool(_ e: Event) -> Bool { (e.cool ?? 0) >= Game.coolPrompt }
 
 /// A Boom tier's emoji and name, by `Boom.tier`: 💥 Boom, 💥💥 Chain reaction, ☢️ Meltdown.
 func tier(_ n: Int) -> (emoji: String, name: String) { Game.tiers[min(max(n, 1), Game.tiers.count) - 1] }
+
+/// Grey while full, orange while burning, red in the last third.
+func fuseColor(_ left: Double) -> Color { left >= 1 ? .secondary : Game.inLastThird(left) ? .red : .orange }
+
+/// 0.58 → "58 %" (or "58%", in the Mac's language), rounded down so a fuse that isn't full never says 100.
+func percent(_ left: Double) -> String { ((left * 100).rounded(.down) / 100).formatted(.percent.precision(.fractionLength(0))) }
+
+/// 400 seconds ago → "6 min ago": "just now", "6 min ago", "2 h ago".
+func ago(_ ts: Double, now: Double) -> String {
+    let m = Int((now - ts) / 60)
+    return m < 1 ? "just now" : m < 60 ? "\(m) min ago" : "\(m / 60) h ago"
+}
+
+/// 1080 seconds → "18 min", 10860 → "3 h 1 min", and under a minute "1 min".
+func minutes(_ seconds: Double) -> String {
+    let m = max(1, Int((seconds / 60).rounded(.up)))
+    return m < 60 ? "\(m) min" : "\(m / 60) h" + (m % 60 > 0 ? " \(m % 60) min" : "")
+}
 
 func clock(_ ts: Double) -> String {
     Date(timeIntervalSince1970: ts).formatted(date: .omitted, time: .shortened)

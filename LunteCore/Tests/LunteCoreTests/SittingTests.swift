@@ -90,4 +90,35 @@ final class SittingTests: XCTestCase {
         XCTAssertEqual(Game.aura(first(close, now: t0 + 15 * 60)), 3) // a close call counts at once
         XCTAssertEqual(Game.aura(first(close + [at(16, .lose), at(17), at(18)])), 3) // and survives the Boom after it
     }
+
+    /// Guards docs/why.md#never-fake-reactions: the session's line is the replay's fuse at every step, never closer.
+    func testFuseLineFollowsTheReplay() {
+        let events = [at(0, heat: 0.6), at(10, heat: 0.7), at(20, heat: 0, cool: 1), at(25)]
+        let line = Game.fuseLine(first(events), events, now: t0 + 100_000)
+        XCTAssertEqual(line.count, 7) // three prompts that burn or mend (the first is the start), three cooling off, the close
+        for (ts, left) in line.dropLast() {
+            XCTAssertEqual(left, Game.replay(events.filter { $0.ts <= ts }, now: ts, timeZone: utc).left, accuracy: 1e-9)
+        }
+        XCTAssertEqual(line.last?.left, 1) // full again at the close
+    }
+
+    func testFuseLineIsEmptyFromTheBoom() {
+        let events = [at(2, .tell), at(7, heat: 0.5), at(12, .lose), at(14, .tell)]
+        let s = first(events), boom = s.boom!.ts
+        let line = Game.fuseLine(s, events, now: t0 + 100_000)
+        XCTAssertGreaterThan(line.first { $0.ts == t0 + 7 * 60 }!.left, 0)
+        XCTAssertEqual(line.filter { $0.ts >= boom }.dropLast().map(\.left).max(), 0)
+        XCTAssertEqual(line.last?.left, 1) // a fresh fuse at the close
+    }
+
+    func testWordSaysWhatTheFuseDid() {
+        func word(_ events: [Event], at minutes: Double) -> String {
+            Game.word(Game.replay(events, now: t0 + minutes * 60, timeZone: utc), now: t0 + minutes * 60)
+        }
+        XCTAssertEqual(word([at(0)], at: 1), "Cool")
+        XCTAssertEqual(word([at(0, heat: 0.5)], at: 1), "Burning")
+        XCTAssertEqual(word([at(0, heat: 0.5)], at: 6), "Cooling off")
+        XCTAssertEqual(word([at(0, heat: 0.5), at(8, heat: 0.5), at(11, heat: 0.4)], at: 12), "Slow burn")
+        XCTAssertEqual(word([at(0, .tell), at(1, .tell)], at: 2), "Last third")
+    }
 }

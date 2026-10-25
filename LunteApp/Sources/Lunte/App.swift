@@ -15,8 +15,8 @@ struct LunteApp: App {
 /// The menu bar item: the fuse, drawn live over its button, and the popover under it. MenuBarExtra only takes a still
 /// image, so the item is ours.
 @MainActor
-final class MenuBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
-    private let model = GameModel()
+final class MenuBar: NSObject, NSApplicationDelegate {
+    private lazy var model = GameModel() // lazy, so a preview run never starts the real game
     /// Sparkle stays off until a release sets SUPublicEDKey in Info.plist.
     private let updater: SPUStandardUpdaterController? =
         (Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String ?? "").isEmpty
@@ -24,10 +24,13 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             : SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
     private var item: NSStatusItem!
     private let fuse = FuseView()
-    private let popover = NSPopover()
+    private var panel: MenuPanel!
     private var watching: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if let dir = UserDefaults.standard.string(forKey: "PopoverShots") { return PopoverShots.render(to: dir) }
+        #endif
         item = NSStatusBar.system.statusItem(withLength: FuseScene.fuseWidth + 2 * FuseView.margin)
         guard let button = item.button else { return }
         fuse.frame = button.bounds
@@ -37,19 +40,37 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Blast.icon = fuse
         button.target = self
         button.action = #selector(toggle)
-        let host = NSHostingController(rootView: PopoverView(model: model, updater: updater))
-        host.sizingOptions = .preferredContentSize
-        popover.contentViewController = host
-        popover.behavior = .transient
-        popover.delegate = self
+        panel = MenuPanel(PopoverView(model: model, updater: updater))
+        panel.closed = { [weak self] in
+            self?.item.button?.highlight(false)
+            self?.model.popoverClosed()
+        }
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "FuseDemo") { return demo() }
         #endif
         watching = model.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
         render()
+        #if DEBUG
+        if let path = UserDefaults.standard.string(forKey: "PanelShot") { panelShot(path) }
+        #endif
     }
 
     #if DEBUG
+    /// `Lunte -PanelShot OUT.png`: opens the real panel under the real item, draws it to OUT.png, prints where it sits
+    /// against the item, and quits.
+    private func panelShot(_ path: String) {
+        Task {
+            try? await Task.sleep(for: .seconds(1)) // the menu bar places the item first
+            toggle()
+            try? await Task.sleep(for: .seconds(1.5))
+            guard let view = panel.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            print("panel", panel.frame, "item", item.button?.window?.frame ?? .zero, "highlighted", item.button?.isHighlighted ?? false)
+            NSApp.terminate(nil)
+        }
+    }
+
     /// `open dist/Lunte.app --args -FuseDemo YES`: the menu bar fuse plays every state on a loop, instead of the game's.
     private func demo() {
         Task {
@@ -73,13 +94,97 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func toggle() {
         guard let button = item.button else { return }
-        if popover.isShown { return popover.performClose(nil) }
+        if panel.isVisible || panel.justClosed { return panel.dismiss() }
         model.popoverOpened()
-        NSApp.activate() // so the comment field takes typing
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        NSApp.activate() // so the Boom's line takes typing
+        panel.show(under: button)
+        DispatchQueue.main.async { button.highlight(true) } // after the click's own highlight lets go
+    }
+}
+
+/// The popover's sheet, opened the way the system's own menu bar items open theirs (Battery, Wi-Fi): no arrow, a
+/// material as bright as theirs, the top pinned just under the item, and closed by a click anywhere else, or Escape.
+/// While it's open, it grows and shrinks with its content over `resize`, as the content expands or collapses.
+final class MenuPanel: NSPanel {
+    static let resize = 0.25
+    static let expand = Animation.easeInOut(duration: resize) // what the content uses, so the two move together
+    var closed: () -> Void = {}
+    private var closedAt = Date.distantPast
+
+    init(_ content: some View) {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 308, height: 200), styleMask: [.borderless, .nonactivatingPanel],
+                   backing: .buffered, defer: false)
+        level = .popUpMenu
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        animationBehavior = .none
+        let material = NSVisualEffectView()
+        material.material = .sheet // near white like Battery's (≈247); .menu draws a darker grey (≈221)
+        material.state = .active
+        material.maskImage = Self.rounded(13)
+        let host = NSHostingView(rootView: content.fixedSize()
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { [weak self] in self?.fit($0) }
+            // Never taller than the panel, even while the content has grown and the panel is catching up: a frame
+            // without the 0 takes the content's height, and the host centres it, which nudges everything down.
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top))
+        host.autoresizingMask = [.width, .height]
+        material.addSubview(host)
+        contentView = material
     }
 
-    func popoverDidClose(_ notification: Notification) { model.popoverClosed() }
+    override var canBecomeKey: Bool { true }
+
+    /// The click that closed it by landing on the item shouldn't open it again.
+    var justClosed: Bool { Date().timeIntervalSince(closedAt) < 0.3 }
+
+    func show(under button: NSStatusBarButton) {
+        // By where the item is: its own window has no screen, and with the menu bar hidden it sits above the screen.
+        guard let item = button.window?.frame,
+              let screen = NSScreen.screens.first(where: { $0.frame.minX <= item.midX && item.midX < $0.frame.maxX })?.frame else { return }
+        setFrameTopLeftPoint(NSPoint(x: min(item.minX, screen.maxX - frame.width - 8), y: min(item.minY, screen.maxY) - 4))
+        makeKeyAndOrderFront(nil)
+    }
+
+    func dismiss() {
+        guard isVisible else { return }
+        orderOut(nil)
+        closedAt = Date()
+        closed()
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        dismiss()
+    }
+
+    override func cancelOperation(_ sender: Any?) { dismiss() }
+
+    /// As tall as the content, the top where it was: at once while it's closed, else in step with the content.
+    private func fit(_ size: CGSize) {
+        guard size.height > 0, size != frame.size else { return }
+        let to = NSRect(x: frame.minX, y: frame.maxY - size.height, width: size.width, height: size.height)
+        guard isVisible else { return setFrame(to, display: true) }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.resize
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            animator().setFrame(to, display: true)
+        } completionHandler: { [weak self] in
+            self?.invalidateShadow()
+        }
+    }
+
+    /// A rounded rectangle that stretches, as the material's mask.
+    private static func rounded(_ radius: CGFloat) -> NSImage {
+        let side = 2 * radius + 1
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
+    }
 }
 
 /// Claude Code runs a cached copy of the plugin, so the hook can't find the app by a relative path.

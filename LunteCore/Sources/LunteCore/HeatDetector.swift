@@ -22,6 +22,8 @@ public enum HeatDetector {
     }
 
     public static let revision = "7b8d7a2b7e28e746c6ecaad44bbcd5cf251a4fcc"
+    /// The model's page, so you can see what you're downloading.
+    public static let page = URL(string: "https://huggingface.co/FluidInference/laya-coreml")!
     public static var baseURL: URL { URL(string: "https://huggingface.co/FluidInference/laya-coreml/resolve/\(revision)/")! }
     static let bucket = "laya_multilingual_e8_L128_options32.mlmodelc/"
     public static let files: [File] = [
