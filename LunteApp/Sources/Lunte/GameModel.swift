@@ -355,13 +355,14 @@ final class GameModel: ObservableObject {
 
     /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the
     /// bang, with `sound`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
+    /// If the Mac slept through the wait, there's no bang and it never goes.
     /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
     private func light(_ seconds: Double, sound: Bool, test: Bool = false, posting boom: Boom? = nil) {
         fusing = true
-        Blast.run(fuse: seconds, sound: sound) { [weak self] in
+        Blast.run(fuse: seconds, sound: sound) { [weak self] blew in
             guard let self else { return }
             fusing = false
-            if let boom, club != nil { post(boom) }
+            if blew, let boom, club != nil { post(boom) }
             guard test else { return }
             testBlown = true
             if onboarded { Task { try? await Task.sleep(for: .seconds(10)); self.testBlown = false } }

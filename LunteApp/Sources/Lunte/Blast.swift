@@ -9,19 +9,28 @@ enum Blast {
     private static var panel: NSPanel?
     private static var job: Task<Void, Never>?
 
-    /// Burns for `fuse` seconds, then blows and calls `boom` (the Club). With `sound`, the fizz starts `Bang.fizz`
-    /// seconds early, so the bang lands with the burst. A new Blast replaces a running one.
-    static func run(fuse: Double, sound: Bool, boom: @escaping @MainActor () -> Void) {
+    /// How late a fuse can run by the wall clock and still blow. Any later, the Mac slept through the wait.
+    static let lateBy = 2.0
+
+    /// Burns for `fuse` seconds, then blows and calls `boom(true)` (the Club). With `sound`, the fizz starts `Bang.fizz`
+    /// seconds early, so the bang lands with the burst. If the Mac slept through the wait, it skips the sound and the
+    /// burst and calls `boom(false)`. A new Blast replaces a running one.
+    static func run(fuse: Double, sound: Bool, boom: @escaping @MainActor (_ blew: Bool) -> Void) {
         job?.cancel()
         panel?.close()
         panel = nil
+        // Why: Task.sleep keeps counting while the Mac sleeps, and a bang the moment the lid opens points straight at
+        // you (docs/why.md#two-clocks)
+        let deadline = Date().addingTimeInterval(fuse)
+        let late = { Date().timeIntervalSince(deadline) > lateBy }
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let (screen, icon) = iconOnScreen() else {
             job = Task {
                 try? await Task.sleep(for: .seconds(max(0, fuse - Bang.fizz)))
                 guard !Task.isCancelled else { return }
+                if late() { return boom(false) }
                 if sound { Bang.play() }
                 try? await Task.sleep(for: .seconds(Bang.fizz))
-                if !Task.isCancelled { boom() }
+                if !Task.isCancelled { boom(true) }
             }
             return
         }
@@ -49,13 +58,16 @@ enum Blast {
         let drip = emitter(at: at, cells: sparks(birthRate: 14, velocity: 50, range: .pi / 4, down: true, lifetime: 1.6))
         root.addSublayer(drip)
 
+        let fizzle = { p.close(); if panel === p { panel = nil }; boom(false) } // slept through: no dim, no sound, no burst
         job = Task {
             try? await Task.sleep(for: .seconds(max(0, fuse - 1)))
             guard !Task.isCancelled else { return }
+            if late() { return fizzle() }
             fade(dim, to: 0.35, over: 0.9) // the last second
             drip.birthRate = 4
             try? await Task.sleep(for: .seconds(1 - Bang.fizz))
             guard !Task.isCancelled else { return }
+            if late() { return fizzle() }
             if sound { Bang.play() } // the fizz, then the bang right on the burst
             try? await Task.sleep(for: .seconds(Bang.fizz))
             guard !Task.isCancelled else { return }
@@ -64,7 +76,7 @@ enum Blast {
             let burst = emitter(at: at, cells: sparks(birthRate: 500, velocity: 420, range: .pi * 2, down: false, lifetime: 2.6))
             root.addSublayer(burst)
             root.addSublayer(shockwave(at: at))
-            boom()
+            boom(true)
             try? await Task.sleep(for: .milliseconds(120))
             burst.birthRate = 0 // one burst, then gravity does the rest
             try? await Task.sleep(for: .seconds(3))
