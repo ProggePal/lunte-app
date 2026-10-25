@@ -16,7 +16,7 @@ Lunte is a prototype. Version 0.2.2 has heat, a fuse tuned to you, the Boom, and
 
 ## Install
 1. Download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
-2. Open it, click the 🧨 in your menu bar, and install the Heat Detector (483 MB, once). Then follow the three steps: listen for new messages, activate the heat detector, and turn the heat up by typing `3 2 1 pow` in Claude Code.
+2. Open it, click the fuse in your menu bar, and install the Heat Detector (483 MB, once). Then follow the three steps: listen for new messages, activate the heat detector, and turn the heat up by typing `3 2 1 pow` in Claude Code.
 3. Join a Club with its six-letter code, or create one, from the house at the bottom of the popover.
 
 You need a Mac with Apple Silicon and Claude Code.

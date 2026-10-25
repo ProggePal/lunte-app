@@ -1,26 +1,85 @@
 import AppKit
+import FuseKit
+import Combine
 import LunteCore
 import Sparkle
 import SwiftUI
 
 @main
 struct LunteApp: App {
-    @StateObject private var model = GameModel()
+    @NSApplicationDelegateAdaptor private var menuBar: MenuBar
+
+    var body: some Scene { Settings { EmptyView() } } // ponytail: a menu bar app; the menu bar item is all there is
+}
+
+/// The menu bar item: the fuse, drawn live over its button, and the popover under it. MenuBarExtra only takes a still
+/// image, so the item is ours.
+@MainActor
+final class MenuBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+    private let model = GameModel()
     /// Sparkle stays off until a release sets SUPublicEDKey in Info.plist.
     private let updater: SPUStandardUpdaterController? =
         (Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String ?? "").isEmpty
             ? nil
             : SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    private var item: NSStatusItem!
+    private let fuse = FuseView()
+    private let popover = NSPopover()
+    private var watching: AnyCancellable?
 
-    var body: some Scene {
-        MenuBarExtra {
-            PopoverView(model: model, updater: updater)
-        } label: {
-            Image(nsImage: menuBarImage(model.state, connected: model.connected, fusing: model.fusing, blown: model.testBlown, quiet: model.boomQuiet))
-                .accessibilityLabel(model.connected ? model.sentence : "Lunte, not connected yet")
-        }
-        .menuBarExtraStyle(.window)
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        item = NSStatusBar.system.statusItem(withLength: FuseScene.fuseWidth + 2 * FuseView.margin)
+        guard let button = item.button else { return }
+        fuse.frame = button.bounds
+        fuse.autoresizingMask = [.width, .height]
+        fuse.resize = { [item] in item?.length = $0 }
+        button.addSubview(fuse)
+        Blast.icon = button
+        button.target = self
+        button.action = #selector(toggle)
+        let host = NSHostingController(rootView: PopoverView(model: model, updater: updater))
+        host.sizingOptions = .preferredContentSize
+        popover.contentViewController = host
+        popover.behavior = .transient
+        popover.delegate = self
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "FuseDemo") { return demo() }
+        #endif
+        watching = model.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
+        render()
     }
+
+    #if DEBUG
+    /// `open dist/Lunte.app --args -FuseDemo YES`: the menu bar fuse plays every state on a loop, instead of the game's.
+    private func demo() {
+        Task {
+            while true {
+                for (wait, var look) in FusePreviews.demo {
+                    if look.phase == .fusing { look.bangAt = .now.addingTimeInterval(wait) }
+                    fuse.show(look)
+                    try? await Task.sleep(for: .seconds(wait))
+                }
+            }
+        }
+    }
+    #endif
+
+    private func render() {
+        fuse.show(model.fuseLook)
+        let label = model.connected ? model.sentence : "Lunte, not connected yet"
+        item.button?.setAccessibilityLabel(label)
+        item.button?.toolTip = label
+    }
+
+    @objc private func toggle() {
+        guard let button = item.button else { return }
+        if popover.isShown { return popover.performClose(nil) }
+        model.popoverOpened()
+        NSApp.activate() // so the comment field takes typing
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    func popoverDidClose(_ notification: Notification) { model.popoverClosed() }
 }
 
 /// Claude Code runs a cached copy of the plugin, so the hook can't find the app by a relative path.

@@ -7,11 +7,11 @@ The shared contract between the pieces. Builders code against this; change it he
 ```
 app/
   LunteCore/    Swift package: LunteCore (logic), lunte-hook (the Claude Code hook), tests
-  LunteApp/     Swift package: Lunte (the menu bar app), depends on ../LunteCore, Sparkle and LayaKit (vendored)
+  LunteApp/     Swift package: Lunte (the menu bar app), depends on ../LunteCore, Sparkle, LayaKit (vendored) and FuseKit (the menu bar fuse)
   relay/        Cloudflare Worker + one Durable Object per Club
   plugin/       Claude Code plugin + marketplace, bundled into the app
   Resources/    boom.wav, Info.plist
-  scripts/      build-app.sh
+  scripts/      build-app.sh, render-fuse.sh
 ```
 
 ## 1. The event log
@@ -91,7 +91,7 @@ Every message has **heat** and **cool**, each 0…1. Heat burns heat² of the fu
 
 - **Heat** (`Event.heat(at: now)`): the model's rating from the merged `heat` line. Heat is anger, not volume. Without one, the word list: `tell` 0.6, `lose` 1, anything else 0. A `rated` prompt still waiting for its rating counts as 0 for `ratingWait` (90 s), so the word list can't Boom before the model speaks; after that the word list decides.
 - **Cool** (`Event.cool`): the model's cool from the same `heat` line (§8): talking to your agent like a best bud. Nil without a cool model and in older logs, and nil counts as 0. A message counts as cool from `coolPrompt` (1/3, your AI's 1 of 3).
-- **Burn** (`Game.burn(_:at:)`): heat² less `coolMend` (0.5) × cool², where either part below 0.01 counts as 0. So a cool message is negative, and a hot and cool one ("you absolute clown 😂") burns less than the heat alone.
+- **Burn** (`Game.burn(_:at:)`): heat² less `coolMend` (0.5) × cool² (`Game.mend`), where either part below 0.01 counts as 0. So a cool message is negative, and a hot and cool one ("you absolute clown 😂") burns less than the heat alone.
 - **Sitting** (a session in GAME.md): it starts with a message and closes after 30 minutes (`sittingGap`, 1800 s) without one. It has no length cap. The next message after that starts a new Sitting with a fresh stick.
 - **Fuse** is how much heat² the stick takes: 1 (`minFuse`) to start, +0.75 per Boom (`boomGrowth`), −0.25 per calm workday (`calmWorkdayShrink`), never below 1 ([why](why.md#rare-booms)).
   - A **calm workday** is a local calendar day with at least one prompt and no Boom. `.test` prompts don't make a workday. It shrinks the fuse once it's over, at the first prompt after midnight or at `now`; a day without prompts changes nothing.
@@ -180,10 +180,14 @@ Base URL comes from Info.plist `LunteRelayURL`, overridable with `defaults write
 
 ## 6. The app (`Lunte.app`)
 
-**Basics.** A menu bar-only app (`LSUIElement`) with bundle id `no.panter.lunte`, for macOS 14 and later. The menu bar label is 🧨 and three tiny pieces of what's left (orange at half, red near the end), the tier's emoji and `BOOM` for 10 minutes after a Boom or its last escalation, then a faint grey 💥 while still blown, or `🧨?` before it's connected.
+**Basics.** A menu bar-only app (`LSUIElement`) with bundle id `no.panter.lunte`, for macOS 14 and later. The menu bar item is the fuse, drawn live by `FuseKit` over its own status item (`FuseScene` draws any moment as a pure function of time; `FuseView` draws on a display link only while something moves):
+- **The fuse:** a coil of three loops, fixed at its start on the left, a little uneven, like a spring: the more fuse is left, the tighter the coils; the less, the wider they spread. With heat on it (anything left below a whole stick) its tip burns with a small flame that flickers and spits now and then: amber, orange past half, red and trembling in the last third.
+- **A burn** eats it from the tip, right to left: the flame flares and runs back, sparks fly, the burnt bit glows and falls as ash, and what's left springs apart. **Cool** feeds new fuse in at the start, left to right, green with twinkles, squeezing the coils together. One prompt can do both: the tip burns its heat (heat² over the stick) while the start grows by the rest of the change. Climbing out of the last third flashes green. Grown back whole, the flame goes out in a puff of smoke.
+- **Burnt through**, while the Boom's fuse burns, the flame sits at the start and fizzes, harder in the last 2.5 s. **The bang** throws a small burst out of it and the tier's name in red rounded capitals: `BOOM`, `CHAIN REACTION`, `MELTDOWN`. The item widens for the name. Heat toward the next tier makes the burst glow and grow, a new tier pops the new name in, and cooling smokes. For 10 minutes after a Boom or its last escalation it breathes and smokes now and then; then it quiets to a faint burst in the menu bar's colour, without the name. A new session feeds in a fresh fuse from the left.
+- **Before it's connected** the coil is faint. With Reduce Motion every change snaps. Its tooltip and VoiceOver label say how much fuse is left, or the tier.
 
 **Watching the log.** It watches `events.jsonl` with a file-system source and a 1 s debounce, reopening the file if it's created or replaced. On every change it replays the log. For a new Boom:
-- **Not yet announced and less than 10 minutes old:** light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from the menu bar icon and the icon shows `🧨✨`. In the last second the screen dims, and unless the sound is off, a soft fizz (0.4 s of synthesised noise) starts. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` right after the fizz, both capped at 0.6 of the Mac's volume. At that moment, sound or not, it posts the Boom to the relay if you're in a Club, so no Club Mac hears of it before the bang. If the Mac slept through the wait (more than 2 s late by the wall clock, `Blast.lateBy`), there's no dim, sound, burst or post; the Boom stays in the log and on its card. With Reduce Motion there's only the wait and the sound. The onboarding test burns for 3 s.
+- **Not yet announced and less than 10 minutes old:** light the fuse: a random 5–60 s wait, so the room has to guess who it was. While it burns, sparks drip from under the fuse's start and the fuse fizzes there. In the last second the screen dims, and unless the sound is off, a soft fizz (0.4 s of synthesised noise) starts. Then it blows from the icon (a burst of sparks falling down the screen and a shockwave, native Core Animation in a click-through overlay) and plays `boom.wav` right after the fizz, both capped at 0.6 of the Mac's volume. At that moment, sound or not, it posts the Boom to the relay if you're in a Club, so no Club Mac hears of it before the bang. If the Mac slept through the wait (more than 2 s late by the wall clock, `Blast.lateBy`), there's no dim, sound, burst or post; the Boom stays in the log and on its card. With Reduce Motion there's only the wait and the sound. The onboarding test burns for 3 s.
 - **Older:** mark it announced silently.
 
 A Boom counts as announced at its bang, or when the Mac slept through it. So one whose fuse is still burning when Lunte quits, crashes or updates lights again, with a new wait, when it opens, if it's still under 10 minutes old.
@@ -215,8 +219,7 @@ Pressing Download moves on to onboarding. Until the detector is ready, the Club'
 
 A new `test` event (less than 10 minutes old, not yet announced) lights a 3-second fuse and blows. The popover shows "Your first Boom" and "Everyone heard that. Comment:", with the field already filled in with "it was a test". Commenting shows the comment and "Fresh stick in 0:10"; ten seconds later you're onboarded. The test is never posted to the Club. Macs that were connected before this onboarding count as onboarded. While onboarding shows, the gear offers "Skip onboarding"; after it, "Replay onboarding".
 
-**The popover**, top to bottom. With a Boom showing, the whole sheet gets a red wash from the top, snapping on with no fade.
-- **The stick:** three pieces, lit for each third of fuse left, orange at half, red near the end, ✨ on the last third. The last third always has a faint red edge.
+**The popover** opens from the fuse. The fuse itself lives only in the menu bar. Top to bottom, and with a Boom showing, the whole sheet gets a red wash from the top, snapping on with no fade.
 - **Held it together:** for 10 minutes after a close call climbs out, a green line says so. No sound, no notification.
 - **Or the Boom:** the tier's emoji and name (Boom, Chain reaction, Meltdown), when it last went off, and one timer, "Fresh stick after 30 quiet minutes · 24:10", counting to `freshAt`. **Easter egg, with no UI:** once you've justified, each tap on the 💥 shaves 2 s off the wait, at most 60 s; when a hurried wait ends, the app appends a `rest` event. A new prompt resets the shave.
 - **One text slot**, two lines and a fixed height: the hovered message, or with nothing hovered, the message that set off the Boom (serif italic, centred), else the hottest one still burning, else your latest. Above it, "19:34 · hot", plus "cooled off" or "set it off". Hovering the vibe line shows its story here instead.
@@ -247,6 +250,8 @@ A new `test` event (less than 10 minutes old, not yet announced) lights a 3-seco
 - `Contents/Info.plist`
 
 A dev build is signed ad-hoc. `--release` signs with `Developer ID Application: Panter AS (BF4LY62Q92)` and the hardened runtime. Notarizing and the appcast are a separate release step.
+
+**The fuse, while working on it.** A debug build started with `open dist/Lunte.app --args -FuseDemo YES` plays a whole session on the menu bar fuse in a loop, instead of the game's. `scripts/render-fuse.sh` draws it to `dist/fuse.png` (every state and move, frame by frame) and `dist/fuse.gif` (that session), with the same code as the menu bar. In Xcode, open `LunteApp/Package.swift`, pick the `FuseKit` scheme and open `MenuFuse.swift` for the same previews, plus a live playground.
 
 ## 8. Your fuse
 

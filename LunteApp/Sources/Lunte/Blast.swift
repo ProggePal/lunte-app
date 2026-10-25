@@ -1,4 +1,5 @@
 import AppKit
+import FuseKit
 import QuartzCore
 
 /// The Boom on screen, from the menu bar icon, in native Core Animation particles. While the fuse burns, sparks drip
@@ -49,7 +50,8 @@ enum Blast {
         panel = p
 
         let root = view.layer!
-        let at = CGPoint(x: icon.midX - screen.frame.minX, y: icon.minY - screen.frame.minY) // the icon's bottom edge; y points up
+        // Under where the fuse starts, which is where it fizzes and blows; y points up.
+        let at = CGPoint(x: icon.maxX - FuseView.margin + FuseScene.start - screen.frame.minX, y: icon.minY - screen.frame.minY)
         let dim = CALayer()
         dim.frame = root.bounds
         dim.backgroundColor = NSColor.black.cgColor
@@ -85,15 +87,13 @@ enum Blast {
         }
     }
 
-    /// The menu bar icon's frame and its screen. MenuBarExtra hides its NSStatusItem, so this finds the status bar
-    /// window that holds it. ponytail: falls back to the top right of the main screen if macOS ever renames that class.
+    /// The menu bar item's button, set by `MenuBar`.
+    static weak var icon: NSView?
+
+    /// The menu bar item's frame and its screen, or nil when it isn't showing (hidden behind the notch, say).
     private static func iconOnScreen() -> (NSScreen, NSRect)? {
-        if let w = NSApp.windows.first(where: { $0.className.contains("NSStatusBarWindow") && $0.isVisible }),
-           let screen = w.screen ?? NSScreen.main {
-            return (screen, w.frame)
-        }
-        guard let screen = NSScreen.main else { return nil }
-        return (screen, NSRect(x: screen.frame.maxX - 140, y: screen.frame.maxY - 24, width: 40, height: 24))
+        guard let w = icon?.window, w.isVisible, let screen = w.screen else { return nil }
+        return (screen, w.frame)
     }
 
     private static func emitter(at point: CGPoint, cells: [CAEmitterCell]) -> CAEmitterLayer {

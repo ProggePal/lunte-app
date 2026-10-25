@@ -37,10 +37,16 @@ public enum Game {
     /// The Boom tiers, by `Boom.tier`.
     public static let tiers: [(emoji: String, name: String)] = [("💥", "Boom"), ("💥💥", "Chain reaction"), ("☢️", "Meltdown")]
 
-    /// What one message does to the burn: heat², less `coolMend` × cool². Either below 0.01 counts as 0.
+    /// What one message does to the burn: heat², less `mend`. Heat² below 0.01 counts as 0.
     public static func burn(_ e: Event, at now: Double) -> Double {
-        let heat = pow(e.heat(at: now), 2), cool = pow(e.cool ?? 0, 2)
-        return (heat >= spark ? heat : 0) - (cool >= spark ? coolMend * cool : 0)
+        let heat = pow(e.heat(at: now), 2)
+        return (heat >= spark ? heat : 0) - mend(e)
+    }
+
+    /// What one message's cool mends: `coolMend` × cool², or 0 when cool² is below 0.01.
+    public static func mend(_ e: Event) -> Double {
+        let cool = pow(e.cool ?? 0, 2)
+        return cool >= spark ? coolMend * cool : 0
     }
 
     /// `timeZone` sets where the local days that shorten the fuse begin and end.

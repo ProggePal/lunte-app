@@ -1,4 +1,5 @@
 import AppKit
+import FuseKit
 import CryptoKit
 import LunteCore
 
@@ -31,8 +32,8 @@ final class GameModel: ObservableObject {
     @Published private(set) var summary: Sitting?
     /// The start of the last session summarised, so each summary shows once.
     private var summarised = defaults.double(forKey: "Summarised")
-    /// The fuse is burning towards a Boom that hasn't gone off yet.
-    @Published private(set) var fusing = false
+    /// When the burning fuse bangs, while a Boom hasn't gone off yet.
+    @Published private(set) var fuseEnds: Date?
     /// A test Boom has blown, so the menu bar says BOOM.
     @Published private(set) var testBlown = false
     /// The vibe line, off by default while vibes are still taking shape. Off means no vibe is picked and no topic is
@@ -145,6 +146,22 @@ final class GameModel: ObservableObject {
     var boomQuiet: Bool {
         guard state.boomed, let boom = state.booms.last else { return false }
         return Date().timeIntervalSince1970 - (boom.escalations.last ?? boom.ts) >= Self.loudFor
+    }
+
+    /// What the menu bar fuse shows. After a Boom, its heat is how far the burn has got toward the next tier.
+    var fuseLook: FuseLook {
+        guard connected else { return FuseLook(phase: .offline) }
+        if let fuseEnds { return FuseLook(phase: .fusing, left: 0, bangAt: fuseEnds) }
+        if testBlown { return FuseLook(phase: .blown, name: tier(1).name.uppercased()) } // the test Boom has no tier
+        guard state.boomed, let boom = state.booms.last else {
+            let last = session.last, now = Date().timeIntervalSince1970
+            let bite = last.map { (Game.burn($0, at: now) + Game.mend($0)) / state.fuse } ?? 0 // its heat alone
+            return FuseLook(left: state.left, prompt: last?.ts, bite: bite)
+        }
+        let stick = max(Game.minFuse, state.fuse - Game.boomGrowth) // ponytail: the stick that blew, unless a day ended since
+        let toward = state.burned / (Game.escalationStep * stick) - Double(boom.tier - 1)
+        return FuseLook(phase: .blown, name: tier(boom.tier).name.uppercased(), tier: boom.tier,
+                        heat: min(1, max(0, toward)), quiet: boomQuiet)
     }
 
     /// For VoiceOver: the vibe, and how much stick is left, or the Boom's tier.
@@ -368,13 +385,13 @@ final class GameModel: ObservableObject {
     /// If the Mac slept through the wait, there's no bang and it never goes.
     /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
     private func light(_ seconds: Double, sound: Bool, test: Bool = false, posting boom: Boom? = nil) {
-        fusing = true
+        fuseEnds = Date().addingTimeInterval(seconds)
         for (sitting, id) in burning { announce(id, sitting: sitting) } // a new Blast replaces a running one: no bang for it
         let key = boom.map(sittingKey)
         if let boom, let key { burning[key] = boom.id }
         Blast.run(fuse: seconds, sound: sound) { [weak self] blew in
             guard let self else { return }
-            fusing = false
+            fuseEnds = nil
             if let boom { announce(boom.id, sitting: key) }
             if blew, let boom, club != nil { post(boom) }
             guard test else { return }
