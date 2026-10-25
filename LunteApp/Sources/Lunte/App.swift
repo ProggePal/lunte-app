@@ -87,6 +87,8 @@ final class MenuBar: NSObject, NSApplicationDelegate {
 
     /// The README's clips (scripts/hero.sh): where the fuse starts, then the look each prompt brings.
     static let clips: [String: [FuseLook]] = [
+        "fuse": [FuseLook(), FuseLook(left: 0.6, prompt: 1, bite: 0.4), FuseLook(left: 0.15, prompt: 2, bite: 0.45),
+                 FuseLook(left: 0.5, prompt: 3), FuseLook(left: 0.9, prompt: 4)],
         "heat": [FuseLook(), FuseLook(left: 0.6, prompt: 1, bite: 0.4)],
         "cool": [FuseLook(left: 0.4), FuseLook(left: 0.8, prompt: 1)],
         "close": [FuseLook(left: 0.55), FuseLook(left: 0.12, prompt: 1, bite: 0.43), FuseLook(left: 0.5, prompt: 2)],

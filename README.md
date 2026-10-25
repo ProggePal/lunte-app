@@ -1,14 +1,20 @@
 <h1 align="center">Lunte</h1>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/clips/menubar-dark.gif">
+    <img src="docs/clips/menubar.gif" alt="Lunte's fuse in a Mac menu bar: it burns, crawls through its last third, and grows back green">
+  </picture>
+</p>
+
 <p align="center"><b>Keep it cool. Or go boom.</b><br>
 A stick of dynamite in your menu bar, lit by how you talk to your agent. For Claude Code on Mac.</p>
 
 <p align="center">
-  <img src="docs/clips/heat.gif" width="49%" alt="An angry prompt to Claude Code burns a piece of the fuse in the menu bar">
-  <img src="docs/clips/cool.gif" width="49%" alt="A friendly prompt to Claude Code feeds green fuse back in">
-  <br><sub>Heat burns the fuse, and cool grows it back. Burn through it, and find out.</sub>
+  <a href="https://github.com/ProggePal/lunte-app/releases/latest"><img src="https://img.shields.io/github/v/release/ProggePal/lunte-app?label=Download%20for%20Mac&logo=apple&style=for-the-badge&color=e8590c" alt="Download for Mac"></a>
 </p>
 
+## Get Lunte in your menu bar
 Paste this into Claude Code, and it installs Lunte for you:
 
 ```
@@ -16,6 +22,11 @@ Install Lunte for me: https://github.com/ProggePal/lunte-app
 ```
 
 ## How it works
+<p align="center">
+  <img src="docs/clips/fuse.gif" alt="Lunte's fuse over Claude Code: two mean prompts burn it into its last third, two kind ones grow it back">
+  <br><sub>Heat burns it. Cool grows it back. Burn through it, it goes boom.</sub>
+</p>
+
 - **Heat and cool.** Frustration is heat. Casual is cool. Claude tunes this for you during setup.
 - **The fuse.** Heat burns it, and cool grows it back.
 - **The Boom.** Burn through the fuse and your Mac blows up a few seconds later. Keep the heat coming and it turns into a Chain reaction, then a Meltdown.
@@ -27,7 +38,7 @@ Install Lunte for me: https://github.com/ProggePal/lunte-app
 > Lunte is a prototype. Version 0.2.2 has heat, a fuse tuned to you, the Boom, and Clubs with pings, reactions and comments. Cool, sessions, aura and Leagues are coming next.
 
 ## Install
-1. Paste the install line at the top into Claude Code. Or download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
+1. Paste the install line above into Claude Code. Or download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
 2. Open it, click the fuse in your menu bar, and follow the three steps: download the Heat Detector (483 MB, once), connect to Claude Code, and tune hot and cool to you. Then type `3 2 1 boom` in Claude Code for your first Boom.
 3. Join a Club with its six-letter code, or create one, from the Club row in the popover.
 

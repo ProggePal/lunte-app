@@ -4,9 +4,10 @@
 # (App.swift `clips`): a Terminal window types each prompt into Claude Code, the hook hands it to Lunte, and Claude
 # answers it in a line. The prompts go to a spare log, so your game never sees them, and your own Lunte
 # steps aside meanwhile. A take is kept in docs/clips/takes, so the GIF can be framed again without a new one.
-#   scripts/hero.sh heat|cool|close|chain|boom|all   a take and its GIF, all being the README's two; hands off for
-#                                                     half a minute a clip
+#   scripts/hero.sh fuse|heat|cool|close|chain|boom|all   a take and its GIF, all being the README's; hands off for
+#                                                          half a minute a clip
 #   scripts/hero.sh gif <clip>|all                    only the GIF again, from the take
+#   scripts/hero.sh bar                               the menu bar with the fuse in it, the README's landing
 # Terminal needs Screen Recording (System Settings › Privacy & Security), once. ffmpeg records it: macOS's own
 # `screencapture -v` stalls now and then.
 set -euo pipefail
@@ -15,6 +16,8 @@ cd "$(dirname "$0")/.."
 # What each clip types.
 prompts() {
   case $1 in
+    fuse) printf '%s\n' "why is this still broken" "omg. make no mistakes, idiot" "ok sorry. thanks for sticking with me" \
+      "you're a legend, honestly" ;;
     heat) echo "why is this still broken" ;;
     cool) echo "nice, thanks buddy" ;;
     close) printf '%s\n' "this is the third time i've asked" "ok sorry. thanks for sticking with me" ;;
@@ -24,7 +27,7 @@ prompts() {
 }
 
 take() {
-  local clip=$1 tail=1 dir screen item=190 m=36
+  local clip=$1 tail=1 dir screen item=190 m=36 n=12 # pt of wallpaper round the window: left and top, right and bottom
   [[ $clip == boom ]] && tail=4
   # The fuse as near the middle as the menu bar has room for: macOS draws its recording badge over the first 48 pt of
   # the item, so the recording starts past that, and the wider the item, the further the fuse is from that edge. A
@@ -33,26 +36,26 @@ take() {
   (( screen >= 1200 )) && item=250
   dir=$(mktemp -d)
   prompts "$clip" > "$dir/prompts"
-  LUNTE_LOG=$dir/events.jsonl dist/Lunte.app/Contents/MacOS/Lunte -HeroDemo "$clip" -HeroItem $item > "$dir/at" &
+  LUNTE_LOG=$dir/events.jsonl dist/Lunte.app/Contents/MacOS/Lunte -HeroDemo "$clip" -HeroItem $item > "$dir/at" 2> /dev/null &
   local demo=$!
   until grep -q '^at' "$dir/at"; do sleep 0.2; done
-  local _ left right bar
+  local left right bar
   read -r _ left right bar _ < "$dir/at"
   # A Terminal window as people keep it, 52 x 15 in small type, measured, and the recording that much wider and taller,
-  # with the wallpaper around it.
+  # with some wallpaper round it.
   local win ww wh w h x
-  read -r win ww wh <<< "$(osascript -e 'tell application "Terminal"
+  read -r win ww wh <<< "$(osascript -e "tell application \"Terminal\"
     activate
-    set t to do script "cd /tmp/lunte-demo; clear"
-    set current settings of t to settings set "LunteClip"
-    set font size of settings set "LunteClip" to 11
+    set t to do script \"cd /tmp/lunte-demo; clear\"
+    set current settings of t to settings set \"LunteClip\"
+    set font size of settings set \"LunteClip\" to 11
     set number of columns of t to 52
     set number of rows of t to 15
     delay 0.5
     set b to bounds of front window
-    return (id of front window as text) & " " & (item 3 of b - item 1 of b) & " " & (item 4 of b - item 2 of b)
-  end tell')"
-  w=$(( ww + 2 * m )) h=$(( bar + 10 + wh + m )) x=$(( left + 52 ))
+    return (id of front window as text) & \" \" & (item 3 of b - item 1 of b) & \" \" & (item 4 of b - item 2 of b)
+  end tell")"
+  w=$(( ww + m + n )) h=$(( bar + 10 + wh + n )) x=$(( left + 52 ))
   # ponytail: a fixed pace instead of watching Claude's screen
   cat > "$dir/take.exp" <<'EOF'
 lassign $argv dir rect tail plugin win
@@ -102,29 +105,90 @@ EOF
   gif "$clip"
 }
 
-# The take to a GIF on a backdrop, like a Loom, that loops: its last half second fades into its first.
+# The take to a GIF as it is, that loops: its last half second fades into its first.
 gif() {
-  local width=800 fade=0.5 dir len # px; the Boom, up top, gets more
-  [[ $1 == boom ]] && width=1000
+  local width=1000 fade=0.5 dir len # px
   dir=$(mktemp -d)
   mkdir "$dir/in" "$dir/out"
   ffmpeg -loglevel error -i "docs/clips/takes/$1.mp4" -vf fps=12 "$dir/in/t%04d.png"
-  dist/render-fuse card "$dir/in" "$dir/out" $width
+  dist/render-fuse plain "$dir/in" "$dir/out" $width
   len=$(bc <<< "scale=3; $(ls "$dir/out" | wc -l) / 12")
-  # ponytail: ffmpeg's palette, no gifski; 96 colours dithered, for the flash and the smoke
+  # ponytail: ffmpeg's palette, no gifski; 128 colours dithered, for the wallpaper, the flame and the screen's dimming
   ffmpeg -y -loglevel error -framerate 12 -i "$dir/out/c%04d.png" -filter_complex "
     [0]format=rgb24,split[a][b];
     [a]trim=start=$fade,setpts=PTS-STARTPTS[main];
     [b]trim=end=$fade,setpts=PTS-STARTPTS[head];
     [main][head]xfade=duration=$fade:offset=$(bc <<< "$len - 2 * $fade"),split[c][d];
-    [c]palettegen=max_colors=96:stats_mode=diff[p];
+    [c]palettegen=max_colors=128:stats_mode=diff[p];
     [d][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "docs/clips/$1.gif"
   rm -rf "$dir"
   ls -lh "docs/clips/$1.gif"
 }
 
-all="heat cool" # the README's; boom, close and chain stay for whoever wants them
+# The README's landing, docs/clips/menubar.gif (and -dark.gif): the menu bar from the fuse to the clock, recorded from a
+# Terminal window as the hook gets four prompts straight, two mean and two kind. It starts past the item's empty left
+# end, where macOS draws its recording badge.
+bar() {
+  local dir left right bar screen x secs=13 theme out
+  dir=$(mktemp -d)
+  mkdir "$dir/in" "$dir/out"
+  LUNTE_LOG=$dir/events.jsonl dist/Lunte.app/Contents/MacOS/Lunte -HeroDemo fuse -HeroItem 190 > "$dir/at" 2> /dev/null &
+  local demo=$!
+  until grep -q '^at' "$dir/at"; do sleep 0.2; done
+  read -r _ left right bar screen < "$dir/at"
+  x=$(( left + 52 ))
+  cat > "$dir/bar.sh" <<EOF
+ffmpeg -y -loglevel error -f avfoundation -pixel_format bgr0 -framerate 30 -capture_cursor 0 -i "Capture screen 0:none" \\
+  -t $secs -vf "crop=$(( (screen - x) * 2 )):$(( bar * 2 )):$(( x * 2 )):0" -c:v libx264 -crf 16 -pix_fmt yuv420p \\
+  $dir/bar.mp4 < /dev/null 2> /dev/null &
+hook() { echo "{\"prompt\":\"\$1\"}" | LUNTE_LOG=$dir/events.jsonl "\$HOME/Library/Application Support/Lunte/lunte-hook"; }
+sleep 1; hook "why is this still broken"
+sleep 3; hook "omg. make no mistakes, idiot"
+sleep 4.5; hook "ok sorry. thanks for sticking with me"
+sleep 2.5; hook "you're a legend, honestly"
+wait
+touch $dir/done
+EOF
+  local win
+  # Terminal in front, out of any app in full screen, which hides the menu bar
+  win=$(osascript -e "tell application \"Terminal\"
+    activate
+    do script \"sleep 1; sh $dir/bar.sh; exit\"
+    id of front window
+  end tell")
+  until [[ -f $dir/done ]]; do sleep 0.5; done
+  osascript -e "tell application \"Terminal\" to close (every window whose id is $win) saving no" 2>/dev/null || true
+  kill $demo
+  mkdir -p docs/clips/takes
+  mv "$dir/bar.mp4" docs/clips/takes/menubar.mp4
+  ffmpeg -loglevel error -i docs/clips/takes/menubar.mp4 -vf fps=15 "$dir/in/t%04d.png"
+  for theme in light dark; do
+    out=docs/clips/menubar.gif
+    [[ $theme == dark ]] && out=docs/clips/menubar-dark.gif
+    rm -f "$dir"/out/*
+    dist/render-fuse bar "$dir/in" "$dir/out" $theme
+    ffmpeg -y -loglevel error -framerate 15 -i "$dir/out/c%04d.png" -filter_complex "
+      [0]format=rgb24,split[a][b];
+      [a]trim=start=0.5,setpts=PTS-STARTPTS[main];
+      [b]trim=end=0.5,setpts=PTS-STARTPTS[head];
+      [main][head]xfade=duration=0.5:offset=$(bc <<< "$(ls "$dir/out" | wc -l) / 15 - 1"),split[c][d];
+      [c]palettegen=max_colors=64:stats_mode=diff[p];
+      [d][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "$out"
+  done
+  rm -rf "$dir"
+  ls -lh docs/clips/menubar.gif docs/clips/menubar-dark.gif
+}
+
+all="fuse" # the README's; heat, cool, close, chain and boom stay for whoever wants them
 swiftc -O -o dist/render-fuse LunteApp/Sources/FuseKit/MenuFuse.swift scripts/render-fuse.swift
+if [[ $1 == bar ]]; then
+  scripts/build-app.sh | grep -E "error|Built"
+  running=$(pgrep -x Lunte || true)
+  osascript -e 'quit app "Lunte"' 2>/dev/null || true
+  trap '[[ -n $running ]] && open /Applications/Lunte.app' EXIT
+  bar
+  exit
+fi
 if [[ $1 == gif ]]; then
   for clip in ${2/all/$all}; do gif "$clip"; done
   exit
