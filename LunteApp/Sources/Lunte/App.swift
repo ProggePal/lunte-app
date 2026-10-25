@@ -54,11 +54,8 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func demo() {
         Task {
             while true {
-                for (wait, var look) in FusePreviews.demo {
-                    if look.phase == .fusing { // the whole show, on screen too, without the sound
-                        look.bangAt = .now.addingTimeInterval(wait)
-                        Blast.run(fuse: wait, sound: false) { _ in }
-                    }
+                for (wait, look) in FusePreviews.demo {
+                    if look.phase == .fusing { Blast.run(fuse: wait, sound: false) { _ in } } // the screen's show too, without the sound
                     fuse.show(look)
                     try? await Task.sleep(for: .seconds(wait))
                 }

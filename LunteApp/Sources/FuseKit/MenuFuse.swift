@@ -12,8 +12,6 @@ public struct FuseLook: Equatable {
     public var prompt: Double?
     public var rating = false
     public var bite = 0.0
-    /// Fusing: when it bangs.
-    public var bangAt: Date?
     /// Blown: the tier's name and number (1 Boom, 2 Chain reaction, 3 Meltdown), the heat climbing toward the next
     /// tier, 0...1, and whether it has quieted down, 10 minutes after the Boom or its last new tier.
     public var name = "Boom"
@@ -22,9 +20,9 @@ public struct FuseLook: Equatable {
     public var quiet = false
 
     public init(phase: Phase = .lit, left: Double = 1, prompt: Double? = nil, rating: Bool = false, bite: Double = 0,
-                bangAt: Date? = nil, name: String = "Boom", tier: Int = 1, heat: Double = 0, quiet: Bool = false) {
+                name: String = "Boom", tier: Int = 1, heat: Double = 0, quiet: Bool = false) {
         self.phase = phase; self.left = left; self.prompt = prompt; self.rating = rating; self.bite = bite
-        self.bangAt = bangAt; self.name = name; self.tier = tier; self.heat = heat; self.quiet = quiet
+        self.name = name; self.tier = tier; self.heat = heat; self.quiet = quiet
     }
 }
 
@@ -37,9 +35,9 @@ public struct FuseLook: Equatable {
 ///   so you can't tell if it'll stop in time. The flame burns on a few seconds, then goes out in a puff.
 /// - Cool feeds new fuse in at the start, left to right, green and twinkling, squeezing the coils together. One prompt
 ///   can do both.
-/// - Burnt right through, the flame dies at the start in a puff, and then there's nothing: a dud, maybe. Until, in the
-///   last seconds before the bang, it glows there again and sparks shoot out, slowing almost to a stop.
-/// - The bang: a flash, a shockwave, sparks and a jolt, and then just a symbol and a word in the menu bar's own colour.
+/// - The Boom's own burn starts slow and races faster and faster to the end, where the flame dies in a puff. Then
+///   nothing, for a few seconds, as if it went out, and then it blows: a flash, a shockwave, sparks, smoke and a jolt,
+///   easing in from a near stop, and once the smoke clears just a symbol and a word in the menu bar's own colour.
 ///   The tier's name, "Still burning" while the heat keeps coming, "Cooled off" once it's quiet, swapped with a little
 ///   spring and nothing more.
 /// - A new session feeds in a fresh fuse.
@@ -47,16 +45,11 @@ public struct FuseLook: Equatable {
 /// Coordinates are points, y up, measured from the right edge (x ≤ 0), since a menu bar item grows to the left.
 public struct FuseScene {
     public static let fuseWidth = 36.0
-    /// How long before the bang the show starts, here and on screen, and how long of it is slow motion.
-    // Why: anticipation, and a beat of stillness before the hit (hq: docs/research/game-feel-and-motivation.md)
-    public static let takeover = 3.0, slowMo = 1.4
-    /// How long the nothing lasts, after the flame dies and before the show.
-    static let beat = 1.8
-    /// How long after the bang the word comes in, once the smoke has cleared.
+    /// How long after the bang the word comes in, once the smoke has cleared and the comic word has flown up to it.
     static let calmAfter = 2.2
-    /// Around the bang, time stops `freeze` seconds before it and takes `speedUp` seconds after it to come back, as on
-    /// screen (`Blast.speed`).
-    static let freeze = 0.3, speedUp = 0.9
+    /// After the bang, time eases back up from a near stop over `speedUp` seconds, as on screen (`Blast.speed`).
+    // Why: a beat of stillness on impact (hq: docs/research/game-feel-and-motivation.md, hitstop)
+    public static let speedUp = 0.9
     /// How long the tier's name stays after the bang or a new tier, before the heat or the quiet takes over.
     static let nameFor = 5.0
     /// How long the flame burns on after a burn: with plenty left, past half, in the last third.
@@ -78,7 +71,6 @@ public struct FuseScene {
     private var wide = fuseWidth // the width to keep until `shrinkAt`, so nothing is cut off mid-move
     private var shrinkAt = 0.0
     private var litUntil = 0.0   // when the flame goes out
-    private var bangAt = 0.0
     private var effects: [Effect] = []
     private var seed = 1
 
@@ -86,7 +78,6 @@ public struct FuseScene {
     mutating func update(_ new: FuseLook, at t: Double, animated: Bool = true) {
         let old = look, before = width(at: t)
         look = new
-        if let date = new.bangAt { bangAt = t + date.timeIntervalSinceNow }
         // Wider at once, narrower only after the move, and never while blown, so the menu bar doesn't jitter.
         defer { wide = max(before, Self.width(new)); shrinkAt = new.phase == .blown ? .infinity : t + 1.9 }
         guard animated, !still else { return snap(t) }
@@ -103,8 +94,13 @@ public struct FuseScene {
             if bite > 0.001 { burn(bite, t) }
             if mend > 0.001 { grow(mend, t, held: old.left <= 1.0 / 3 && new.left > 1.0 / 3) }
         case (.lit, .fusing), (.offline, .fusing):
-            // It crawls all the way down, as long as the wait allows, the flame dies at the start, and then nothing.
-            let over = burn(tail.to - head.to, t, lasting: max(0.8, bangAt - Self.takeover - Self.beat - t))
+            // It catches and races to the end, faster and faster; the flame dies at the start, and then nothing.
+            let from = tail.value(t), over = 1 + 1.6 * max(0, from - head.to)
+            tail = Tween(from, head.to, at: t, over: over, Ease.inCubic)
+            seed += 1
+            effects.append(.char(t, tail, seed: seed))
+            effects.append(.flare(t))
+            effects.append(.spring(t + over * 0.6, 0.12))
             douse(at: t + over + 0.05, t)
         case (.fusing, .blown), (.lit, .blown), (.offline, .blown):
             bang(t)
@@ -134,16 +130,15 @@ public struct FuseScene {
             || captions.contains { $0.at <= t && t < $0.at + 0.6 }
     }
 
-    /// Something's alive: the flame, the breeze, the show before the bang. A low frame rate is plenty.
+    /// Something's alive: the flame, the breeze. A low frame rate is plenty.
     func idling(at t: Double) -> Bool {
         guard !still else { return false }
-        return burning(at: t) || wind.value(t) > 0 || (look.phase == .fusing && t >= bangAt - Self.takeover)
+        return burning(at: t) || wind.value(t) > 0
     }
 
     /// When something next starts, if nothing moves until then, so the view can sleep till then.
     func wake(after t: Double) -> Double? {
         var next = tweens.map(\.start) + effects.map(\.start) + captions.map(\.at)
-        if look.phase == .fusing { next.append(bangAt - Self.takeover) }
         if shrinkAt.isFinite { next.append(shrinkAt) }
         return next.filter { $0 > t }.min()
     }
@@ -179,14 +174,14 @@ public struct FuseScene {
         litUntil = 0
     }
 
-    /// Burns `bite` off the tip, over `lasting` seconds if given. Returns how long it takes: a bigger bite burns longer,
-    /// and what's in the last third crawls, stopping and starting, more often the longer it takes.
+    /// Burns `bite` off the tip. Returns how long it takes: a bigger bite burns longer, and what's in the last third
+    /// crawls, stopping and starting.
     @discardableResult
-    private mutating func burn(_ bite: Double, _ t: Double, lasting: Double? = nil) -> Double {
+    private mutating func burn(_ bite: Double, _ t: Double) -> Double {
         let from = tail.value(t), to = tail.to - bite, edge = head.to + 1.0 / 3
         let fast = max(0, from - max(to, edge)), crawl = max(0, min(from, edge) - to)
         let quick = fast > 0 ? 0.45 + 0.75 * fast : 0
-        let over = max(0.3, lasting ?? quick + (crawl > 0 ? 1.2 + 9 * crawl : 0))
+        let over = max(0.3, quick + (crawl > 0 ? 1.2 + 9 * crawl : 0))
         let split = fast / max(1e-9, fast + crawl), timeSplit = crawl > 0 ? min(quick, over * 0.3) / over : 1
         let stops = max(1, Int(((over - quick) / 1.5).rounded()))
         tail = Tween(from, to, at: t, over: over) { x in
@@ -287,7 +282,6 @@ public struct FuseScene {
         if to - from > 0.002 { stroke(ctx, from, to, t, ink, width: 1.5) }
         for e in effects { drawUnder(e, ctx, clock(e, t), ink: ink) }
         if burning(at: t) { drawFlame(ctx, t) }
-        if look.phase == .fusing && t >= bangAt - Self.takeover { drawShow(ctx, t) }
         if boom.value(t) > 0.01 { drawBoom(ctx, t, ink: ink) }
         for e in effects { drawOver(e, ctx, clock(e, t), ink: ink) }
         ctx.restoreGState()
@@ -310,7 +304,9 @@ public struct FuseScene {
             if case .flare(let t0) = e, t >= t0 { return acc + exp(-4 * (t - t0)) } else { return acc }
         }
         var running = 1.0
-        if !still, tail.start <= t, !tail.done(t), tail.value(t) <= head.to + 1.0 / 3 { // crawling: as lively as it's quick
+        if !still, look.phase == .fusing, tail.start <= t, !tail.done(t) { // racing to the end: roaring as it speeds up
+            running = 0.7 + 0.8 * (t - tail.start) / tail.duration
+        } else if !still, tail.start <= t, !tail.done(t), tail.value(t) <= head.to + 1.0 / 3 { // crawling: as lively as it's quick
             let speed = abs(tail.value(t + 0.03) - tail.value(t - 0.03)) / 0.06, usual = abs(tail.to - tail.from) / tail.duration
             running = min(1.3, 0.35 + 0.65 * speed / max(1e-9, usual))
         }
@@ -322,27 +318,6 @@ public struct FuseScene {
         emit(ctx, from: t - 0.6, to: t, every: 1 / 30.0, rate: { _ in rate }, seed: 11, t: t) { born in
             (self.point(self.tail.value(born), born), 18, 1.6)
         }
-    }
-
-    /// The last seconds before the bang, after the nothing: it glows where the fuse began, brighter and brighter, and
-    /// sparks shoot out, slowing almost to a stop at the end.
-    private func drawShow(_ ctx: CGContext, _ t: Double) {
-        let at = Self.restingPoint(head.to, head: head.to, tail: head.to), slow = showClock(t)
-        let k = still ? 1 : min(1, max(0, 1 - (bangAt - t) / Self.takeover))
-        glow(ctx, at, radius: 3 + 8 * k, Palette.orange, alpha: 0.25 + 0.5 * k)
-        dot(ctx, at, 0.8 + 1.4 * k, Palette.mix(Palette.orange, Palette.white, k))
-        guard !still else { return }
-        let begin = bangAt - Self.takeover
-        emit(ctx, from: max(begin, slow - 0.7), to: slow, every: 1 / 90.0, rate: { born in 15 + 95 * min(1, max(0, (born - begin) / Self.takeover)) },
-             seed: 7, t: slow) { _ in (at, 42, 2 * .pi) }
-    }
-
-    /// The show's own time: normal, then easing down to a near stop `freeze` seconds before the bang, as on screen.
-    private func showClock(_ t: Double) -> Double {
-        let begin = bangAt - Self.slowMo, slowing = Self.slowMo - Self.freeze
-        guard !still, t > begin else { return t }
-        let u = min(1, (t - begin) / slowing) // the speed eases from 1 down to 0.03: the integral of that
-        return begin + slowing * (u - 0.97 * (u * u * u - u * u * u * u / 2)) + 0.03 * max(0, t - begin - slowing)
     }
 
     /// A teardrop flame on `base`, `size` tall, with a yellow heart and a white-hot root.
@@ -830,7 +805,7 @@ public struct FusePreviews: View {
         ("Warm", FuseLook(left: 0.7)),
         ("Past half", FuseLook(left: 0.45)),
         ("Last third", FuseLook(left: 0.2)),
-        ("Fusing", FuseLook(phase: .fusing, left: 0, bangAt: .now.addingTimeInterval(1))),
+        ("Fusing", FuseLook(phase: .fusing, left: 0)),
         ("Boom", FuseLook(phase: .blown)),
         ("Chain reaction", FuseLook(phase: .blown, name: "Chain reaction", tier: 2)),
         ("Meltdown", FuseLook(phase: .blown, name: "Meltdown", tier: 3)),
@@ -846,8 +821,8 @@ public struct FusePreviews: View {
         ("Rated: both", FuseLook(left: 0.7, prompt: 1, rating: true), FuseLook(left: 0.6, prompt: 1, bite: 0.35), 5),
         ("Close call", FuseLook(left: 0.45), FuseLook(left: 0.08, prompt: 1, bite: 0.37), 10),
         ("Held it together", FuseLook(left: 0.2), FuseLook(left: 0.55), 2.4),
-        ("Blows", FuseLook(left: 0.3), FuseLook(phase: .fusing, left: 0, bangAt: .now.addingTimeInterval(12)), 12),
-        ("Bang", FuseLook(phase: .fusing, left: 0, bangAt: .now), FuseLook(phase: .blown), 2),
+        ("Blows", FuseLook(left: 0.3), FuseLook(phase: .fusing, left: 0), 8),
+        ("Bang", FuseLook(phase: .fusing, left: 0), FuseLook(phase: .blown), 2),
         ("Chain reaction", FuseLook(phase: .blown, heat: 0.9), FuseLook(phase: .blown, name: "Chain reaction", tier: 2), 1),
         ("Still burning", FuseLook(phase: .blown, quiet: true), FuseLook(phase: .blown, heat: 0.5, quiet: true), 1),
         ("Quiets down", FuseLook(phase: .blown), FuseLook(phase: .blown, quiet: true), 1),
@@ -866,7 +841,7 @@ public struct FusePreviews: View {
         (1.2, FuseLook(left: 0.95, prompt: 4, rating: true)), (5, FuseLook(left: 0.6, prompt: 4, bite: 0.5)), // both
         (1.2, FuseLook(left: 0.6, prompt: 5, rating: true)), (10, FuseLook(left: 0.1, prompt: 5, bite: 0.5)), // a close call
         (1.2, FuseLook(left: 0.1, prompt: 6, rating: true)), (3.5, FuseLook(left: 0.45, prompt: 6)), // held it together
-        (1.2, FuseLook(left: 0.45, prompt: 7, rating: true)), (14, FuseLook(phase: .fusing, left: 0)), // it blows
+        (1.2, FuseLook(left: 0.45, prompt: 7, rating: true)), (8, FuseLook(phase: .fusing, left: 0)), // it blows
         (8, FuseLook(phase: .blown)), (5, FuseLook(phase: .blown, heat: 0.6)),
         (7, FuseLook(phase: .blown, name: "Chain reaction", tier: 2)), (4, FuseLook(phase: .blown, name: "Chain reaction", tier: 2, quiet: true)),
         (1, FuseLook())]
@@ -945,7 +920,7 @@ struct FusePlayground: View {
                 Button("Heat") { go { $0.phase == .lit ? ($0.left = max(0, $0.left - 0.22)) : ($0.heat = min(1, $0.heat + 0.3)) } }
                 Button("Cool") { go { $0.phase == .lit ? ($0.left = min(1, $0.left + 0.22)) : ($0.heat = max(0, $0.heat - 0.3)) } }
                 Button("Both") { go { $0.prompt = ($0.prompt ?? 0) + 1; $0.bite = 0.3; $0.left = max(0.05, $0.left - 0.1) } }
-                Button("Burn out") { go { $0 = FuseLook(phase: .fusing, left: 0, bangAt: .now.addingTimeInterval(3)) } }
+                Button("Burn out") { go { $0 = FuseLook(phase: .fusing, left: 0) } }
                 Button("Bang") { go { $0 = FuseLook(phase: .blown) } }
                 Button("Tier up") { go { $0.tier = min(3, $0.tier + 1); $0.name = Self.names[$0.tier - 1]; $0.heat = 0; $0.quiet = false } }
                 Button("Quiet") { go { $0.quiet.toggle() } }

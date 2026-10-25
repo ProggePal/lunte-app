@@ -3,11 +3,11 @@ import FuseKit
 import QuartzCore
 
 /// The Boom on screen, from the fuse in the menu bar, in native Core Animation: the one show. The wait is silent, as if
-/// the fuse went out. In its last 3 seconds the whole screen dims around a warm glow at the fuse and sparks shoot out of
-/// it, and time eases down to a stop. The bang lands in the stillness, a flash and the sound, and time eases back up as
-/// the blast opens out: a bloom of light, two shockwaves, sparks, embers and a cloud of smoke rolling down the screen,
-/// while the dark drains away. Clicks pass through. With Reduce Motion it's just the wait.
-// Why: anticipation, then a beat of stillness on impact (hq: docs/research/game-feel-and-motivation.md, hitstop)
+/// the fuse went out. In its last moment the whole screen goes dark, the fizz, and it blows in the stillness: a flash
+/// and the sound, then time eases back up as the blast opens out, a bloom of light, two shockwaves, sparks, embers and
+/// smoke, while the dark drains away. A comic BOOM! pops up over it and flies up into the menu bar, where the plain word
+/// takes over. Clicks pass through. With Reduce Motion it's just the wait.
+// Why: a beat of stillness on impact, then over the top at the peak (hq: docs/research/game-feel-and-motivation.md)
 @MainActor
 enum Blast {
     private static var panel: NSPanel?
@@ -15,9 +15,8 @@ enum Blast {
 
     /// How late a fuse can run by the wall clock and still blow. Any later, the Mac slept through the wait.
     static let lateBy = 2.0
-    /// The time ramp around the bang, in seconds from it: slowing from `slowMo` before, still from `freeze` before, and
-    /// back up to speed `speedUp` after.
-    static let freeze = 0.3, speedUp = 0.9
+    /// How long before the bang the screen goes dark.
+    static let dimFor = 0.6
 
     /// The menu bar fuse, set by `MenuBar`: where the show comes from.
     static weak var icon: FuseView?
@@ -60,15 +59,15 @@ enum Blast {
 
         let root = view.layer!
         let at = CGPoint(x: fuseAt.x - screen.frame.minX, y: fuseAt.y - screen.frame.minY) // y points up
-        // The dim and the flash run on real time, over everything; the rest lives in `world`, whose time is ramped.
+        // The dark, the flash and the comic word keep real time; the blast lives in `world`, whose time is eased.
         let tint = CAGradientLayer()
         tint.type = .radial
         tint.frame = root.bounds
         let centre = CGPoint(x: at.x / root.bounds.width, y: at.y / root.bounds.height), reach = 0.9
         tint.startPoint = centre
         tint.endPoint = CGPoint(x: centre.x + reach, y: centre.y + reach * root.bounds.width / root.bounds.height)
-        tint.colors = [NSColor(srgbRed: 1, green: 0.45, blue: 0.12, alpha: 0.2).cgColor,
-                       NSColor(srgbRed: 0.05, green: 0.01, blue: 0, alpha: 0.72).cgColor]
+        tint.colors = [NSColor(srgbRed: 1, green: 0.45, blue: 0.12, alpha: 0.18).cgColor,
+                       NSColor(srgbRed: 0.04, green: 0.01, blue: 0, alpha: 0.72).cgColor]
         tint.opacity = 0
         let world = CALayer()
         world.frame = root.bounds
@@ -79,62 +78,131 @@ enum Blast {
         root.addSublayer(tint)
         root.addSublayer(world)
         root.addSublayer(flash)
-        let shoot = emitter(at: at, in: world, cells: sparks(birthRate: 40, velocity: 170, range: .pi * 0.7, down: true, lifetime: 1.6))
-        shoot.birthRate = 0
 
         let fizzle = { p.close(); if panel === p { panel = nil }; boom(false) } // slept through: no show, no sound, no blast
-        let show = min(FuseScene.takeover, fuse), slowMo = min(FuseScene.slowMo, show)
         job = Task {
-            // Nothing, then the show starts: the dim, the sparks.
-            try? await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow - show)))
+            // Nothing, as if it went out. Then the lights go down, the fizz, and it blows.
+            try? await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow - dimFor)))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
-            fade(tint, to: 0.6, over: max(0.1, show - slowMo))
-            shoot.birthRate = 1
-            try? await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow - slowMo)))
+            fade(tint, to: 1, over: dimFor, .easeIn)
+            try? await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow - Bang.fizz)))
             guard !Task.isCancelled else { return }
             if late() { return fizzle() }
-            fade(tint, to: 1, over: max(0.1, slowMo - freeze)) // the whole screen, dark
-            shoot.birthRate = 3
-            // The time ramp, frame by frame, with the sound and the bang on their marks.
-            var sounded = false, blast: [CAEmitterLayer] = [], stopAt = 0.0
+            if sound { Bang.play() }
+            try? await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow)))
+            guard !Task.isCancelled else { return }
+            if late() { return fizzle() }
+            pace(world, speed(0))
+            pulse(flash, to: 0.5, over: 0.45)
+            fade(tint, to: 0, over: 2.4)
+            let blast = bang(at: at, in: world)
+            let stopAt = world.convertTime(CACurrentMediaTime(), from: nil) + 0.15 // one burst, in the world's own time
+            boom(true)
+            word(over: at, in: root)
+            // Time eases back up to speed as the blast opens out.
             while !Task.isCancelled {
-                let since = -deadline.timeIntervalSinceNow // seconds since the bang; negative before it
-                if since > lateBy, blast.isEmpty { return fizzle() }
-                if !sounded, since >= -Bang.fizz { sounded = true; if sound { Bang.play() } } // the fizz, then the bang
-                if blast.isEmpty, since >= 0 {
-                    shoot.birthRate = 0
-                    pulse(flash, to: 0.5, over: 0.45)
-                    fade(tint, to: 0, over: 2.4)
-                    blast = bang(at: at, in: world)
-                    stopAt = world.convertTime(CACurrentMediaTime(), from: nil) + 0.15 // a burst, in the world's own time
-                    boom(true)
-                }
-                if !blast.isEmpty, world.convertTime(CACurrentMediaTime(), from: nil) >= stopAt { blast.forEach { $0.birthRate = 0 } }
+                let since = -deadline.timeIntervalSinceNow
+                if world.convertTime(CACurrentMediaTime(), from: nil) >= stopAt { blast.forEach { $0.birthRate = 0 } }
                 pace(world, speed(since))
-                if since > speedUp { break }
+                if since > FuseScene.speedUp { break }
                 try? await Task.sleep(for: .milliseconds(16))
             }
+            blast.forEach { $0.birthRate = 0 }
             try? await Task.sleep(for: .seconds(5))
             p.close()
             if panel === p { panel = nil }
         }
     }
 
-    /// How fast the world runs, by seconds from the bang: easing down to a near stop, still, then easing back up.
+    /// How fast the blast runs, by seconds since the bang: from a near stop, easing back up to speed.
     static func speed(_ since: Double) -> Float {
-        let slowMo = FuseScene.slowMo
-        switch since {
-        case ..<(-slowMo): return 1
-        case ..<(-freeze):
-            let u = (since + slowMo) / (slowMo - freeze)
-            return Float(1 - 0.97 * u * u * (3 - 2 * u))
-        case ..<0: return 0.03
-        case ..<speedUp:
-            let u = since / speedUp
-            return Float(0.05 + 0.95 * u * u)
-        default: return 1
+        let u = min(1, max(0, since / FuseScene.speedUp))
+        return Float(0.05 + 0.95 * u * u)
+    }
+
+    /// The comic word over the blast, the way games do it: it pops up big and tilted, holds, then flies up into the menu
+    /// bar and shrinks away, just as the plain word lands there.
+    private static func word(over at: CGPoint, in root: CALayer) {
+        let image = comic(["BOOM!", "KABOOM!", "POW!"].randomElement()!)
+        let size = CGSize(width: CGFloat(image.width) / 2, height: CGFloat(image.height) / 2)
+        let holder = CALayer() // tilted, so the word inside can pop on its own scale
+        holder.bounds = CGRect(origin: .zero, size: size)
+        holder.position = CGPoint(x: min(max(at.x, size.width / 2 + 24), root.bounds.width - size.width / 2 - 24), y: at.y - 120)
+        holder.setAffineTransform(CGAffineTransform(rotationAngle: 0.1))
+        let word = CALayer()
+        word.contents = image
+        word.frame = holder.bounds
+        word.opacity = 0
+        holder.addSublayer(word)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        root.addSublayer(holder)
+        CATransaction.commit()
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            word.opacity = 1
+            CATransaction.commit()
+            let pop = CASpringAnimation(keyPath: "transform.scale")
+            pop.fromValue = 0.2
+            pop.toValue = 1
+            pop.damping = 9
+            pop.stiffness = 280
+            pop.duration = pop.settlingDuration
+            word.add(pop, forKey: "pop")
+            try? await Task.sleep(for: .milliseconds(1250))
+            let fly = CABasicAnimation(keyPath: "position")
+            fly.fromValue = holder.position
+            fly.toValue = at
+            let shrink = CABasicAnimation(keyPath: "transform.scale")
+            shrink.fromValue = 1
+            shrink.toValue = 0.12
+            let fadeOut = CABasicAnimation(keyPath: "opacity")
+            fadeOut.fromValue = 1
+            fadeOut.toValue = 0
+            let group = CAAnimationGroup()
+            group.animations = [fly, shrink, fadeOut]
+            group.duration = 0.45
+            group.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            holder.position = at
+            holder.opacity = 0
+            CATransaction.commit()
+            holder.add(group, forKey: "fly")
+            try? await Task.sleep(for: .milliseconds(500))
+            holder.removeFromSuperlayer()
         }
+    }
+
+    /// A comic word: heavy rounded capitals, yellow inside a thick dark outline, with a drop shadow. At twice the size.
+    private static func comic(_ text: String) -> CGImage {
+        let plain = NSFont.systemFont(ofSize: 64, weight: .black)
+        let font = plain.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: 64) } ?? plain
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [
+            .font: font, .kern: 1.5, NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
+        ]))
+        var ascent: CGFloat = 0, descent: CGFloat = 0
+        let width = CTLineGetTypographicBounds(line, &ascent, &descent, nil), pad: CGFloat = 18
+        let ctx = CGContext(data: nil, width: Int((width + 2 * pad) * 2), height: Int((ascent + descent + 2 * pad) * 2),
+                            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.scaleBy(x: 2, y: 2)
+        ctx.setShadow(offset: CGSize(width: 0, height: -4), blur: 8, color: CGColor(gray: 0, alpha: 0.5))
+        ctx.setLineWidth(10)
+        ctx.setLineJoin(.round)
+        ctx.setStrokeColor(CGColor(srgbRed: 0.3, green: 0.06, blue: 0.02, alpha: 1))
+        ctx.setTextDrawingMode(.stroke)
+        ctx.textPosition = CGPoint(x: pad, y: pad + descent)
+        CTLineDraw(line, ctx)
+        ctx.setShadow(offset: .zero, blur: 0, color: nil)
+        ctx.setFillColor(CGColor(srgbRed: 1, green: 0.85, blue: 0.25, alpha: 1))
+        ctx.setTextDrawingMode(.fill)
+        ctx.textPosition = CGPoint(x: pad, y: pad + descent)
+        CTLineDraw(line, ctx)
+        return ctx.makeImage()!
     }
 
     /// The blast, starting in the stillness: a bloom of light, two shockwaves, a cloud of smoke, sparks and embers.
@@ -205,15 +273,15 @@ enum Blast {
         }
     }
 
-    /// Billows of smoke, dark and light, rolling out and down from the fuse, swelling, drifting up a little, fading.
+    /// Wisps of smoke, dark and light, rolling out and down from the fuse, swelling, drifting up a little, fading.
     private static func smokeCells() -> [CAEmitterCell] {
-        [(0.18, 0.75), (0.42, 0.55)].map { grey, alpha in
+        [(0.2, 0.4), (0.45, 0.28)].map { grey, alpha in
             let c = CAEmitterCell()
             c.contents = puff
             c.color = NSColor(srgbRed: grey + 0.03, green: grey, blue: grey - 0.02, alpha: alpha).cgColor
-            c.birthRate = 160
-            c.lifetime = 4
-            c.lifetimeRange = 1.2
+            c.birthRate = 90
+            c.lifetime = 3
+            c.lifetimeRange = 1
             c.velocity = 150
             c.velocityRange = 90
             c.emissionLongitude = -.pi / 2
@@ -224,7 +292,7 @@ enum Blast {
             c.scaleSpeed = 0.45
             c.spin = 0.3
             c.spinRange = 0.8
-            c.alphaSpeed = -0.22
+            c.alphaSpeed = -0.3
             return c
         }
     }
@@ -271,8 +339,9 @@ enum Blast {
         layer.add(a, forKey: "pulse")
     }
 
-    private static func fade(_ layer: CALayer, to opacity: Float, over seconds: Double) {
+    private static func fade(_ layer: CALayer, to opacity: Float, over seconds: Double, _ timing: CAMediaTimingFunctionName = .default) {
         let a = CABasicAnimation(keyPath: "opacity")
+        a.timingFunction = CAMediaTimingFunction(name: timing)
         a.fromValue = layer.presentation()?.opacity ?? layer.opacity
         a.toValue = opacity
         a.duration = seconds

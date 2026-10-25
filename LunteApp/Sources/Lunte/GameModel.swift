@@ -32,8 +32,8 @@ final class GameModel: ObservableObject {
     @Published private(set) var summary: Sitting?
     /// The start of the last session summarised, so each summary shows once.
     private var summarised = defaults.double(forKey: "Summarised")
-    /// When the burning fuse bangs, while a Boom hasn't gone off yet.
-    @Published private(set) var fuseEnds: Date?
+    /// The fuse is burning towards a Boom that hasn't gone off yet.
+    @Published private(set) var fusing = false
     /// A test Boom has blown, so the menu bar says BOOM.
     @Published private(set) var testBlown = false
     /// The vibe line, off by default while vibes are still taking shape. Off means no vibe is picked and no topic is
@@ -151,7 +151,7 @@ final class GameModel: ObservableObject {
     /// What the menu bar fuse shows. After a Boom, its heat is how far the burn has got toward the next tier.
     var fuseLook: FuseLook {
         guard connected else { return FuseLook(phase: .offline) }
-        if let fuseEnds { return FuseLook(phase: .fusing, left: 0, bangAt: fuseEnds) }
+        if fusing { return FuseLook(phase: .fusing, left: 0) }
         if testBlown { return FuseLook(phase: .blown, name: tier(1).name) } // the test Boom has no tier
         guard state.boomed, let boom = state.booms.last else {
             let last = session.last, now = Date().timeIntervalSince1970
@@ -376,23 +376,23 @@ final class GameModel: ObservableObject {
         }
     }
 
-    /// A random wait between your outburst and the bang, so the room has to guess who it was. The fuse crawls down
-    /// through most of it, and the rest is a short beat of nothing before the show.
+    /// A random wait between your outburst and the bang, so the room has to guess who it was. The fuse races down in the
+    /// first second or two, and the rest is silence, as if it went out.
     // Why: your own feedback is instant, the room's Boom is delayed (docs/why.md#two-clocks)
-    static let boomDelay = 10.0...25.0
+    static let boomDelay = 5.0...12.0
 
     /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the
     /// bang, with `sound`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
     /// If the Mac slept through the wait, there's no bang and it never goes.
     /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
     private func light(_ seconds: Double, sound: Bool, test: Bool = false, posting boom: Boom? = nil) {
-        fuseEnds = Date().addingTimeInterval(seconds)
+        fusing = true
         for (sitting, id) in burning { announce(id, sitting: sitting) } // a new Blast replaces a running one: no bang for it
         let key = boom.map(sittingKey)
         if let boom, let key { burning[key] = boom.id }
         Blast.run(fuse: seconds, sound: sound) { [weak self] blew in
             guard let self else { return }
-            fuseEnds = nil
+            fusing = false
             if let boom { announce(boom.id, sitting: key) }
             if blew, let boom, club != nil { post(boom) }
             guard test else { return }
@@ -503,7 +503,7 @@ final class GameModel: ObservableObject {
         defaults.set(true, forKey: "Connected")
         defaults.set(Array(announced), forKey: "Announced")
         guard fresh.contains(where: { now - $0.ts < 600 }) else { return }
-        light(7, sound: soundOn, test: true) // the whole show: a crawl, the nothing, the bang
+        light(7, sound: soundOn, test: true) // the whole show: the burn, the silence, the bang
     }
 
     /// Onboarding: you own the test Boom, and 10 seconds later you get your first fresh stick. Kept on this Mac only.

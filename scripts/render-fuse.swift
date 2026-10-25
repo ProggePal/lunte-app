@@ -33,9 +33,7 @@ struct RenderFuse {
         for f in 0..<frames {
             let t = Double(f) / fps
             while next < timeline.count, timeline[next].at <= t {
-                var look = timeline[next].look
-                if look.phase == .fusing { look.bangAt = Date().addingTimeInterval(timeline[next + 1].at - t) }
-                scene.update(look, at: t, animated: next > 0)
+                scene.update(timeline[next].look, at: t, animated: next > 0)
                 next += 1
             }
             let renderer = ImageRenderer(content: VStack(spacing: 0) { [scene] in
