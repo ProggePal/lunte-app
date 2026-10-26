@@ -10,7 +10,7 @@ app/
   LunteApp/     Swift package: Lunte (the menu bar app), depends on ../LunteCore, Sparkle, LayaKit (vendored) and FuseKit (the menu bar fuse)
   relay/        Cloudflare Worker + one Durable Object per Club
   plugin/       Claude Code plugin + marketplace, bundled into the app
-  Resources/    boom.wav, Info.plist
+  Resources/    boom.wav, Info.plist, Lunte.icns
   scripts/      build-app.sh, render-fuse.sh
 ```
 
@@ -246,12 +246,12 @@ A new `test` event (less than 10 minutes old, not yet announced) lights a fuse w
 `scripts/build-app.sh [--release]` builds both packages and assembles `dist/Lunte.app`:
 - `Contents/MacOS/{Lunte,lunte-hook}`
 - `Contents/Frameworks/Sparkle.framework`
-- `Contents/Resources/{boom.wav,LayaKit-LICENSE.txt,plugin/}` (FluidUse's Apache-2.0 licence, which travels with the binary)
+- `Contents/Resources/{boom.wav,Lunte.icns,LayaKit-LICENSE.txt,plugin/}` (FluidUse's Apache-2.0 licence, which travels with the binary)
 - `Contents/Info.plist`
 
 A dev build is signed ad-hoc. `--release` signs with `Developer ID Application: Panter AS (BF4LY62Q92)` and the hardened runtime. Notarizing and the appcast are a separate release step.
 
-**The fuse, while working on it.** A debug build started with `open dist/Lunte.app --args -FuseDemo YES` plays a whole session on the menu bar fuse in a loop, the screen's show included but without the sound, instead of the game's. `scripts/render-fuse.sh` draws it to `dist/fuse.png` (every state and move, frame by frame) and `dist/fuse.gif` (that session), with the same code as the menu bar. In Xcode, open `LunteApp/Package.swift`, pick the `FuseKit` scheme and open `MenuFuse.swift` for the same previews, plus a live playground.
+**The fuse, while working on it.** A debug build started with `open dist/Lunte.app --args -FuseDemo YES` plays a whole session on the menu bar fuse in a loop, the screen's show included but without the sound, instead of the game's. `scripts/render-fuse.sh` draws it to `dist/fuse.png` (every state and move, frame by frame) and `dist/fuse.gif` (that session), with the same code as the menu bar, and the app's icon, `Resources/Lunte.icns`: the fuse the moment a prompt lights it, on a black squircle. In Xcode, open `LunteApp/Package.swift`, pick the `FuseKit` scheme and open `MenuFuse.swift` for the same previews, plus a live playground.
 
 **The README's clips.** Both are a real Mac, recorded off the screen. `docs/clips/menubar.gif` is the menu bar alone, floating on a white backdrop (`menubar-dark.gif` on GitHub's dark card colour, for its dark theme): a fresh fuse lays itself out, burns, crawls through its last third and grows back green, made by `scripts/hero.sh bar`: the hook gets four prompts straight from a Terminal window, two mean and two kind. `docs/clips/fuse.gif` is the fuse over a small Terminal window with a real Claude Code in it, made by `scripts/hero.sh fuse`: `expect` types the same four prompts into Claude Code, with only Lunte's plugin, in a window the `LunteClip` profile titles only as Claude Code does, and Claude answers each in a line. The Boom isn't shown (`heat`, `cool`, `close`, `chain` and `boom` clips are there too). For both, a debug build started with `-HeroDemo <clip>` and a spare `$LUNTE_LOG` plays the clip's set script (`MenuBar.clips`) instead of the game, so your own log and Club never see the prompts, and ffmpeg records. macOS draws its recording badge over the item's left end, so the recordings start past it, and `render-fuse` paints out the dot it shows beside Control Center. The recordings are kept in `docs/clips/takes`, and `scripts/hero.sh gif fuse` (or `gif menubar`) frames them again without a new take; `gif menubar` also makes `docs/social-preview.png`, the picture a link to the repo shows, uploaded in its Settings. Terminal needs Screen Recording, once.
 

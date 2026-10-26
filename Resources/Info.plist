@@ -6,6 +6,8 @@
 	<string>Lunte</string>
 	<key>CFBundleExecutable</key>
 	<string>Lunte</string>
+	<key>CFBundleIconFile</key>
+	<string>Lunte</string>
 	<key>CFBundleIdentifier</key>
 	<string>no.panter.lunte</string>
 	<key>CFBundleInfoDictionaryVersion</key>

@@ -4,6 +4,7 @@
 //   plain FRAMES OUT WIDTH   a README clip's frames as they are, for scripts/hero.sh
 //   bar FRAMES OUT light|dark   the README's menu bar frames, rounded, on a backdrop, for scripts/hero.sh
 //   social FRAMES OUT.png   the repo's social preview, for scripts/hero.sh
+//   icon OUT.iconset   the app's icon at every size, for iconutil
 import AppKit
 import ImageIO
 import SwiftUI
@@ -16,6 +17,7 @@ struct RenderFuse {
         if args.count == 5, args[1] == "plain" { return plain(args[2], args[3], Double(args[4])!) }
         if args.count == 5, args[1] == "bar" { return bar(args[2], args[3], dark: args[4] == "dark") }
         if args.count == 4, args[1] == "social" { return social(args[2], args[3]) }
+        if args.count == 3, args[1] == "icon" { return icon(args[2]) }
         guard args.count == 3, ["sheet", "gif"].contains(args[1]) else { return print("usage: render-fuse sheet|gif OUT") }
         args[1] == "sheet" ? sheet(args[2]) : gif(args[2])
         print(args[2])
@@ -111,6 +113,46 @@ struct RenderFuse {
         renderer.scale = 1
         try! NSBitmapImageRep(cgImage: renderer.cgImage!).representation(using: .png, properties: [:])!
             .write(to: URL(fileURLWithPath: out))
+    }
+
+    /// The app's icon in DIR, every size iconutil wants, each drawn at its own size: the menu bar's Lunte the moment a
+    /// prompt lights it, when the flame is at its biggest, on a black squircle like a full-screen app's menu bar.
+    static func icon(_ dir: String) {
+        try! FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        var scene = FuseScene()
+        scene.update(FuseLook(), at: 0, animated: false)
+        scene.update(FuseLook(left: 0.96, prompt: 1, bite: 0.04), at: 1)
+        scene.still = true
+        let coil = stride(from: 0.0, through: 0.96, by: 0.005).map { FuseScene.restingPoint($0, head: 0, tail: 0.96) }
+        let tip = coil.last!, zoom = 20.0 // on a 1024 canvas
+        let middle = CGPoint(x: (coil.map(\.x).min()! + max(coil.map(\.x).max()!, tip.x + 1.5)) / 2,
+                             y: (coil.map(\.y).min()! + max(coil.map(\.y).max()!, tip.y + 3.5)) / 2) // with the flame
+        let squircle = RoundedRectangle(cornerRadius: 185.4, style: .continuous).path(in: CGRect(x: 100, y: 100, width: 824, height: 824)).cgPath
+        for points in [16, 32, 128, 256, 512] {
+            for scale in [1, 2] {
+                let px = points * scale, k = Double(px) / 1024
+                let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                ctx.scaleBy(x: k, y: k)
+                ctx.saveGState()
+                ctx.setShadow(offset: CGSize(width: 0, height: -10 * k), blur: 24 * k, color: CGColor(gray: 0, alpha: 0.3)) // device space
+                ctx.addPath(squircle)
+                ctx.setFillColor(CGColor(gray: 0.05, alpha: 1))
+                ctx.fillPath()
+                ctx.restoreGState()
+                ctx.saveGState()
+                ctx.addPath(squircle)
+                ctx.clip()
+                let shade = CGGradient(colorsSpace: nil, colors: [CGColor(gray: 0.17, alpha: 1), CGColor(gray: 0.03, alpha: 1)] as CFArray, locations: [0, 1])!
+                ctx.drawLinearGradient(shade, start: CGPoint(x: 0, y: 924), end: CGPoint(x: 0, y: 100), options: [])
+                ctx.restoreGState()
+                ctx.translateBy(x: 512 - middle.x * zoom, y: 512 - middle.y * zoom)
+                ctx.scaleBy(x: zoom, y: zoom)
+                scene.draw(ctx, at: 1.03, ink: CGColor(gray: 1, alpha: 0.92))
+                try! NSBitmapImageRep(cgImage: ctx.makeImage()!).representation(using: .png, properties: [:])!
+                    .write(to: URL(fileURLWithPath: "\(dir)/icon_\(points)x\(points)\(scale == 2 ? "@2x" : "").png"))
+            }
+        }
     }
 
     /// How many of the image's pixels are the flame's and the sparks' orange and yellow.
