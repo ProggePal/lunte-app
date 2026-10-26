@@ -2,13 +2,15 @@
 
 What changed for you in each version of Lunte.
 
-## Unreleased
+## 0.3.0
 
 ### Improvements
 - **A simpler popover.** It reads like your Mac's own menus now, Battery and Wi-Fi's margins and all. At the top, Lunte and how much fuse is left, like your battery's charge; once it's empty, what happened since, like Still burning or Calmed down. Under it, the fuse in a word, like Slow burn or Last third, and in its last 10 minutes, when your session ends. Under it, your session as dots: point at one to see that message. After a Boom, the dots make room right after it for one line about it, if you want; press return to send it, and it stays there as your bubble, with your Club's reactions popping in under it; point at one to see who. Today's earlier sessions sit right under yours, and the ones before open from Previously, like Other Networks in Wi-Fi. It opens like Battery's too, with no arrow and your fuse lit while it's open. Lunte Settings… is the last row, and opens a window with the sound and the rest.
 - **Clearer setup.** Three steps, one at a time: download the Heat Detector, connect to Claude Code, and tune hot and cool to you. Each says what to do while it's the one you're on, and you don't wait for the download: it fills a ring while you go on. Then: ready for your first Boom? Open Claude Code and type “3 2 1 boom”. Your first Boom looks like every Boom after it.
 - **Your Club gets its own window.** One row in the popover, with a dot when something's new, opens it: your Club's people, then every Boom like a group chat, with the line its owner wrote as their bubble, if they did, and reactions you can throw with a click.
 - **The fuse lives in your menu bar.** The 🧨 and its three little bars are now a real fuse, and it reacts to each prompt you send. While Lunte reads it, a breeze runs through it. Heat lights it and burns a bit away with sparks and ash, then the flame goes out. Cool feeds new fuse in from the other end, glowing green. In the last third the flame crawls and stutters and your screen dims a little, so you never know if it'll stop in time. If it burns right through, it races to the end, the flame dies, the screen goes dark, and nothing happens… for a second or a few. Then it blows, starting in slow motion: a flash, sparks and smoke down your screen. Then your menu bar just says Boom, then Chain reaction and Meltdown if you keep at it, Still burning while the heat keeps coming, and Calmed down once it's quiet. A new session lays out a fresh fuse. The bar is gone from the popover; the menu bar says it all.
+
+  ![The fuse in the menu bar](https://raw.githubusercontent.com/ProggePal/lunte-app/main/docs/clips/menubar.gif)
 - **Keep it cool.** Lunte now reads a second thing in every message: cool, when you talk to your agent like a buddy. Heat burns the fuse and cool grows it back. To tune it to you, Replay onboarding and paste the new setup prompt: your AI now rates cool as well as heat.
 - **Only what you typed counts.** Text you paste, images, and the notes your app adds ("Please continue from where you left off") no longer burn your fuse or grow it. And setup now asks your AI to rate some of your friendliest messages too, so Lunte learns your cool from real banter. Replay onboarding to retune.
 - **Grow your fuse.** Every session starts at 100 %, with room to grow. Cool with nothing left to mend makes your fuse longer, up to 125 %, its full three coils, and it stays that long until the session ends. Burns still heal after 30 minutes.
@@ -21,6 +23,7 @@ What changed for you in each version of Lunte.
 - **A quieter 💥.** Ten minutes after a Boom, the menu bar calms down to a faint 💥, so it doesn't shout for the rest of your session.
 - **A softer Boom.** The fuse fizzes for a moment before it blows, which takes the jump out of the bang, and the bang itself is a notch quieter. With the sound off, you hear neither.
 - **Fewer false alarms.** Tuned on 13 weeks of real use, the fuse lands around one or two Booms a week, and CAPS or "!!" on their own no longer burn it.
+- **Lunte has an icon.** The menu bar's fuse, lit, on black. You'll see it in Finder, in notifications and when Lunte updates.
 
 ### Fixes
 - The test Boom stays quiet when your sound is off.
@@ -29,6 +32,7 @@ What changed for you in each version of Lunte.
 - **Quitting doesn't lose your Boom.** Quitting or updating Lunte while the fuse burned used to lose the bang. Now the fuse lights again when Lunte opens, if the Boom is under 10 minutes old.
 - **One bang per session.** A rating that came in late could move your Boom to an earlier message and set it off again, bang and all. Now a session bangs once, and your comment and your Club's reactions stay with it.
 - **Shutting the lid doesn't give you away.** If your Mac went to sleep while the fuse burned, the bang used to go off the moment you opened it. Now that Boom stays quiet: it's on your card, with no sound or sparks, and your Club never hears of it.
+- **A resumed chat counts once.** Claude Code copies a chat's messages when you resume or fork it, and Lunte used to read those copies as new messages when it tuned your fuse. Now each message counts once.
 
 ## 0.2.2
 
