@@ -2,13 +2,13 @@
 
 What changed for you in each version of Lunte.
 
-## Unreleased
+## 0.4.0
 
 ### Improvements
-- **A real Boom.** The blast is new: a kaboom of three fireballs that cool from white-hot through orange to red and roll into faint smoke, the light they throw, a shockwave, and sparks that fly, streak and fall like real ones, all opening out of slow motion, with a new bang to match. Its fuse crawls and stalls like a close call, races out, goes dead quiet, then it blows, with nothing in between. Every Boom is its own, smaller or bigger; a big one sounds a little deeper, never louder.
-- **Sound settings.** Sound effects: Boom, just the Boom, as before; Sizzle adds the burning fuse, a sizzle that catches, goes silent when the crawl stalls, grows hotter and higher as it nears the end, and goes out in a tiny, real puff; Fireworks adds cool and a fresh fuse. One volume slider, and Lunte's name, version and Check for updates at the top.
-- **The fuse answers at once.** The breeze starts the moment you hit Enter, not a second later.
-- **No more dark screen.** In the last third your flame drips instead: burning drops fall slowly from it, more the nearer the end, until it goes out or you cool it down. A Boom showers them as it races out, then it's still, for a second or three, and it blows.
+- **A whole new Boom.** A real fireball, sparks and smoke, and a new bang. Every Boom is a little different.
+- **Suspense, then silence.** Near the end your fuse crawls, stalls and drips, so you never know if it'll make it. A Boom does the same, races out, goes quiet… then blows. No more dark screen.
+- **Hear your fuse.** Pick your sound effects in Settings: Boom is just the Boom, as before. Sizzle adds your fuse burning, hotter and higher near the end. Fireworks adds the rest.
+- **Instant.** Your fuse reacts the moment you hit Enter.
 
 ## 0.3.0
 
