@@ -127,7 +127,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Silverman & Barasch 2023](https://doi.org/10.1093/jcr/ucac029)
 
 ## whole-session-dots
-- **Rule:** The popover's dots cover the whole open session, not just the last 30 minutes. Past four rows, the oldest fold into a thin heat line, so a long session never grows the popover.
+- **Rule:** The popover's dots cover the whole open session, not just the last 30 minutes. Past eight rows the dots scroll, newest at the bottom with a fade at the top, so a long session never grows the popover past them.
 - **Principle:** Persistence. Game feel leaves traces, such as skid marks, trails and debris, that encode the past in what's on screen now, so you can rebuild what happened after you missed it.
 - **Evidence:** weak: craft knowledge, collected in a survey.
 - **Source:** [Pichlmair & Johansen 2020](https://arxiv.org/abs/2011.09201)
@@ -174,13 +174,13 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Sakurai on hitstop](https://sourcegaming.info/2015/11/11/thoughts-on-hitstop-sakurais-famitsu-column-vol-490-1/) (fan translation)
 
 ## summary-next-open
-- **Rule:** When a session closes, its summary waits for the next time you open the popover: how long it ran, its heat line, its one line, and its aura last. It shows once, then goes away, and History keeps it. Nothing pops up when a session closes.
+- **Rule:** When a session closes, its summary waits for the next time you open the popover: how long it ran, its one line, its aura, and then the fuse across it, which ends full again at the close. It shows once, then goes away, and Today keeps it. Nothing pops up when a session closes.
 - **Principle:** The peak-end rule. We remember an experience by its peak and its end, so the summary ends on the recovery and what it earned. A session closes after you've left, so its summary is a memory device, there when you next look.
 - **Evidence:** strong, though in a meta-analysis the plain average predicted about as well.
 - **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x)
 
 ## history-not-a-score
-- **Rule:** History lists your past sessions by day, each with its line and aura, and opens any one's summary again. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions.
+- **Rule:** Today lists today's earlier sessions, and Previously the ones before, by day, each as how many prompts and when, and opens any one's summary again. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions.
 - **Principle:** Being watched doesn't help. Across 94 samples, electronic performance monitoring didn't improve performance and went with more stress. Hours added up would turn Lunte into a work monitor, for you or for a boss.
 - **Evidence:** mixed: a meta-analysis, with small effects that vary with how the monitoring is done.
 - **Source:** [Ravid et al. 2023](https://doi.org/10.1111/peps.12514)

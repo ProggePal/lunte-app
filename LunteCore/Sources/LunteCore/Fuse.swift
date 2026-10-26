@@ -98,7 +98,7 @@ public enum Fuse {
            "$HOME/Library/Application Support/Lunte/lunte-hook" check-fuse
 
     7. Finish with one short line to the owner: how many messages you rated, that their session names are
-       set (without listing them), and that they should now type `3 2 1 pow` to light their tuned fuse. Lunte tunes itself as soon
+       set (without listing them), and that they should now type `3 2 1 boom` to light their tuned fuse. Lunte tunes itself as soon
        as the files appear.
     """
 }

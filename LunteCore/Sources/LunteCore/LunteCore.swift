@@ -72,6 +72,8 @@ public struct Sitting: Equatable, Sendable {
     public var start: Double
     /// Its last prompt so far. It closes `Game.sittingGap` after this, unless a rest closed it sooner.
     public var end: Double
+    /// The stick it was given.
+    public var fuse = Game.minFuse
     public var prompts = 0
     /// The hottest prompt, 0...1.
     public var peakHeat = 0.0

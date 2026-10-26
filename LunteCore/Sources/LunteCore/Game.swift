@@ -126,7 +126,7 @@ public enum Game {
             }
             dayEnds(by: e.ts)
             if sitting == nil {
-                sitting = Sitting(start: e.ts, end: e.ts)
+                sitting = Sitting(start: e.ts, end: e.ts, fuse: thermostat)
                 s.sittingStart = e.ts
                 s.fuse = thermostat
             }
@@ -188,6 +188,30 @@ public enum Game {
         dayEnds(by: now)
         if !s.sittingOpen || s.boomed { s.fuse = thermostat }
         return s
+    }
+
+    // Why: never fake a near-miss; the line dips exactly as far as the fuse did (docs/why.md#never-fake-reactions)
+    /// The fuse across a Sitting, as steps: what's left at its start, after each prompt that burns or mends, and as each
+    /// of those cools off, up to its close, when it's full again. 0 from the Boom on. `events` are the Sitting's.
+    public static func fuseLine(_ s: Sitting, _ events: [Event], now: Double) -> [(ts: Double, left: Double)] {
+        let close = s.end + sittingGap
+        let burns = events.filter { ![.heat, .test, .rest].contains($0.burn) && burn($0, at: now) != 0 }.sorted { $0.ts < $1.ts }
+        let times = Set([s.start, close] + burns.flatMap { [$0.ts, $0.ts + cooling] }).filter { $0 <= close }.sorted()
+        return times.map { t in
+            if let boom = s.boom, t >= boom.ts, t < close { return (t, 0) }
+            let burned = burns.filter { $0.ts <= t && t - $0.ts < cooling }.reduce(0) { max(0, $0 + burn($1, at: now)) }
+            return (t, max(0, 1 - burned / s.fuse))
+        }
+    }
+
+    /// The unblown fuse in a word, from what it did, never a guess at your mood: "Last third"; "Cooling off" once no
+    /// new heat has come for 5 minutes; "Slow burn" once it's been burning for `slowBurn`; "Burning"; else "Cool".
+    /// After a Boom, the menu bar's words take over.
+    public static func word(_ s: GameState, now: Double) -> String {
+        guard s.left < 1, let first = s.currentBurns.first, let last = s.currentBurns.last else { return "Cool" }
+        if inLastThird(s.left) { return "Last third" }
+        if now - last.ts >= 300 { return "Cooling off" } // ponytail: 5 minutes by feel, not tuned on a replay
+        return now - first.ts >= slowBurn ? "Slow burn" : "Burning"
     }
 
     // Why: competence; a close call is never missed by a rounding error (docs/why.md#close-call)

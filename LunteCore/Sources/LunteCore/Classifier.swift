@@ -4,7 +4,7 @@ import Foundation
 public enum Classifier {
     public static func classify(_ prompt: String) -> Burn {
         let text = clean(prompt)
-        if has(testPhrase, in: text) { return .test } // the onboarding phrase: "this is a test 3 2 1 pow"
+        if has(testPhrase, in: text) { return .test } // the onboarding phrase: "3 2 1 boom" (or "pow", as it used to be)
         let happy = has(happyWords, in: text)
         if has(losePhrases, in: text) || (!happy && has(swears, in: text)) { return .lose }
         // Why: heat is anger, not volume; !! and CAPS only turn a telling-off up (docs/why.md#heat-not-volume)
@@ -57,7 +57,7 @@ public enum Classifier {
         text.range(of: pattern, options: [.regularExpression, .caseInsensitive]).map { String(text[$0]) }
     }
 
-    static let testPhrase = "(?<![0-9])3\\W*2\\W*1\\W*pow(?!\(wordChar))"
+    static let testPhrase = "(?<![0-9])3\\W*2\\W*1\\W*(?:boom|pow)(?!\(wordChar))"
 
     // Pattern mini-language: a space is any whitespace, a trailing * is "any word ending", ' is either apostrophe.
     static let swears = words("fuck* shit* bitch* damn* crap* asshole* bastard* dick piss* bollocks wtf ffs omfg hell faen* helvete hælvete jævl* dritt* satan kuk pikk")

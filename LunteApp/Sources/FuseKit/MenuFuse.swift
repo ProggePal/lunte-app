@@ -24,6 +24,9 @@ public struct FuseLook: Equatable {
         self.phase = phase; self.left = left; self.prompt = prompt; self.rating = rating; self.bite = bite
         self.name = name; self.tier = tier; self.heat = heat; self.quiet = quiet
     }
+
+    /// Blown, the word the menu bar shows: the tier's name, "Still burning" or "Calmed down". The popover says the same.
+    public var word: String { FuseScene.caption(self).text }
 }
 
 /// The menu bar fuse, drawn as a pure function of time, so a preview can stop it on any frame. Only the fuse: a coil
@@ -39,7 +42,7 @@ public struct FuseLook: Equatable {
 /// - The Boom's own burn starts slow and races faster and faster to the end, where the flame dies in a puff. Then
 ///   nothing, for a second or a few, and then it blows: a flash, a shockwave, sparks, smoke and a jolt, easing in from a
 ///   near stop, and once the smoke clears just a symbol and a word in the menu bar's own colour.
-///   The tier's name, "Still burning" while the heat keeps coming, "Cooled off" once it's quiet, swapped with a little
+///   The tier's name, "Still burning" while the heat keeps coming, "Calmed down" once it's quiet, swapped with a little
 ///   spring and nothing more.
 /// - A new session feeds in a fresh fuse.
 ///
@@ -393,10 +396,10 @@ public struct FuseScene {
 
     static func named(_ look: FuseLook) -> Caption { Caption(symbol: "burst.fill", text: look.name) }
 
-    /// After the name has had its moment: "Still burning" while heat keeps coming, "Cooled off" once it's quiet.
+    /// After the name has had its moment: "Still burning" while heat keeps coming, "Calmed down" once it's quiet.
     static func caption(_ look: FuseLook) -> Caption {
         if look.heat >= 0.25 { return Caption(symbol: "flame.fill", text: "Still burning") }
-        if look.quiet { return Caption(symbol: "wind", text: "Cooled off") }
+        if look.quiet { return Caption(symbol: "wind", text: "Calmed down") }
         return named(look)
     }
 
@@ -886,7 +889,7 @@ public struct FusePreviews: View {
         ("Chain reaction", FuseLook(phase: .blown, name: "Chain reaction", tier: 2)),
         ("Meltdown", FuseLook(phase: .blown, name: "Meltdown", tier: 3)),
         ("Still burning", FuseLook(phase: .blown, heat: 0.6)),
-        ("Cooled off", FuseLook(phase: .blown, quiet: true)),
+        ("Calmed down", FuseLook(phase: .blown, quiet: true)),
     ]
 
     /// Each move, and how many seconds of it to show.
@@ -956,6 +959,26 @@ public struct FusePreviews: View {
         scene.update(from, at: -10, animated: false)
         scene.update(to, at: 0)
         return scene
+    }
+}
+
+/// The fuse at rest, full and unlit, as a still icon: the menu bar's own drawing, in the text's colour.
+public struct FuseIcon: View {
+    @Environment(\.colorScheme) private var scheme
+    public init() {}
+
+    public var body: some View {
+        Canvas { context, size in
+            var scene = FuseScene()
+            scene.update(FuseLook(), at: -10, animated: false)
+            let zoom = size.width / scene.width(at: 0)
+            context.withCGContext { ctx in
+                ctx.translateBy(x: size.width, y: size.height / 2 + 9 * zoom)
+                ctx.scaleBy(x: zoom, y: -zoom)
+                scene.draw(ctx, at: 0, ink: scheme == .dark ? CGColor(gray: 1, alpha: 0.85) : FuseScene.ink)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
