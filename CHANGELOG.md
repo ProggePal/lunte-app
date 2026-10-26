@@ -2,6 +2,14 @@
 
 What changed for you in each version of Lunte.
 
+## 0.4.0
+
+### Improvements
+- **A whole new Boom.** A real fireball, sparks and smoke, and a new bang. Every Boom is a little different.
+- **Suspense, then silence.** Near the end your fuse crawls, stalls and drips, so you never know if it'll make it. A Boom does the same, races out, goes quiet… then blows. No more dark screen.
+- **Hear your fuse.** Pick your sound effects in Settings: Boom is just the Boom, as before. Sizzle adds your fuse burning, hotter and higher near the end. Fireworks adds the rest.
+- **Instant.** Your fuse reacts the moment you hit Enter.
+
 ## 0.3.0
 
 ### Improvements

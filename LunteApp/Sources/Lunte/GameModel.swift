@@ -84,8 +84,14 @@ final class GameModel: ObservableObject {
     @Published private(set) var reactions = defaults.dictionary(forKey: "Reactions") as? [String: [String]] ?? [:]
     /// Your justification per Boom id, kept on this Mac. Your own words about a Boom, never a prompt.
     @Published private(set) var justifications = defaults.dictionary(forKey: "Justifications") as? [String: String] ?? [:]
-    @Published var soundOn = defaults.object(forKey: "SoundOn") as? Bool ?? true {
-        didSet { defaults.set(soundOn, forKey: "SoundOn") }
+    /// What Lunte plays, only the Boom until you ask for more.
+    // Why: the Boom is the only sound unless you ask (docs/why.md#fuse-sounds-opt-in)
+    @Published var sounds = Sounds(rawValue: defaults.string(forKey: "Sounds") ?? "") ?? .boom {
+        didSet { defaults.set(sounds.rawValue, forKey: "Sounds") }
+    }
+    /// How loud, 0 (silent) to 1, a share of `Bang.cap`. It was a switch, "SoundOn".
+    @Published var volume = defaults.object(forKey: "Volume") as? Double ?? (defaults.object(forKey: "SoundOn") as? Bool ?? true ? 1 : 0) {
+        didSet { defaults.set(volume, forKey: "Volume") }
     }
     /// Booms done with for good (`announce`), and the onboarding tests.
     private var announced = Set(defaults.stringArray(forKey: "Announced") ?? [])
@@ -105,17 +111,23 @@ final class GameModel: ObservableObject {
     private var fileSource: DispatchSourceFileSystemObject?
     private var watchedInode: Int?
     private var debounce: Task<Void, Never>?
+    /// The prompt the hook just handed to the model, by its time, until the log has it: the breeze starts on it at once,
+    /// about 15 ms after Enter, not when the log comes round a second later.
+    // Why: your own feedback is instant (docs/why.md#two-clocks)
+    @Published private var heard: Double?
     private var polling = false
 
     init() {
         Notifier.setUp()
-        linkHook()
+        let demo = ["FuseDemo", "Lab"].contains { UserDefaults.standard.bool(forKey: $0) } || UserDefaults.standard.string(forKey: "HeroDemo") != nil
+        if !demo { linkHook() } // a demo build never takes your Claude Code hook from your own Lunte
         let dir = log.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         dirSource = watch(dir.path, [.write]) { [weak self] in self?.changed() } // events.jsonl created, replaced or removed
         // The fuse folder, where your AI saves labels.json and vibes.json (`lunte-hook setup` tells it how).
         try? FileManager.default.createDirectory(at: Fuse.dir, withIntermediateDirectories: true)
         scorer = Scorer(log: log) { [weak self] in self?.fuse = $0 }
+        scorer?.heard = { [weak self] in self?.heard = $0 }
         if HeatDetector.isInstalled() { setUpDetector() }
         loadPersonalVibes()
         fuseSource = watch(Fuse.dir.path, [.write]) { [weak self] in
@@ -204,6 +216,8 @@ final class GameModel: ObservableObject {
         if testBlown { return FuseLook(phase: .blown, name: tier(1).name) } // the test Boom has no tier
         guard state.boomed, let boom = state.booms.last else {
             let last = session.last, now = Date().timeIntervalSince1970
+            // Heard from the hook and not in the log yet: the same look the log will bring, a breeze while it's rated.
+            if let heard, heard > last?.ts ?? 0, now - heard < Game.ratingWait { return FuseLook(left: state.left, prompt: heard, rating: true) }
             let bite = last.map { (Game.burn($0, at: now) + Game.mend($0)) / state.fuse } ?? 0 // its heat alone
             return FuseLook(left: state.left, prompt: last?.ts, rating: last?.awaitingRating(at: now) ?? false, bite: bite)
         }
@@ -447,18 +461,20 @@ final class GameModel: ObservableObject {
 
     /// The silence between the fuse burning through and the bang, at random, so the room has to guess who it was.
     // Why: your own feedback is instant, the room's Boom is delayed (docs/why.md#two-clocks)
-    static let silence = 1.0...6.0
+    static let silence = 1.0...3.0
 
-    /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: a fizz and the
-    /// bang, with `sound`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
+    /// The fuse burns for `seconds` (sparks dripping from the menu bar icon), then it blows from the icon: the bang, at
+    /// `volume`. `boom` goes to the Club at the bang, sound or not, never before, so no Mac pings ahead of the room.
     /// If the Mac slept through the wait, there's no bang and it never goes.
     /// A test isn't a Boom in the game, so the menu bar says BOOM on its own: until onboarding's fresh stick, or for 10 s.
-    private func light(_ seconds: Double, sound: Bool, test: Bool = false, posting boom: Boom? = nil) {
+    private func light(_ seconds: Double, volume: Double, test: Bool = false, posting boom: Boom? = nil) {
         fusing = true
         for (sitting, id) in burning { announce(id, sitting: sitting) } // a new Blast replaces a running one: no bang for it
         let key = boom.map(sittingKey)
         if let boom, let key { burning[key] = boom.id }
-        Blast.run(fuse: seconds, sound: sound) { [weak self] blew in
+        // Each Boom blows its own way, from its id, so it looks the same if it lights again after a restart.
+        let scene = BlastScene(seed: boom.flatMap { UInt64($0.id) } ?? .random(in: 0 ... .max))
+        Blast.run(fuse: seconds, volume: volume, scene: scene) { [weak self] blew in
             guard let self else { return }
             fusing = false
             if let boom { announce(boom.id, sitting: key) }
@@ -519,6 +535,7 @@ final class GameModel: ObservableObject {
         rewatchLog()
         let now = Date().timeIntervalSince1970
         let events = EventLog.read(log)
+        if let heard, events.contains(where: { $0.ts >= heard }) { self.heard = nil } // the log has it now, whatever it was
         state = Game.replay(events, now: now)
         messages = events.filter { $0.burn != .test && $0.burn != .rest }
         session = state.sittingStart.map { start in messages.filter { $0.ts >= start } } ?? []
@@ -536,7 +553,7 @@ final class GameModel: ObservableObject {
             guard burning[key] == nil else { continue } // its Sitting's fuse is burning, and that bang announces it
             // Older than 10 minutes, or its Sitting was lit already and a late rating moved the Boom: announced silently.
             guard now - boom.ts < 600, lit[key] == nil else { announce(boom.id); continue }
-            light(FuseScene.raceFor + .random(in: Self.silence), sound: soundOn, posting: boom)
+            light(FuseScene.raceFor + .random(in: Self.silence), volume: volume, posting: boom)
         }
     }
 
@@ -572,7 +589,7 @@ final class GameModel: ObservableObject {
         defaults.set(true, forKey: "Connected")
         defaults.set(Array(announced), forKey: "Announced")
         guard fresh.contains(where: { now - $0.ts < 600 }) else { return }
-        light(FuseScene.raceFor + 2, sound: soundOn, test: true) // the whole show: the burn, the silence, the bang
+        light(FuseScene.raceFor + 2, volume: volume, test: true) // the whole show: the burn, the silence, the bang
     }
 
     /// Onboarding: you own the test Boom, and 10 seconds later you get your first fresh stick. Kept on this Mac only.

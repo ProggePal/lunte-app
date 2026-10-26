@@ -24,7 +24,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" "$app/Contents/Resourc
 cp Resources/Info.plist "$app/Contents/Info.plist"
 cp "$app_bin/Lunte" "$core_bin/lunte-hook" "$app/Contents/MacOS/"
 ditto --norsrc --noextattr "$app_bin/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
-cp Resources/boom.wav Resources/Lunte.icns "$app/Contents/Resources/"
+cp Resources/{boom,grow,fresh,puff,fuse}.wav Resources/Lunte.icns "$app/Contents/Resources/"
 cp LunteApp/Sources/LayaKit/LICENSE "$app/Contents/Resources/LayaKit-LICENSE.txt" # Apache-2.0 travels with the binary
 cp LunteApp/.build/artifacts/sparkle/Sparkle/LICENSE "$app/Contents/Resources/Sparkle-LICENSE.txt" # so does Sparkle's MIT
 ditto --norsrc --noextattr plugin "$app/Contents/Resources/plugin"

@@ -59,6 +59,9 @@ final class Scorer {
     private var listener: DispatchSourceRead?
     private let log: URL
     private let report: (Status) -> Void
+    /// Told the moment the hook hands over a prompt, with its time, before the model rates it, so the fuse can answer
+    /// at once instead of when the log comes round.
+    var heard: (Double) -> Void = { _ in }
 
     init(log: URL, report: @escaping (Status) -> Void) {
         self.log = log
@@ -103,6 +106,7 @@ final class Scorer {
     private func rate(_ line: Data) {
         guard let laya, let r = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
               let ts = r["ts"] as? Double, let text = r["text"] as? String else { return }
+        heard(ts)
         let log = log, profile = profile, coolProfile = coolProfile
         Task.detached(priority: .utility) {
             guard let answers = await Scorer.answers(laya, text, all: profile != nil || coolProfile != nil) else { return }
