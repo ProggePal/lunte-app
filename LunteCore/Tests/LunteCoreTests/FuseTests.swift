@@ -53,6 +53,17 @@ final class FuseTests: XCTestCase {
         XCTAssertEqual(bad.problems, [#""lunte" must be "fuse-labels""#, "1 ratings are outside 0–3"])
     }
 
+    /// vibes.json v 2 holds session names: the bands are calm, cool, hot and explosive. A v 1 file still checks out.
+    func testSessionNamesNeedEveryBand() {
+        let name = { (band: Vibe.Band) in Vibe("🚀", "Mad push to prod", band, when: "w", story: "s") }
+        let v2 = FuseVibes(lunte: "fuse-vibes", v: 2, made: nil, vibes: [.calm, .cool, .hot, .explosive].map(name))
+        XCTAssertEqual(v2.problems, [])
+        XCTAssertEqual(FuseVibes(lunte: "fuse-vibes", v: 2, made: nil, vibes: [.calm, .hot, .explosive].map(name)).problems, ["no vibes for: cool"])
+        XCTAssertEqual(FuseVibes(lunte: "fuse-vibes", v: 1, made: nil, vibes: [.calm, .warm, .hot, .explosive].map(name)).problems, [])
+        XCTAssertTrue(Fuse.setupText.contains(#""v": 2"#)) // setup asks for session names
+        XCTAssertFalse(Fuse.setupText.contains("pet peeves")) // names are a pat on the back, never a verdict
+    }
+
     func testLabelsWithAndWithoutCool() throws {
         let old = #"{"lunte":"fuse-labels","v":1,"labels":[{"sid":"s1","ts":1792744463.009,"rating":2}]}"#
         let before = try JSONDecoder().decode(FuseLabels.self, from: Data(old.utf8)) // a file from before cool
@@ -69,11 +80,13 @@ final class FuseTests: XCTestCase {
         XCTAssertTrue(Fuse.setupText.contains(#""rating": 3, "cool": 0"#)) // the AI is asked for both
     }
 
-    func testCandidatesMixTemperAndCalm() {
-        let all = (0..<1000).map { Transcript.Message(sid: "s", ts: Double($0), text: $0 % 50 == 0 ? "why did you do that" : "rename foo to bar") }
+    func testCandidatesMixTemperBanterAndCalm() {
+        let text = { (i: Int) -> String in i % 50 == 0 ? "why did you do that" : i % 40 == 1 ? "nice one bro" : "rename foo to bar" }
+        let all = (0..<1000).map { Transcript.Message(sid: "s", ts: Double($0), text: text($0)) }
         let picked = Fuse.candidates(all, count: 300)
         XCTAssertEqual(picked.count, 300)
         XCTAssertEqual(picked.filter { $0.text.hasPrefix("why") }.count, 20) // every flagged one
+        XCTAssertEqual(picked.filter { $0.text.hasPrefix("nice") }.count, 25) // and every one that looks like banter
         XCTAssertEqual(picked.map(\.ts), picked.map(\.ts).sorted())
         XCTAssertEqual(Fuse.candidates(Array(all.prefix(10))).count, 10)
         XCTAssertFalse(Fuse.setupPrompt.contains("pow")) // pasting the prompt must never Boom

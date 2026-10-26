@@ -14,16 +14,19 @@ public enum Fuse {
     /// the test phrase, so pasting it can't Boom; your AI's last line tells you to type it.
     public static let setupPrompt = #"Let's set up Lunte. Look at my messages and tune the sensitivity and the vibes. Lunte's setup tool is at "$HOME/Library/Application Support/Lunte/lunte-hook": run it with setup for the steps. Let me know when you're done :)"#
 
-    /// Messages for your AI to rate, oldest first: everything the word list flags (up to a third of `count`),
-    /// then an even spread of the rest, so there's both temper and calm to learn from.
+    /// Messages for your AI to rate, oldest first: the latest the word list flags and the latest that look like banter
+    /// (up to a third of `count` each), then an even spread of the rest, so there's temper, banter and calm to learn from.
+    // Why: an even spread of a mostly plain history held 29 cool messages in 300, too few to learn cool from
+    // (docs/why.md#cool-grows)
     public static func candidates(_ all: [Transcript.Message], count: Int = 300) -> [Transcript.Message] {
-        let flagged = all.filter { [.tell, .lose].contains(Classifier.classify($0.text)) }
-        let hot = Array(flagged.suffix(count / 3))
-        let calm = all.filter { m in !hot.contains { $0.ts == m.ts && $0.sid == m.sid } }
-        let want = min(calm.count, count - hot.count)
+        let same = { (a: Transcript.Message, b: Transcript.Message) in a.ts == b.ts && a.sid == b.sid }
+        let hot = Array(all.filter { [.tell, .lose].contains(Classifier.classify($0.text)) }.suffix(count / 3))
+        let cool = Array(all.filter { m in Classifier.looksCool(m.text) && !hot.contains { same($0, m) } }.suffix(count / 3))
+        let calm = all.filter { m in !(hot + cool).contains { same($0, m) } }
+        let want = min(calm.count, count - hot.count - cool.count)
         let step = want > 0 ? Double(calm.count) / Double(want) : 1 // ponytail: an even spread, not random, so reruns agree
         let spread = (0..<want).map { calm[Int(Double($0) * step)] }
-        return (hot + spread).sorted { $0.ts < $1.ts }
+        return (hot + cool + spread).sorted { $0.ts < $1.ts }
     }
 
     public static let setupText = """
@@ -39,7 +42,7 @@ public enum Fuse {
            "$HOME/Library/Application Support/Lunte/lunte-hook" messages
 
        One JSON object per line: {"sid", "ts", "text"}. About 300 messages from the last 60 days: the ones that look
-       heated plus an even spread of the rest. Long ones are cut short.
+       heated, the ones that look friendly, and an even spread of the rest. Long ones are cut short.
 
     2. Rate every message for heat, 0–3: how angry was the owner at the assistant? Heat means anger, not volume:
        capitals, swearing and !!! out of joy are 0 ("LETS GO", "lets fucking go", "faen så bra"), and sarcasm is heat
@@ -68,30 +71,34 @@ public enum Fuse {
            {"lunte": "fuse-labels", "v": 1, "rater": "<your model name>", "made": "<today as YYYY-MM-DD>",
             "labels": [{"sid": "…", "ts": 1792744463.009, "rating": 3, "cool": 0}, …]}
 
-    5. Write about 20 personal vibes to ~/Library/Application Support/Lunte/fuse/vibes.json. A vibe names how a
-       stretch of a session feels, in Lunte's voice: dry, understated, a bit British ("Running rather hot",
-       "Firm but fair", "Suspiciously calm"). Base them on patterns you saw across the owner's chats: their kinds of
-       work, hours, habits and pet peeves. Spread them over the bands: about 6 calm, 6 warm, 5 hot and 3 explosive.
+    5. Write about 24 session names to ~/Library/Application Support/Lunte/fuse/vibes.json. When a session ends,
+       Lunte names it after what the owner did and how it went: "Mad push to prod", "Brainstorm firestorm",
+       "Business plan hours". Base them on the owner's own work, hours and habits, so they read like their week.
+       A name is a pat on the back or a laugh, never a verdict: no blame, nothing they did wrong, no anger words, and
+       nothing about how the assistant took it. Plain words with a wink, in Lunte's voice: dry, understated, a bit
+       British. No puns on puns, no emoji in the label. Spread them over the bands: about 6 calm, 6 cool, 6 hot and
+       6 explosive.
 
-           {"lunte": "fuse-vibes", "v": 1, "made": "<today as YYYY-MM-DD>", "vibes": [
-             {"emoji": "🧯", "label": "Migration grief", "band": "hot", "topic": "code",
-              "when": "the database keeps breaking and patience runs out",
-              "story": "What began as a tidy rename slowly became a test of human patience."}, …]}
+           {"lunte": "fuse-vibes", "v": 2, "made": "<today as YYYY-MM-DD>", "vibes": [
+             {"emoji": "🚀", "label": "Mad push to prod", "band": "hot", "topic": "shipping",
+              "when": "shipping in a hurry with the fuse running short",
+              "story": "Everything went out the door, some of it smouldering."}, …]}
 
        - label: 2 to 4 words. emoji: one. when: when it fits, at most 12 words. story: one dry sentence, at most 15 words.
-       - band: calm, warm, hot or explosive (explosive is right after the fuse blows).
-       - topic: what the work is about when this vibe fits: code, design, writing, business, voice, shipping or ideas.
-         Use "any" for vibes about mood, time or habits rather than a kind of work. A topic vibe only shows up when
-         the session is about that topic.
-       - About the mood, not the content: no quotes from messages, no names, nothing private.
-       - Don't show the vibes to the owner. They're found by playing.
+       - band: how the session went. calm: the fuse barely moved. cool: it grew, from banter, hype or thanks.
+         hot: it burned through half or more, or nearly blew. explosive: it blew; make it funny, never shaming.
+       - topic: what the work is about when this name fits: code, design, writing, business, voice, shipping or ideas.
+         Use "any" for names about time or habits rather than a kind of work. A topic name only shows up when the
+         session is about that topic.
+       - About what they did, not the content: no quotes from messages, no names, nothing private.
+       - Don't show the names to the owner. They're found by playing.
 
     6. Check both files, and fix anything it reports:
 
            "$HOME/Library/Application Support/Lunte/lunte-hook" check-fuse
 
-    7. Finish with one short line to the owner: how many messages you rated, that their vibes are set (without
-       listing them), and that they should now type `3 2 1 boom` to light their tuned fuse. Lunte tunes itself as soon
+    7. Finish with one short line to the owner: how many messages you rated, that their session names are
+       set (without listing them), and that they should now type `3 2 1 boom` to light their tuned fuse. Lunte tunes itself as soon
        as the files appear.
     """
 }

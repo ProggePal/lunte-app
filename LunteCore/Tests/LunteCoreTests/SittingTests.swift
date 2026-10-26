@@ -102,6 +102,23 @@ final class SittingTests: XCTestCase {
         XCTAssertEqual(line.last?.left, 1) // full again at the close
     }
 
+    /// And when cool grew it: the line climbs past 1, burns come off the grown fuse, and the session says how far it grew.
+    func testFuseLineShowsWhatCoolGrew() {
+        let events = [at(0, heat: 0, cool: 1), at(5, heat: 0, cool: 0.8), at(10, heat: 0.6), at(20, heat: 0.5, cool: 0.5), at(45)]
+        let s = first(events), line = Game.fuseLine(s, events, now: t0 + 100_000)
+        for (ts, left) in line.dropLast() {
+            XCTAssertEqual(left, Game.replay(events.filter { $0.ts <= ts }, now: ts, timeZone: utc).left, accuracy: 1e-9, "at \(ts)")
+        }
+        XCTAssertEqual(line.map(\.left).max(), Game.full)
+        XCTAssertEqual(line.last?.left, 1) // fresh at the close
+        XCTAssertEqual(Game.sessionLine(s, timeZone: utc), "Grew to full. 5 prompts.")
+        XCTAssertEqual(self.line([at(0, heat: 0, cool: 0.6), at(1)]), "Grew to 109 %. 2 prompts.")
+        // Prompts that land at the same moment count one after another, as the replay counts them.
+        let twins = [at(0, heat: 0.4), at(3, heat: 0, cool: 0.5), at(3, heat: 0, cool: 0.5), at(3, heat: 0, cool: 0.5)]
+        let steps = Game.fuseLine(first(twins), twins, now: t0 + 100_000)
+        XCTAssertEqual(steps.first { $0.ts == t0 + 180 }!.left, Game.replay(twins, now: t0 + 180, timeZone: utc).left, accuracy: 1e-9)
+    }
+
     func testFuseLineIsEmptyFromTheBoom() {
         let events = [at(2, .tell), at(7, heat: 0.5), at(12, .lose), at(14, .tell)]
         let s = first(events), boom = s.boom!.ts

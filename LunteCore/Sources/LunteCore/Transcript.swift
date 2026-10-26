@@ -45,7 +45,9 @@ public enum Transcript {
                 out += parse(data, human: true).filter { $0.ts >= since }.map { Message(sid: sid, ts: $0.ts, text: $0.text) }
             }
         }
-        return out.sorted { $0.ts < $1.ts }
+        // A resumed or forked chat copies its history into a new file: the same prompt, at the same time, counts once.
+        var seen = Set<String>()
+        return out.sorted { $0.ts < $1.ts }.filter { seen.insert("\($0.ts) \($0.text)").inserted }
     }
 
     private static func parse(_ data: Data, human: Bool) -> [(ts: Double, text: String)] {

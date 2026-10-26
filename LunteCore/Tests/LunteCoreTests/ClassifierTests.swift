@@ -55,6 +55,22 @@ final class ClassifierTests: XCTestCase {
         XCTAssertEqual(Classifier.classify(Classifier.human(midTurn)), .none)
         XCTAssertEqual(Classifier.human("<agent-message from=\"x\">cut off mid-report, wtf"), "") // unclosed block
         XCTAssertEqual(Classifier.human("why did you <b>delete</b> it"), "why did you <b>delete</b> it")
+        // What the app adds isn't you either: a paste, an image, its own notes. An image path lit a Boom on 25 Oct.
+        XCTAssertEqual(Classifier.human("why is this still broken <pasted_content id=\"a242\">\nFATAL: idiot\n</pasted_content>"), "why is this still broken")
+        XCTAssertEqual(Classifier.human("[Image: source: /private/tmp/x/images/4.png]"), "")
+        XCTAssertEqual(Classifier.human("same size please [Image #10]"), "same size please")
+        XCTAssertEqual(Classifier.human("The app was quit while you were working. Please continue from where you left off."), "")
+        XCTAssertEqual(Classifier.human("<create-pr-command>\n## Overview\n</create-pr-command>"), "")
+    }
+
+    /// Setup asks your AI to rate messages that look like banter, so the cool model has some to learn from.
+    func testLooksCool() {
+        for text in ["lets fucking go!", "nice one bro", "haha nailed it", "sykt bra 🔥", "good job on the close call"] {
+            XCTAssertTrue(Classifier.looksCool(text), text)
+        }
+        for text in ["rename foo to bar", "automate the material", "fix the login bug", "add eggs"] {
+            XCTAssertFalse(Classifier.looksCool(text), text)
+        }
     }
 
     // Word boundaries, Norwegian letters and a few near misses.

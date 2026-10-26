@@ -48,12 +48,11 @@ final class Scorer {
             .init("A", description: "plenty"), .init("B", description: "some"), .init("C", description: "very little"), .init("D", description: "none")]), 1000),
     ]
 
-    /// What a message is about, for the vibe line. Asked on its own, so it never changes a trained fuse's features.
+    /// What a message is about, for session names (`Story.activity`) and the vibe line. Asked on its own, so it never
+    /// changes a trained fuse's features.
     nonisolated static let topicQuestion = LayaQuestion.choice("What is this message to an AI assistant about?",
                                                              options: Vibe.topics.map { .init($0.name, description: $0.about) })
 
-    /// Ask the topic question too; only while vibes are on (`GameModel.vibesOn`).
-    var topicsOn = false
     private var laya: LayaManager?
     private var profile: PersonalFuse?
     private var coolProfile: PersonalFuse?
@@ -104,13 +103,14 @@ final class Scorer {
     private func rate(_ line: Data) {
         guard let laya, let r = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
               let ts = r["ts"] as? Double, let text = r["text"] as? String else { return }
-        let log = log, profile = profile, coolProfile = coolProfile, topicsOn = topicsOn
+        let log = log, profile = profile, coolProfile = coolProfile
         Task.detached(priority: .utility) {
             guard let answers = await Scorer.answers(laya, text, all: profile != nil || coolProfile != nil) else { return }
             let mood = answers[0], features = Scorer.features(answers)
             let heat = profile.map { $0.heat(features) } ?? Double(mood.probabilities[0])
             let cool = coolProfile.map { $0.heat(features) } // the cool model's heat is cool
-            let topic = topicsOn ? try? await laya.answer(state: String(text.prefix(1000)), question: Scorer.topicQuestion).selectedLabel : nil
+            // What it's about, one word, so a finished session can be named for its work (`Story.activity`).
+            let topic = try? await laya.answer(state: String(text.prefix(1000)), question: Scorer.topicQuestion).selectedLabel
             try? EventLog.append(Event(ts: ts, burn: .heat, heat: heat, cool: cool, mood: mood.selectedLabel, topic: topic), to: log) // the watcher reloads
         }
     }

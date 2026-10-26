@@ -30,10 +30,10 @@ final class GameModel: ObservableObject {
     @Published private(set) var session: [Event] = []
     /// Closed sessions with a message of yours in them (not just the onboarding test), oldest first. On this Mac only.
     @Published private(set) var past: [Sitting] = []
-    /// The last session's summary, each time the popover opens after it closed, until its card has shown once.
-    @Published private(set) var summary: Sitting?
-    /// The start of the last session summarised, so each summary shows once.
-    private var summarised = defaults.double(forKey: "Summarised")
+    /// Each closed session's name (`Story.names`), by when it started.
+    @Published private(set) var names: [Double: String] = [:]
+    /// When the newest session you've opened in Today started: a newer one waits there with a dot.
+    @Published private(set) var seen = defaults.double(forKey: "SeenSession")
     /// The fuse is burning towards a Boom that hasn't gone off yet.
     @Published private(set) var fusing = false
     /// A test Boom has blown, so the menu bar says BOOM.
@@ -43,7 +43,6 @@ final class GameModel: ObservableObject {
     @Published var vibesOn = defaults.bool(forKey: "VibesOn") {
         didSet {
             defaults.set(vibesOn, forKey: "VibesOn")
-            scorer?.topicsOn = vibesOn
             vibe = nil
             vibePicked = nil
             vibesFile = []
@@ -115,7 +114,6 @@ final class GameModel: ObservableObject {
         // The fuse folder, where your AI saves labels.json and vibes.json (`lunte-hook setup` tells it how).
         try? FileManager.default.createDirectory(at: Fuse.dir, withIntermediateDirectories: true)
         scorer = Scorer(log: log) { [weak self] in self?.fuse = $0 }
-        scorer?.topicsOn = vibesOn
         if HeatDetector.isInstalled() { setUpDetector() }
         loadPersonalVibes()
         fuseSource = watch(Fuse.dir.path, [.write]) { [weak self] in
@@ -136,7 +134,7 @@ final class GameModel: ObservableObject {
     #if DEBUG
     /// For previews: the game these events make, now, with their prompts' text. Nothing is watched, polled, sent or saved.
     init(preview events: [Event], texts: [Double: String], club: String? = "Antler", feed: [ClubEvent] = [],
-         line: String? = nil, reactions: [String] = [], summary: Bool = false, members: [String] = [], mine: Set<String> = []) {
+         line: String? = nil, reactions: [String] = [], members: [String] = [], mine: Set<String> = []) {
         connected = true
         onboarded = true
         detector = .ready
@@ -144,7 +142,7 @@ final class GameModel: ObservableObject {
         messages = events
         session = state.sittingStart.map { start in events.filter { $0.ts >= start } } ?? []
         past = state.sittings.filter { !$0.isOpen }
-        self.summary = summary ? past.last : nil
+        names = named(past, now: Date().timeIntervalSince1970, personal: [])
         promptCache = texts
         self.club = club.map { _ in "PREVIEW" }
         clubName = club
@@ -184,11 +182,12 @@ final class GameModel: ObservableObject {
         return Date().timeIntervalSince1970 - last.cooled < Self.heldFor
     }
 
-    /// How long the menu bar says BOOM after the Boom or its last escalation, before it quiets down.
+    /// How long the menu bar keeps the tier's name, or "Still burning", after the Boom or its last escalation, before it
+    /// says "Cooled off".
     // Why: calm technology; a Boom shouts once, then steps back (docs/why.md#quiet-boom)
     static let loudFor: Double = 600
 
-    /// Blown for a while: the menu bar's 💥 has quieted down, while the popover still says you're blown. The 60-second
+    /// Blown for a while: the menu bar says "Cooled off", while the popover still says you're blown. The 60-second
     /// reload quiets it on time.
     var boomQuiet: Bool {
         guard state.boomed, let boom = state.booms.last else { return false }
@@ -197,6 +196,7 @@ final class GameModel: ObservableObject {
 
     /// What the menu bar fuse shows. After a Boom, its heat is how far the burn has got toward the next tier.
     var fuseLook: FuseLook {
+        assert(FuseScene.full == Game.full) // the menu bar draws the game's full
         guard connected else { return FuseLook(phase: .offline) }
         if fusing { return FuseLook(phase: .fusing, left: 0) }
         if testBlown { return FuseLook(phase: .blown, name: tier(1).name) } // the test Boom has no tier
@@ -220,23 +220,22 @@ final class GameModel: ObservableObject {
 
     // MARK: Sessions
 
-    /// The popover opened: after a session closed, and before the next one starts, its summary shows.
-    // Why: the peak-end rule; the summary waits for your next look (docs/why.md#summary-next-open)
-    func popoverOpened() {
-        guard onboarded, state.sitting == nil, let last = past.last, last.start > summarised else { return }
-        summary = last
+    /// You opened a session in Today: the newest one you've opened stops waiting with a dot.
+    // Why: a finished session waits in Today for your next look (docs/why.md#summary-next-open)
+    func opened(_ s: Sitting) {
+        guard s.start > seen else { return }
+        seen = s.start
+        defaults.set(seen, forKey: "SeenSession")
     }
 
-    /// The summary card is on screen, so it's used up. Not before: another screen, like the Heat Detector's, can fill
-    /// the popover instead.
-    func summaryShown() {
-        guard let summary else { return }
-        summarised = summary.start
-        defaults.set(summarised, forKey: "Summarised")
+    /// The closed sessions' names, from their facts and the session names your AI wrote at setup (vibes.json v 2).
+    // ponytail: named from the first session on every reload; keep the names if history gets long enough to notice
+    private func named(_ past: [Sitting], now: Double, personal: [Vibe]? = nil) -> [Double: String] {
+        let file = personal == nil ? (try? Data(contentsOf: Fuse.vibesURL)).flatMap { try? JSONDecoder().decode(FuseVibes.self, from: $0) } : nil
+        let yours = personal ?? (file?.v == 2 ? file!.vibes.map { var v = $0; if v.topic == "any" { v.topic = nil }; return v } : [])
+        let told = past.map { s in let m = messages(in: s); return (sitting: s, events: m, line: Game.fuseLine(s, m, now: now)) }
+        return Dictionary(zip(past.map(\.start), Story.names(told, personal: yours)), uniquingKeysWith: { a, _ in a })
     }
-
-    /// The popover closed: the summary goes away. History keeps it.
-    func popoverClosed() { summary = nil }
 
     /// A session's messages, oldest first, for its heat line.
     func messages(in s: Sitting) -> [Event] { messages.filter { $0.ts >= s.start && $0.ts <= s.end } }
@@ -523,6 +522,7 @@ final class GameModel: ObservableObject {
         session = state.sittingStart.map { start in messages.filter { $0.ts >= start } } ?? []
         let tests = events.filter { $0.burn == .test }.map(\.ts)
         past = state.sittings.filter { s in !s.isOpen && s.prompts > tests.filter { $0 >= s.start && $0 <= s.end }.count }
+        names = named(past, now: now)
         recent = Array(messages.filter { now - $0.ts < Game.cooling }.suffix(200)) // ponytail: capped for a very busy half hour
         updateVibe(now)
         lastActivity = events.last { $0.burn != .rest }?.ts

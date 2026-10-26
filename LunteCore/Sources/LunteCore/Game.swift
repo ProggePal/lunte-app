@@ -13,6 +13,9 @@ public enum Game {
     public static let cooling: Double = 1800    // a burn counts for 30 minutes
     // Why: humour as reappraisal (docs/why.md#cool-mends)
     public static let coolMend = 0.5            // a cool prompt mends coolMend × cool² of what's burning
+    // Why: a head start and room to grow, so a session has something to be proud of (docs/why.md#cool-grows)
+    public static let full = 1.25               // cool grows a Sitting's stick up to a quarter past whole
+    public static let growRate = 0.5            // the share of a cool prompt's spare mend that grows it
     // Why: venting feeds anger; tiers are for the same outburst, so most Booms stay plain (docs/why.md#tiers-flavour-not-volume)
     public static let maxTier = 3               // Boom, Chain reaction, Meltdown
     public static let escalationStep = 0.5      // each further half of the stick that blew is one tier up
@@ -63,8 +66,8 @@ public enum Game {
         var stick = minFuse         // the stick that blew: each further half of it is a tier
         var dip: Double?            // when the stick got into its last third
 
-        // Each message in turn adds its burn, never below 0, so cool can't be banked before the heat. A dip into the
-        // last third that climbs back out without a Boom is a close call.
+        // Each message in turn adds its burn, never below 0, so cool can't be banked against heat to come: what it has
+        // spare grows the stick instead. A dip into the last third that climbs back out without a Boom is a close call.
         func settle(at t: Double) {
             s.burned = burning.reduce(0) { max(0, $0 + burn($1, at: now)) }
             guard !s.boomed else { return }
@@ -109,6 +112,7 @@ public enum Game {
             burning = []
             dip = nil
             s.burned = 0
+            s.grown = 0
             s.boomed = false
             s.currentBurns = []
             s.sittingStart = nil
@@ -142,10 +146,17 @@ public enum Game {
                 sitting!.lastBurn = e.ts
             }
             guard burn(e, at: now) != 0 else { continue }
+            // Why: cool with nothing left to mend grows this Sitting's stick, up to full, until it closes; burns heal,
+            // growth stays, so there's nothing to keep alive (docs/why.md#cool-grows)
+            let spare = -(s.burned + burn(e, at: now))
+            if spare > 0, !s.boomed {
+                s.grown = min(full - 1, s.grown + growRate * spare / s.fuse)
+                sitting!.grew = max(sitting!.grew, s.grown)
+            }
             burning.append(e)
             settle(at: e.ts)
             // Why: venting feeds anger, so more heat escalates the one Boom (docs/why.md#one-boom-per-session)
-            if !s.boomed, s.burned >= s.fuse {
+            if !s.boomed, s.burned >= s.fuse * (1 + s.grown) {
                 stick = s.fuse
                 s.boomed = true
                 boomedToday = true
@@ -155,6 +166,7 @@ public enum Game {
                 s.booms.append(sitting!.boom!)
                 burning = [] // the burn starts again from zero, toward the tiers
                 s.burned = 0
+                s.grown = 0
                 dip = nil
             } else if s.boomed, var boom = sitting!.boom, e.ts - boom.ts < escalationWindow {
                 // Why: tiers in flavour, and only for the same outburst (docs/why.md#tiers-flavour-not-volume)
@@ -182,16 +194,25 @@ public enum Game {
     }
 
     // Why: never fake a near-miss; the line dips exactly as far as the fuse did (docs/why.md#never-fake-reactions)
-    /// The fuse across a Sitting, as steps: what's left at its start, after each prompt that burns or mends, and as each
-    /// of those cools off, up to its close, when it's full again. 0 from the Boom on. `events` are the Sitting's.
+    /// The fuse across a Sitting, as steps: what's left at its start, after each prompt that burns, mends or grows it,
+    /// and as each burn cools off, up to its close, when it's fresh again. Past 1 is what cool grew, up to `full`. 0 from
+    /// the Boom on. `events` are the Sitting's.
     public static func fuseLine(_ s: Sitting, _ events: [Event], now: Double) -> [(ts: Double, left: Double)] {
         let close = s.end + sittingGap
         let burns = events.filter { ![.heat, .test, .rest].contains($0.burn) && burn($0, at: now) != 0 }.sorted { $0.ts < $1.ts }
         let times = Set([s.start, close] + burns.flatMap { [$0.ts, $0.ts + cooling] }).filter { $0 <= close }.sorted()
+        // What's burning at `t` from the first `n` prompts, each added in turn, never below 0.
+        let burning = { (t: Double, n: Int) in burns[..<n].filter { t - $0.ts < cooling }.reduce(0) { max(0, $0 + burn($1, at: now)) } }
+        var grown = 0.0, landed = 0 // as the replay: a prompt's mend past what's still burning grows it, up to full
         return times.map { t in
             if let boom = s.boom, t >= boom.ts, t < close { return (t, 0) }
-            let burned = burns.filter { $0.ts <= t && t - $0.ts < cooling }.reduce(0) { max(0, $0 + burn($1, at: now)) }
-            return (t, max(0, 1 - burned / s.fuse))
+            if t == close { return (t, 1) } // a fresh fuse
+            while landed < burns.count, burns[landed].ts <= t { // one at a time, even when two share a time
+                let spare = -(burning(burns[landed].ts, landed) + burn(burns[landed], at: now))
+                if spare > 0 { grown = min(full - 1, grown + growRate * spare / s.fuse) }
+                landed += 1
+            }
+            return (t, max(0, 1 + grown - burning(t, landed) / s.fuse))
         }
     }
 
@@ -222,7 +243,7 @@ public enum Game {
     // Why: the peak-end rule (docs/why.md#peak-end)
     /// One line about a Sitting, built from what happened, never a guess at your mood. It ends on the recovery when
     /// there is one, since that's what you remember:
-    /// - "Cool all the way. 42 prompts."
+    /// - "Cool all the way. 42 prompts.", or "Grew to 118 %. 42 prompts." or "Grew to full. 42 prompts." when cool grew it
     /// - "Close call at 14:12. Cooled off." or "3 close calls, the last at 15:03. Cooled off."
     /// - "Slow burn. Boomed at 14:12. Cooled off by 14:40." ("Slow burn." after `slowBurn`, "Cooled off by" with `cooledOff`)
     /// - "Chain reaction at 15:03." or "Meltdown at 15:20.", the top tier, with the same recovery
@@ -245,7 +266,9 @@ public enum Game {
             let n = s.closeCalls.count
             return (n == 1 ? "Close call at \(at(last.ts))." : "\(n) close calls, the last at \(at(last.ts)).") + " Cooled off."
         }
-        return "Cool all the way. \(s.prompts) prompt" + (s.prompts == 1 ? "." : "s.")
+        // Why: a session has something to be proud of (docs/why.md#cool-grows)
+        let grew = s.grew >= full - 1 - epsilon ? "Grew to full. " : s.grew > 0.005 ? "Grew to \(Int(((1 + s.grew) * 100).rounded(.down))) %. " : "Cool all the way. "
+        return grew + "\(s.prompts) prompt" + (s.prompts == 1 ? "." : "s.")
     }
 
     // Why: overjustification; aura never tracks how much you work (docs/why.md#aura-not-work)

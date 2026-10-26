@@ -17,20 +17,20 @@ struct PopoverView: View {
     var body: some View {
         let boom = model.state.boomed ? model.state.booms.last : nil
         let firstBoom = model.connected && !model.onboarded
-        let summary = model.state.sitting == nil ? model.summary : nil
         VStack(alignment: .leading, spacing: 10) {
             if !model.connected {
                 OnboardingView(model: model) // a new Mac starts here
             } else if firstBoom {
                 FirstBoomCard(model: model)
             } else {
-                if let summary {
-                    SummaryCard(model: model, sitting: summary, latest: true).onAppear(perform: model.summaryShown)
-                } else {
+                // The top is the session you're in, and only that; a finished one waits in Today.
+                if model.state.sitting != nil {
                     FuseHeader(model: model, boom: boom, hovered: hovered)
                     Strip(model: model, boom: boom, hovered: $hovered)
+                } else {
+                    TitleRow(trailing: percent(model.state.left))
                 }
-                History(model: model, sessions: model.past.filter { $0.start != summary?.start })
+                History(model: model, sessions: model.past)
                 Divider()
                 ClubRow(model: model)
             }
@@ -705,7 +705,6 @@ func isCool(_ e: Event) -> Bool { (e.cool ?? 0) >= Game.coolPrompt }
 func tier(_ n: Int) -> (emoji: String, name: String) { Game.tiers[min(max(n, 1), Game.tiers.count) - 1] }
 
 /// Grey while full, orange while burning, red in the last third.
-func fuseColor(_ left: Double) -> Color { left >= 1 ? .secondary : Game.inLastThird(left) ? .red : .orange }
 
 /// 0.58 → "58 %" (or "58%", in the Mac's language), rounded down so a fuse that isn't full never says 100.
 func percent(_ left: Double) -> String { ((left * 100).rounded(.down) / 100).formatted(.percent.precision(.fractionLength(0))) }
