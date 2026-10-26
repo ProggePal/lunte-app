@@ -11,7 +11,7 @@ import SwiftUI
 final class Lab: ObservableObject {
     @Published var kind = BlastScene.Kind.kaboom
     @Published var size = 1.0
-    @Published var sounds = Sounds.maximum
+    @Published var sounds = Sounds.fireworks
     /// The flame: the recorded fuse, as shipped, from the picked takes of catch, calm and hot, or the synth; either way
     /// it goes out with the picked puff.
     @Published var recordedFlame = true { didSet { flame() } }

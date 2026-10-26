@@ -290,7 +290,7 @@ struct RenderFuse {
 
     /// Every move and every sound in one session, to OUT.wav and OUT.mp4: the fuse burns, goes out, grows, crawls into
     /// its last third dripping and climbs back out, then burns right through, builds up, falls silent and blows, and a
-    /// fresh fuse comes. The sounds play as the app plays them at Maximum and full volume: the flame's voice from the
+    /// fresh fuse comes. The sounds play as the app plays them at Fireworks and full volume: the flame's voice from the
     /// scene, through the same synth, the moves' cues pitched for the fuse they leave, and the bang out of the silence. Drawn on the stand-in screen, with the menu bar magnified in a corner
     /// and a caption for each move.
     @MainActor static func tour(_ path: String, synth: Bool = false) {
@@ -335,7 +335,7 @@ struct RenderFuse {
     }
 
     /// Plays SCRIPT, what the menu bar fuse is told and when, with a caption where there is one, to PATH.wav and
-    /// PATH.mp4: the sounds as the app plays them at Maximum and full volume, the flame through `FlameSynth` with the
+    /// PATH.mp4: the sounds as the app plays them at Fireworks and full volume, the flame through `FlameSynth` with the
     /// recording `flame` gives for the moment (nil: the synth), each Boom in BANGS, and the moves' own sounds unless
     /// not `withCues`. Drawn on the stand-in screen, with the menu bar magnified in a corner.
     @MainActor static func session(_ path: String, script: [(Double, FuseLook, String?)], bangs: [Double], end: Double,
@@ -347,7 +347,7 @@ struct RenderFuse {
             for (i, (when, look, _)) in script.enumerated() where when <= t { scene.update(look, at: when, animated: i > 0) }
             return scene
         }
-        // What the app would play, at Maximum and full volume: the moves' cues, and the flame's voice frame by frame.
+        // What the app would play, at Fireworks and full volume: the moves' cues, and the flame's voice frame by frame.
         var cues: [(Double, String, Double)] = [], voices: [FuseScene.Voice] = []
         var whole = FuseScene()
         for (i, (when, look, _)) in script.enumerated() {
@@ -356,7 +356,7 @@ struct RenderFuse {
         let frames = Int(end * fps), captions = script.compactMap { e in e.2.map { (e.0, $0) } }
         for f in 0..<frames { let t = Double(f) / fps; voices.append(scene(t).voice(at: t)) }
 
-        // The mix, at 44.1 kHz, each part at the app's own gain (`Bang.cap`, and Maximum's louder flame).
+        // The mix, at 44.1 kHz, each part at the app's own gain (`Bang.cap`).
         let rate = 44100.0, n = Int(end * rate), cap: Float = 0.6
         var mix = [[Float]](repeating: [Float](repeating: 0, count: n), count: 2)
         func sound(_ name: String) -> (channels: [[Float]], rate: Double) {
@@ -380,10 +380,10 @@ struct RenderFuse {
         for bang in bangs { add("boom", at: bang, pitch: blast.pitch, gain: cap) }
         var synth = FlameSynth(rate: rate), chunk = [Float](repeating: 0, count: Int(rate / fps))
         synth.puff = FlameSynth.read(URL(fileURLWithPath: "Resources/puff.wav"))
-        for (f, voice) in voices.enumerated() { // the flame, as `Flame` plays it: the race at the Boom's volume, the rest louder
+        for (f, voice) in voices.enumerated() { // the flame, as `Flame` plays it
             synth.recording = flame(Double(f) / fps)
             synth.voice = voice
-            synth.render(chunk.count, gain: cap * (voice.race ? 1 : 1.4), into: &chunk)
+            synth.render(chunk.count, gain: cap, into: &chunk)
             for (j, x) in chunk.enumerated() where f * chunk.count + j < n { mix[0][f * chunk.count + j] += x; mix[1][f * chunk.count + j] += x }
         }
         let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 2)!

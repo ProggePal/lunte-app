@@ -82,9 +82,9 @@ final class GameModel: ObservableObject {
     @Published private(set) var reactions = defaults.dictionary(forKey: "Reactions") as? [String: [String]] ?? [:]
     /// Your justification per Boom id, kept on this Mac. Your own words about a Boom, never a prompt.
     @Published private(set) var justifications = defaults.dictionary(forKey: "Justifications") as? [String: String] ?? [:]
-    /// How much Lunte plays, Minimal (only the Boom) until you ask for more.
+    /// What Lunte plays, only the Boom until you ask for more.
     // Why: the Boom is the only sound unless you ask (docs/why.md#fuse-sounds-opt-in)
-    @Published var sounds = Sounds(rawValue: defaults.string(forKey: "Sounds") ?? "") ?? .minimal {
+    @Published var sounds = Sounds(rawValue: defaults.string(forKey: "Sounds") ?? "") ?? .boom {
         didSet { defaults.set(sounds.rawValue, forKey: "Sounds") }
     }
     /// How loud, 0 (silent) to 1, a share of `Bang.cap`. It was a switch, "SoundOn".

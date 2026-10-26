@@ -50,16 +50,25 @@ enum Bang {
     }
 }
 
-/// How much Lunte plays, set in Settings, at one volume. Minimal, the default, is only the Boom: its build-up, the
-/// silence and the bang. Medium adds the flame: burning, crawling and dripping in the last third, and going out in
-/// smoke. Maximum adds cool and a fresh fuse, and plays the flame a little louder.
+/// What Lunte plays, set in Settings, each named for what you hear, never how loud: the one volume is the slider's.
+/// Boom, the default, is only the Boom: its build-up, the silence and the bang. Sizzle adds the fuse: burning,
+/// crawling and dripping in the last third, and going out in a puff. Fireworks adds cool and a fresh fuse.
 // Why: the Boom is the only sound unless you ask (docs/why.md#fuse-sounds-opt-in)
 enum Sounds: String, CaseIterable {
-    case minimal, medium, maximum
+    case boom, sizzle, fireworks
+
+    /// What it plays, in a line, for Settings.
+    var about: String {
+        switch self {
+        case .boom: "Just the Boom."
+        case .sizzle: "The Boom, and your fuse sizzling as it burns."
+        case .fireworks: "Everything: the Boom, your fuse, and cool and a fresh fuse."
+        }
+    }
 
     /// How loud the flame and the moves' own sounds play at `volume`, as a share of `Bang.cap`; the Boom plays at it.
-    func flame(_ volume: Double) -> Double { self == .minimal ? 0 : self == .maximum ? 1.4 * volume : volume }
-    func cues(_ volume: Double) -> Double { self == .maximum ? volume : 0 }
+    func flame(_ volume: Double) -> Double { self == .boom ? 0 : volume }
+    func cues(_ volume: Double) -> Double { self == .fireworks ? volume : 0 }
 }
 
 /// The flame's voice out loud, a cartoon dynamite fuse (`fuse.wav`), following the menu bar fuse frame by frame

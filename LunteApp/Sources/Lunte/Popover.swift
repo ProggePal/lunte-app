@@ -670,26 +670,54 @@ struct SettingsView: View {
     let updater: SPUStandardUpdaterController?
 
     var body: some View {
+        VStack(spacing: 0) {
+            settings
+            HStack { // last, as the last thing you'd do, bare at the bottom like a dialog's button
+                Spacer()
+                Button("Quit Lunte") { NSApp.terminate(nil) }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .frame(width: 400)
+        .fixedSize()
+    }
+
+    private var settings: some View {
         Form {
+            Section { // the app and its version, then its settings
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 40, height: 40)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Lunte").font(.headline)
+                        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+                            Text("Version \(version)").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Button("Check for updates…") { updater?.checkForUpdates(nil) }.disabled(updater == nil)
+                }
+            }
             Section {
                 // Why: the Boom is the only sound unless you ask (docs/why.md#fuse-sounds-opt-in)
-                Picker("Sound effects", selection: $model.sounds) {
-                    Text("Minimal").tag(Sounds.minimal)
-                    Text("Medium").tag(Sounds.medium)
-                    Text("Maximum").tag(Sounds.maximum)
+                HStack { // one line, like the rows under it; the form would wrap the control under its label
+                    Text("Sound effects")
+                    Spacer()
+                    Picker("Sound effects", selection: $model.sounds) {
+                        Text("Boom").tag(Sounds.boom)
+                        Text("Sizzle").tag(Sounds.sizzle)
+                        Text("Fireworks").tag(Sounds.fireworks)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                .pickerStyle(.segmented)
                 volume("Volume", $model.volume) { Bang.play(volume: model.volume) }
-            } header: {
-                Text("Sound")
             } footer: {
-                Text("Minimal is just the Boom. Medium adds the burning fuse, Maximum cool and a fresh fuse too.")
-                    .foregroundStyle(.secondary)
+                Text(model.sounds.about).foregroundStyle(.secondary)
             }
             Section {
                 Toggle("Show model ratings", isOn: $model.showRatings)
-            }
-            Section {
                 // Testing your Boom, connecting and tuning all live in onboarding, so Settings only starts or skips it.
                 if model.connected && model.onboarded {
                     LabeledContent("Onboarding") { Button("Replay", action: model.replayOnboarding) }
@@ -697,15 +725,10 @@ struct SettingsView: View {
                     LabeledContent("Onboarding") { Button("Skip", action: model.skipOnboarding) }
                 }
                 LabeledContent("Something you want in Lunte?") { Button("Submit a prompt…", action: model.submitPrompt) }
-                LabeledContent("Updates") { Button("Check…") { updater?.checkForUpdates(nil) }.disabled(updater == nil) }
-            }
-            Section {
-                LabeledContent("Lunte") { Button("Quit") { NSApp.terminate(nil) } }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400)
-        .fixedSize()
+        .scrollDisabled(true)
     }
 
     /// A volume slider like the Mac's own, which plays what it sets when you let go.
