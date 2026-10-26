@@ -9,14 +9,17 @@ A game about how you talk to your AI, played in the Mac menu bar. Before you cha
 
 ## The fuse
 
-The fuse in the menu bar is the app, and its feel is the product. It lives in `LunteApp/Sources/FuseKit/MenuFuse.swift`. `FuseScene` draws any moment as a pure function of time, so you can look at any frame without running the app. The screen-wide blast is in `LunteApp/Sources/Lunte/Blast.swift`.
+The fuse in the menu bar is the app, and its feel is the product. It lives in `LunteApp/Sources/FuseKit/MenuFuse.swift`. `FuseScene` draws any moment as a pure function of time, so you can look at any frame without running the app. The screen-wide blast is too: `BlastScene` in `LunteApp/Sources/FuseKit/BlastScene.swift`, drawn with Metal, its kinds plain recipes. `LunteApp/Sources/Lunte/Blast.swift` times it and puts it on screen.
 
 Look before and after you change how it moves or looks:
 - `scripts/render-fuse.sh` writes `dist/fuse.png`, every state and move frame by frame on a light and a dark menu bar, and `dist/fuse.gif`, a whole session. Open the PNG and look at it.
 - `scripts/render-fuse.sh "Close call" Bang` writes just those moves, magnified: frame by frame to `dist/moves.png`, and at real speed to `dist/moves.gif` (open it in a browser, or with Quick Look). A wrong name lists the moves. To see a new move, add it to `FusePreviews.moves`.
 - Motion too small to see in stills, such as the bang's 2-point jolt, shows in a slit-scan: one row of pixels from each GIF frame, stacked, so time runs down the image and sideways motion zigzags. For the bang, the row through the flash is `ffmpeg -i dist/moves.gif -vf "crop=200:1:152:58,scale=800:8:flags=neighbor,tile=1x50" -frames:v 1 dist/slit.png`. Render it with the change and without, and compare.
 - In Xcode, open `LunteApp/Package.swift`, pick the `FuseKit` scheme and open `MenuFuse.swift` for the same previews and a live playground. The script needs no Xcode. Xcode's own preview-export tool didn't answer when the fuse was built.
-- The renders can't show the screen-wide blast or the dim. To see those, run `scripts/build-app.sh`, then `open dist/Lunte.app --args -FuseDemo YES`. It loops a session on the real menu bar, with the screen show and without the sound.
+- `scripts/render-fuse.sh blast` draws the whole Boom on a stand-in corner of the screen, each kind and a close call: the race and its drops, the silence, the blast. Twelve moments to `dist/blast-<kind>.png`, real speed to `dist/blast-<kind>.mp4` and all of them in `dist/blast.mp4`. `blast kaboom 1.25 close` draws just those, at that size.
+- `scripts/render-fuse.sh tour` writes `dist/tour.mp4` (`tour synth`: with the synthesised flame instead, to `dist/tour-synth.mp4`; `fuses FILE…`: fuse loops side by side, to `dist/fuses.mp4`): every move and every sound in one session, mixed from the scene's own cues, with the menu bar magnified. Watch it with sound before and after changing a sound.
+- Sounds and looks together, out loud: `scripts/build-app.sh`, then `open dist/Lunte.app --args -Lab YES`, the Boom Lab. Every move at a click, any kind and size of blast, the sound effects and volume, and any take of each recorded sound in `dist/sounds` (`<sound>-<take>.wav`). It's how a theme gets picked.
+- On the real screen: `scripts/build-app.sh`, then `open dist/Lunte.app --args -FuseDemo YES`. It loops a session on the real menu bar, with the screen show and without the sound, a different size each time round.
 
 ## The popover
 

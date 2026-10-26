@@ -645,7 +645,7 @@ private struct Footer: View {
     }
 }
 
-/// Lunte's settings in a window of their own: the Boom's sound, the model's ratings, onboarding, an idea for Lunte,
+/// Lunte's settings in a window of their own: the sound, the model's ratings, onboarding, an idea for Lunte,
 /// updates, and Quit.
 @MainActor
 enum SettingsWindow {
@@ -672,7 +672,21 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Sound", isOn: $model.soundOn)
+                // Why: the Boom is the only sound unless you ask (docs/why.md#fuse-sounds-opt-in)
+                Picker("Sound effects", selection: $model.sounds) {
+                    Text("Minimal").tag(Sounds.minimal)
+                    Text("Medium").tag(Sounds.medium)
+                    Text("Maximum").tag(Sounds.maximum)
+                }
+                .pickerStyle(.segmented)
+                volume("Volume", $model.volume) { Bang.play(volume: model.volume) }
+            } header: {
+                Text("Sound")
+            } footer: {
+                Text("Minimal is just the Boom. Medium adds the burning fuse, Maximum cool and a fresh fuse too.")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
                 Toggle("Show model ratings", isOn: $model.showRatings)
             }
             Section {
@@ -692,6 +706,17 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 400)
         .fixedSize()
+    }
+
+    /// A volume slider like the Mac's own, which plays what it sets when you let go.
+    private func volume(_ name: String, _ value: Binding<Double>, sample: @escaping () -> Void) -> some View {
+        Slider(value: value, in: 0...1) { Text(name) } minimumValueLabel: {
+            Image(systemName: "speaker.fill").foregroundStyle(.secondary)
+        } maximumValueLabel: {
+            Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
+        } onEditingChanged: { editing in
+            if !editing { sample() }
+        }
     }
 }
 

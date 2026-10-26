@@ -152,6 +152,9 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(Game.replay([pending], now: t0 + Game.ratingWait).booms.count, 1) // no rating came: the word list decides
         XCTAssertTrue(pending.awaitingRating(at: t0 + 10))
         XCTAssertFalse(pending.awaitingRating(at: t0 + Game.ratingWait))
+        // While it waits it burns and mends nothing at all, so the breeze the app starts the moment the hook hands it
+        // over is exactly the look the log brings a second later, and doesn't start again.
+        XCTAssertEqual(Game.burn(pending, at: t0 + 10) + Game.mend(pending), 0)
         var rated = pending
         rated.heat = 0.3
         XCTAssertFalse(rated.awaitingRating(at: t0 + 10))

@@ -38,7 +38,8 @@ public struct FuseLook: Equatable {
 ///   so you can't tell if it'll stop in time. The flame burns on a few seconds, then goes out in a puff.
 /// - Cool feeds new fuse in at the start, left to right, green and twinkling, squeezing the coils together, and past a
 ///   fresh fuse up to full, three tight coils. One prompt can do both.
-/// - A crawl into the last third dims the screen a little; the Boom's own burn takes it all the way dark.
+/// - A flame in the last third drips: burning drops fall slowly from it, more the nearer the end, and the Boom's own
+///   burn showers them as it races out.
 /// - The Boom's own burn starts slow and races faster and faster to the end, where the flame dies in a puff. Then
 ///   nothing, for a second or a few, and then it blows: a flash, a shockwave, sparks, smoke and a jolt, easing in from a
 ///   near stop, and once the smoke clears just a symbol and a word in the menu bar's own colour.
@@ -53,14 +54,13 @@ public struct FuseScene {
     /// three tight coils and a fresh fuse a little looser.
     // Why: a head start and room to grow (docs/why.md#cool-grows)
     public static let full = 1.25
-    /// How long the Boom's own burn takes, racing to the end. The silence after it is the game's to choose.
-    public static let raceFor = 1.6
-    /// How long the light takes to come back after the bang.
-    static let lightBack = 2.4
+    /// How long the Boom's own burn takes: it crawls and stalls like a close call, then races to the end. The silence
+    /// after it is the game's to choose.
+    public static let raceFor = 2.8
     /// How long after the bang the word comes in, once the smoke has cleared.
     static let calmAfter = 1.6
-    /// After the bang, time eases back up from a near stop over `speedUp` seconds, as on screen (`Blast.speed`).
-    // Why: hitstop, a beat of stillness on impact (docs/why.md#boom-in-the-dark)
+    /// After the bang, time eases back up from a near stop over `speedUp` seconds, as on screen (`BlastScene.time`).
+    // Why: hitstop, a beat of stillness on impact (docs/why.md#boom-in-the-stillness)
     public static let speedUp = 0.9
     /// How long the tier's name stays after the bang or a new tier, before the heat or the quiet takes over.
     static let nameFor = 5.0
@@ -87,13 +87,34 @@ public struct FuseScene {
     private var effects: [Effect] = []
     private var seed = 1
 
-    /// Moves to `new`. Without `animated` it snaps, as on launch.
-    mutating func update(_ new: FuseLook, at t: Double, animated: Bool = true) {
+    /// The moves that have a sound of their own, for whoever plays them: cool feeding new fuse in, and a fresh fuse after
+    /// a session. The flame's sounds are one voice (`voice(at:)`), and the Boom has its own.
+    public enum Cue { case grow, fresh }
+
+    /// What the flame sounds like at a moment, for a synth to follow (`FlameSynth`): how loud its sizzle is, 0 to about
+    /// 2, how high (`pitch`), how hot it burns and crackles, 0...1, how much it flares as a burn catches, 0...1, and how
+    /// much it puffs where it went out. `race` is the Boom's own build-up, which plays on the Boom's volume.
+    public struct Voice: Equatable {
+        public var sizzle = 0.0, pitch = 1.0, crackle = 0.0, flare = 0.0, smoke = 0.0, race = false
+        public init(sizzle: Double = 0, pitch: Double = 1, crackle: Double = 0, flare: Double = 0, smoke: Double = 0, race: Bool = false) {
+            self.sizzle = sizzle; self.pitch = pitch; self.crackle = crackle; self.flare = flare; self.smoke = smoke; self.race = race
+        }
+    }
+
+    /// How high the fuse sounds with `left` of it: like a string, the shorter the higher. 1 at a fresh stick, about 1.42
+    /// in the last third, at most 1.8 near the very end, a little lower once cool has grown it.
+    // Why: higher reads as more urgent, so you hear the end coming (docs/why.md#fuse-sounds-opt-in)
+    public static func pitch(_ left: Double) -> Double { min(1.8, pow(1 / max(left, 0.1), 0.32)) }
+
+    /// Moves to `new`, and says what it sounds like. Without `animated` it snaps, as on launch, without a sound.
+    @discardableResult
+    mutating func update(_ new: FuseLook, at t: Double, animated: Bool = true) -> [Cue] {
         let old = look, before = width(at: t)
         look = new
         // Wider at once, narrower only after the move, and never while blown, so the menu bar doesn't jitter.
         defer { wide = max(before, Self.width(new)); shrinkAt = new.phase == .blown ? .infinity : t + 1.9 }
-        guard animated, !still else { return snap(t) }
+        guard animated, !still else { snap(t); return [] }
+        var cues: [Cue] = []
         let rating = new.phase == .lit && new.rating
         if rating != (wind.to > 0) { wind = Tween(wind.value(t), rating ? 1 : 0, at: t, over: rating ? 0.5 : 0.6, Ease.inOutCubic) }
         switch (old.phase, new.phase) {
@@ -106,17 +127,20 @@ public struct FuseScene {
                 mend = delta + bite // its cool fed fuse in while its heat burnt the tip
             }
             if bite > 0.001 { burn(bite, t) }
-            if mend > 0.001 { grow(mend, t, held: old.left <= 1.0 / 3 && new.left > 1.0 / 3) }
+            if mend > 0.001 { grow(mend, t, held: old.left <= 1.0 / 3 && new.left > 1.0 / 3); cues.append(.grow) }
         case (.lit, .fusing), (.offline, .fusing):
-            // It catches and races to the end, faster and faster; the flame dies at the start, and then nothing.
-            // Why: anticipation, then silence in the dark (docs/why.md#boom-in-the-dark)
+            // It catches and crawls in fits and starts, like a close call, then races to the end, faster and faster;
+            // the flame dies at the start, and then nothing.
+            // Why: anticipation, then stillness (docs/why.md#boom-in-the-stillness)
             let from = tail.value(t), over = Self.raceFor
-            tail = Tween(from, head.to, at: t, over: over, Ease.inCubic)
             seed += 1
+            let crawl = Ease.stutter(moves: 3, seed: seed)
+            tail = Tween(from, head.to, at: t, over: over) { x in x < 0.7 ? 0.4 * crawl(x / 0.7) : 0.4 + 0.6 * Ease.inCubic((x - 0.7) / 0.3) }
             effects.append(.char(t, tail, seed: seed))
             effects.append(.flare(t))
             effects.append(.spring(t + over * 0.6, 0.12))
             douse(at: t + over + 0.05, t)
+            drip(t, until: t + over, rate: 2.5) // a shower as it races out
         case (.fusing, .blown), (.lit, .blown), (.offline, .blown):
             bang(t)
         case (.blown, .blown):
@@ -131,9 +155,11 @@ public struct FuseScene {
             if new.quiet != old.quiet { hush = Tween(hush.value(t), new.quiet ? 1 : 0, at: t, over: 0.8) }
         case (.blown, .lit), (.blown, .offline), (.fusing, .lit), (.fusing, .offline):
             fresh(t, to: new.phase == .lit ? new.left : 1)
+            cues.append(.fresh)
         default:
             snap(t)
         }
+        return cues
     }
 
     private var tweens: [Tween] { [head, tail, wind, boom, named, hush] }
@@ -142,7 +168,7 @@ public struct FuseScene {
     func busy(at t: Double) -> Bool {
         guard !still else { return false }
         return tweens.contains { $0.start <= t && !$0.done(t) } || effects.contains { $0.start <= t && t < $0.end }
-            || captions.contains { $0.at <= t && t < $0.at + 0.6 } || t < bangT + Self.lightBack
+            || captions.contains { $0.at <= t && t < $0.at + 0.6 }
     }
 
     /// Something's alive: the flame, the breeze. A low frame rate is plenty.
@@ -170,17 +196,83 @@ public struct FuseScene {
 
     func length(_ t: Double) -> Double { max(0, tail.value(t) - head.value(t)) }
 
-    /// How dark the screen gets, 0...1. A burn crawling through the last third dims it a little, deeper the nearer the
-    /// end, until the flame goes out or the fuse grows back. The Boom's fuse takes it all the way dark as it empties,
-    /// keeps it dark through the silence, and the bang lets the light back in. A close call and a Boom start the same.
+    /// The flame's voice at `t`, one voice for all it does, so it hangs together. It sizzles as the tip burns along and
+    /// falls silent when it stalls, quiet on a long fuse and louder, higher and crackly near the end; a burn flares it
+    /// up as it catches, and going out it ends in a comically short puff. The Boom's own race is the same crawl, stalls
+    /// and all, then runs out loudest and highest and cuts into the silence before the bang. Higher the shorter the
+    /// fuse, like a string (`pitch`).
+    // Why: one voice for the flame, and the suspense before the bang (docs/why.md#fuse-sounds-opt-in)
+    public func voice(at t: Double) -> Voice {
+        guard !still else { return Voice() }
+        var v = Voice(pitch: Self.pitch(length(t)), race: look.phase == .fusing)
+        for e in effects { // a puff where it went out, gone almost before you hear it
+            if case .douse(let d) = e, t >= d, t < d + 0.3, !v.race { v.smoke = max(v.smoke, 1.6 * min(1, (t - d) / 0.01) * exp(-(t - d) / 0.045)) }
+        }
+        guard burning(at: t) else { return v }
+        let out = min(1, (litUntil - t) / 0.05) // cut as the flame dies
+        let near = max(v.race ? 0.8 : 0, 1 - min(1, length(t))) // 0 on a fresh stick, 1 at the end; the Boom's, always hot
+        let moving = min(1, max(0, tail.value(t - 0.04) - tail.value(t)) / 0.04 / 0.12) // the tip burning along
+        let flare = min(1, effects.reduce(0.0) { sum, e in if case .flare(let t0) = e, t >= t0 { sum + exp(-3 * (t - t0)) } else { sum } })
+        v.sizzle = ((0.35 + 1.15 * near * near) * (0.03 + 0.97 * moving.squareRoot()) + 0.35 * flare * (0.4 + 0.6 * near)) * out
+        v.pitch *= 1 + 0.15 * flare // it catches with a lift
+        v.flare = flare
+        v.crackle = min(1, 0.1 + 0.6 * near + 0.3 * min(1, Double(drips(at: t).count) / 10))
+        return v
+    }
+
+    /// A burning drop falling from the flame: where it is and where it just was, in the scene's points, and how hot it
+    /// still is, 1...0.
+    struct Drip { var at: CGPoint; var was: CGPoint; var heat: Double }
+
+    /// How long a drop falls, at most.
+    static let dripFor = 2.0
+
+    /// The drops falling at `t`. A flame in the last third drips, more the nearer the end, until it goes out or cool
+    /// comes in; the Boom's own burn showers them as it races out, and then they're gone before the bang. Each falls
+    /// from where the flame was when it dropped, slowly, flickering and cooling, and goes out. A close call and a Boom
+    /// drip alike.
     // Why: suspense lives in the doubt (docs/why.md#close-call-crawl)
-    func dark(at t: Double) -> Double {
-        let danger = min(1, max(0, 1 - 3 * length(t))) // nothing a third from the end, all at the end
-        switch look.phase {
-        case .offline: return 0
-        case .fusing: return danger * danger
-        case .blown: return t < bangT + Self.lightBack ? 1 - Ease.outCubic(max(0, t - bangT) / Self.lightBack) : 0
-        case .lit: return burning(at: t) ? 0.4 * danger * min(1, (litUntil - t) / 0.8) : 0
+    func drips(at t: Double) -> [Drip] {
+        guard !still else { return [] }
+        var out: [Drip] = []
+        let every = 1.0 / 30 // a drop may fall at each of these moments
+        for e in effects {
+            guard case .drips(let t0, let until, let head, let tail, let rate, let seed) = e, t >= t0, t < until + Self.dripFor else { continue }
+            let first = Int((max(t0, t - Self.dripFor) / every).rounded(.up)), last = Int((min(until, t) / every).rounded(.down))
+            for k in stride(from: first, through: last, by: 1) {
+                let born = Double(k) * every, left = tail.value(born) - head
+                let danger = min(1, max(0, 1 - 3 * left)) // nothing a third from the end, all at the end
+                guard noise(seed, k, 0) < rate * (1 + 13 * danger * danger) * every else { continue }
+                let life = Self.dripFor * (0.55 + 0.45 * noise(seed, k, 1)), age = t - born
+                guard age >= 0, age < life else { continue }
+                let from = Self.restingPoint(tail.value(born), head: head, tail: tail.value(born))
+                let v = CGPoint(x: 14 * (2 * noise(seed, k, 2) - 1), y: -8 - 22 * noise(seed, k, 3))
+                let sway = 2 + 5 * noise(seed, k, 5), phase = 6.3 * noise(seed, k, 6)
+                let fall = { (a: Double) in // drag and gravity: it drifts down at about 90 points a second, swaying
+                    let drag = 2.4, end = -215 / drag, x = 1 - exp(-drag * a)
+                    return CGPoint(x: from.x + v.x * x / drag + sway * a * sin(2.6 * a + phase),
+                                   y: from.y + end * a + (v.y - end) * x / drag)
+                }
+                let flicker = 0.7 + 0.3 * noise(seed, k, 4 + Int(age * 24))
+                out.append(Drip(at: fall(age), was: fall(max(0, age - 0.06)), heat: (1 - age / life) * flicker))
+            }
+        }
+        return out
+    }
+
+    /// Draws the drops at `t`, below the item in the same points as `draw`.
+    func drawDrips(_ ctx: CGContext, at t: Double) {
+        for d in drips(at: t) {
+            let colour = d.heat > 0.75 ? Palette.mix(Palette.yellow, Palette.white, (d.heat - 0.75) * 4)
+                : d.heat > 0.4 ? Palette.mix(Palette.orange, Palette.yellow, (d.heat - 0.4) / 0.35)
+                : Palette.mix(Palette.red, Palette.orange, d.heat / 0.4)
+            let fade = min(1, d.heat * 3), r = 0.5 + 0.5 * d.heat
+            glow(ctx, d.at, radius: 9 * r, colour, alpha: 0.55 * fade)
+            ctx.setStrokeColor(colour.copy(alpha: fade)!)
+            ctx.setLineWidth(2.6 * r)
+            ctx.setLineCap(.round)
+            ctx.strokeLineSegments(between: [d.was, d.at])
+            dot(ctx, d.at, 0.9 * r, Palette.mix(colour, Palette.white, 0.5 * d.heat).copy(alpha: fade)!) // the hot core
         }
     }
 
@@ -213,10 +305,10 @@ public struct FuseScene {
         let quick = fast > 0 ? 0.45 + 0.75 * fast : 0
         let over = max(0.3, quick + (crawl > 0 ? 1.2 + 9 * crawl : 0))
         let split = fast / max(1e-9, fast + crawl), timeSplit = crawl > 0 ? min(quick, over * 0.3) / over : 1
-        let stops = max(1, Int(((over - quick) / 1.5).rounded()))
+        let crawling = Ease.stutter(moves: max(2, Int(((over - quick) / 1.2).rounded())), seed: seed + 1)
         tail = Tween(from, to, at: t, over: over) { x in
             guard x >= timeSplit, timeSplit < 1 else { return split * Ease.outCubic(x / timeSplit) }
-            return split + (1 - split) * Ease.hesitate((x - timeSplit) / (1 - timeSplit), stops: stops)
+            return split + (1 - split) * crawling((x - timeSplit) / (1 - timeSplit))
         }
         seed += 1
         effects.append(.char(t, tail, seed: seed))
@@ -227,12 +319,14 @@ public struct FuseScene {
         // It burns on a while, then goes out in a puff.
         let danger = look.left <= 1.0 / 3 ? 2 : look.left <= 0.5 ? 1 : 0
         douse(at: max(litUntil, t + over + Self.flameFor[danger]), t)
+        drip(t, until: crawl > 0 ? litUntil : t, rate: 1)
         return over
     }
 
     /// Feeds `mend` of new fuse in at the start.
     private mutating func grow(_ mend: Double, _ t: Double, held: Bool) {
         let over = 0.8 + 0.8 * mend, from = head.value(t), to = head.to - mend
+        drip(t, until: t, rate: 0) // cool comes in: no more drops
         head = Tween(from, to, at: t, over: over, Ease.inOutCubic)
         seed += 1
         effects.append(.cool(t, from: from, to: to, over: over, seed: seed))
@@ -245,6 +339,17 @@ public struct FuseScene {
             effects.append(.wiggle(at, 0.7, 20))
         }
         if look.left >= 0.999, litUntil > t + over { douse(at: t + over, t) } // grown back whole: the flame goes out
+    }
+
+    /// From `t` until `until`, the flame drips at `rate`, as much as its danger says; drops already falling fall on.
+    private mutating func drip(_ t: Double, until: Double, rate: Double) {
+        effects = effects.map { e in
+            guard case .drips(let t0, let end, let head, let tail, let rate, let seed) = e, end > t else { return e }
+            return .drips(t0, until: t, head: head, tail: tail, rate: rate, seed: seed) // what's new ends what was
+        }
+        guard until > t else { return }
+        seed += 1
+        effects.append(.drips(t, until: until, head: head.to, tail: tail, rate: rate, seed: seed))
     }
 
     /// The flame goes out at `at`, in a puff, unless something lights it again first.
@@ -330,8 +435,7 @@ public struct FuseScene {
     /// The time `e` is drawn at: the bang's own effects start in the stillness and ease back up to speed.
     private func clock(_ e: Effect, _ t: Double) -> Double {
         guard !still, abs(e.start - bangT) < 0.2, t > bangT else { return t }
-        let u = min(1, (t - bangT) / Self.speedUp) // the speed eases up from 0.05 to 1: the integral of that
-        return bangT + Self.speedUp * (0.05 * u + 0.95 * u * u * u / 3) + max(0, t - bangT - Self.speedUp)
+        return bangT + BlastScene.time(t - bangT)
     }
 
     /// The lit tip: a flame that flickers and sways, amber with plenty left, orange past half, red and nervous in the last
@@ -482,12 +586,13 @@ public struct FuseScene {
         case pop(Double, Double)
         case puff(Double, CGPoint)
         case douse(Double)                  // the flame goes out, in a puff at the tip
+        case drips(Double, until: Double, head: Double, tail: Tween, rate: Double, seed: Int) // drops off the flame
 
         var start: Double {
             switch self {
             case .char(let t, _, _), .cool(let t, _, _, _, _), .sparks(let t, _, _, _, _, _, _), .flare(let t), .wiggle(let t, _, _),
                  .spring(let t, _), .shake(let t, _), .flash(let t, _), .held(let t, _), .ring(let t, _), .pop(let t, _),
-                 .puff(let t, _), .douse(let t): t
+                 .puff(let t, _), .douse(let t), .drips(let t, _, _, _, _, _): t
             }
         }
 
@@ -506,6 +611,7 @@ public struct FuseScene {
             case .pop(let t, _): t + 0.9
             case .puff(let t, _): t + 1.4
             case .douse(let t): t + 1.4
+            case .drips(_, let until, _, _, _, _): until + FuseScene.dripFor
             }
         }
     }
@@ -742,10 +848,23 @@ enum Ease {
     static func inOutCubic(_ x: Double) -> Double { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
     static func outBack(_ x: Double) -> Double { let c = 2.2; return 1 + (c + 1) * pow(x - 1, 3) + c * pow(x - 1, 2) }
     static func linear(_ x: Double) -> Double { x }
-    /// Moving on with `stops` near-stops along the way, and creeping at the end: a fuse that might not make it.
-    static func hesitate(_ x: Double, stops: Int) -> Double {
-        let n = Double(stops)
-        return x - 0.95 * sin(2 * .pi * n * x) / (2 * .pi * n)
+    /// Creeping on in fits and starts, a fuse that might not make it: `moves` creeps of their own lengths, each easing
+    /// in and out, with a stall of its own length after each but the last, all from `seed`, so no two crawls stall
+    /// alike. Time 0...1 in, the way along 0...1 out.
+    static func stutter(moves: Int, seed: Int) -> (Double) -> Double {
+        let creeps = (0..<moves).map { (time: 0.6 + 0.8 * noise(seed, $0, 0), way: 0.6 + 0.8 * noise(seed, $0, 2)) }
+        let stalls = (0..<moves).map { $0 < moves - 1 ? 0.25 + 0.9 * noise(seed, $0, 1) : 0 }
+        let time = creeps.map(\.time).reduce(0, +) + stalls.reduce(0, +), way = creeps.map(\.way).reduce(0, +)
+        return { x in
+            var t = x * time, done = 0.0
+            for (creep, stall) in zip(creeps, stalls) {
+                if t < creep.time { return (done + creep.way * inOutCubic(t / creep.time)) / way }
+                done += creep.way
+                t -= creep.time + stall
+                if t < 0 { return done / way } // stalled
+            }
+            return 1
+        }
     }
 }
 
@@ -776,17 +895,21 @@ public final class FuseView: NSView {
     public static let margin = 4.0
     private(set) var scene = FuseScene()
     public var resize: (CGFloat) -> Void = { _ in }
+    /// Each move's sound and how much fuse it leaves, for whoever plays them, and every frame it's drawn, the flame's
+    /// voice.
+    public var cue: (FuseScene.Cue, _ left: Double) -> Void = { _, _ in }
+    public var voice: (FuseScene.Voice) -> Void = { _ in }
     private var shown = false
     private var link: CADisplayLink?
     private var alarm: Timer?
     private var width: CGFloat = 0
-    private var shade: NSPanel?
+    private var drops: NSPanel?
 
     public func show(_ look: FuseLook) {
         guard !shown || look != scene.look else { return }
         let now = CACurrentMediaTime()
         scene.still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        scene.update(look, at: now, animated: shown)
+        scene.update(look, at: now, animated: shown).forEach { cue($0, look.left) }
         shown = true
         needsDisplay = true
         pace(now)
@@ -833,43 +956,49 @@ public final class FuseView: NSView {
         let t = CACurrentMediaTime()
         ctx.translateBy(x: bounds.width - Self.margin, y: ((bounds.height - 18) / 2).rounded())
         scene.draw(ctx, at: t, ink: NSColor.labelColor.cgColor)
-        dim(scene.dark(at: t))
+        drip(t)
+        voice(scene.voice(at: t))
         pace(t)
     }
 
-    /// Dims the screen under the menu bar, darker at the edges, so the fuse stays bright in the dark. Plain black.
-    private func dim(_ level: Double) {
-        guard level > 0.003, let (screen, at) = startOnScreen() else { shade?.orderOut(nil); return }
-        if shade?.screen != screen {
-            shade?.close()
-            let panel = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    /// The drops falling from the flame, on the screen under the item, in a small click-through panel above the menu
+    /// bar, so they leave the flame where it burns.
+    private func drip(_ t: Double) {
+        let origin = CGPoint(x: bounds.width - Self.margin, y: ((bounds.height - 18) / 2).rounded()) // the scene's
+        guard !scene.drips(at: t).isEmpty, let window, let screen = window.screen else { drops?.orderOut(nil); return }
+        let at = window.convertPoint(toScreen: convert(origin, to: nil))
+        let frame = NSRect(x: at.x - 130, y: at.y - 280, width: 190, height: 300) // a drop drifts 40 aside and falls 250
+        if drops == nil || drops?.screen != screen {
+            drops?.close()
+            let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = false
-            panel.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue - 1) // under the menu bar and the fuse
+            panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1) // over the item, so they fall from the flame
             panel.ignoresMouseEvents = true
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-            panel.setFrame(screen.frame, display: false)
-            let view = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
-            view.wantsLayer = true
-            let dark = CAGradientLayer()
-            dark.type = .radial
-            dark.frame = view.bounds
-            dark.colors = [CGColor(gray: 0, alpha: 0.6), CGColor(gray: 0, alpha: 0.86)]
-            view.layer?.addSublayer(dark)
-            panel.contentView = view
-            shade = panel
+            panel.contentView = Drops()
+            drops = panel
         }
-        guard let shade, let dark = shade.contentView?.layer?.sublayers?.first as? CAGradientLayer else { return }
-        let size = screen.frame.size, centre = CGPoint(x: (at.x - screen.frame.minX) / size.width, y: (at.y - screen.frame.minY) / size.height)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        dark.startPoint = centre
-        dark.endPoint = CGPoint(x: centre.x + 1.1, y: centre.y + 1.1 * size.width / size.height)
-        dark.opacity = Float(level)
-        CATransaction.commit()
-        shade.orderFrontRegardless()
+        guard let drops, let view = drops.contentView as? Drops else { return }
+        if drops.frame != frame { drops.setFrame(frame, display: false) }
+        view.paint = { [scene] ctx in
+            ctx.translateBy(x: 130, y: 280)
+            scene.drawDrips(ctx, at: t)
+        }
+        view.needsDisplay = true
+        drops.orderFrontRegardless()
     }
+}
+
+/// What the drops panel shows, drawn by `FuseView` every frame they fall.
+private final class Drops: NSView {
+    var paint: (CGContext) -> Void = { _ in }
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        paint(ctx)
+    }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 // MARK: - Previews
@@ -1003,7 +1132,6 @@ struct FuseFrame: View {
             }
         }
         .frame(width: w * zoom, height: 24 * zoom)
-        .background(Color.black.opacity(0.75 * scene.dark(at: t))) // the screen's dim, behind the fuse
         .background(dark ? Color(white: 0.16) : Color(white: 0.93))
     }
 }

@@ -16,21 +16,22 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Ryan, Rigby & Przybylski 2006](https://doi.org/10.1007/s11031-006-9051-8)
 
 ## two-clocks
-- **Rule:** The player's own feedback is instant: within 0.1 s, 1 s at worst. The room's Boom comes after the fuse's 1.6 s race and a random 1–6 s of silence: enough to blur who it was, and short enough that the silence stays suspense rather than a wait.
+- **Rule:** The player's own feedback is instant: within 0.1 s, 1 s at worst. The breeze starts as the hook hands your prompt over, about 15 ms after Enter. The room's Boom comes after the fuse's 2.8 s race and a random 1–3 s of silence: enough to blur who it was, and short enough that the silence stays suspense rather than a wait.
 - **Principle:** Perceived causality. People see "that made that happen" only when the effect follows at once, and even a 160 ms stagger cut causal ratings by about a third. Instant keeps the player's sense of agency; the delay breaks the room's link to the culprit.
 - **Evidence:** strong for the effect, mixed on the exact window.
 - **Source:** [White 2017](https://doi.org/10.1007/s00426-017-0853-y)
 
 ## juice-inverted-u
-- **Rule:** Most prompts stay silent. The menu bar's small juice budget goes on a few moments: the Boom, the roast and the close call.
+- **Rule:** Most prompts stay silent. The menu bar's small juice budget goes on a few moments: the Boom, the roast and the close call. The fuse's own sounds are yours to turn on ([fuse-sounds-opt-in](#fuse-sounds-opt-in)).
 - **Principle:** Juice follows an inverted U. Medium and high juice beat both none and extreme on experience, motivation and play time (Kao 2020), and in a pre-registered study of 1,699 players, amplification that blurred the link from action to outcome lowered motivation (Kao et al. 2024).
 - **Evidence:** mixed.
 - **Source:** [Kao 2020](https://doi.org/10.1016/j.entcom.2020.100359)
 
-## prepulse-fizz
-- **Rule:** A short fizz comes just before the bang.
-- **Principle:** Prepulse inhibition. A faint sound 30–500 ms before a loud one dampens the startle reflex, so the bang stays a cartoon, not an alarm.
-- **Evidence:** strong in the lab. The fizz is an application of it, untested.
+## silence-then-boom
+- **Rule:** The bang comes straight out of the silence after the build-up, with nothing before it. A close call ends instead the way cool ends anything: it grows back.
+- **Principle:** Suspense lives in the gap, and a sound in it gives the answer away. A faint sound 30–500 ms before a loud one does dampen the startle reflex (prepulse inhibition), but the crawl and the run-out already say it's coming, and the volume cap keeps the bang a cartoon ([juice-inverted-u](#juice-inverted-u)).
+- **Evidence:** strong in the lab for prepulse inhibition; giving it up here is craft, by ear.
+- **Tried:** a 0.4 s fizz just before the bang, for prepulse inhibition: it broke the silence the build-up had earned. If the bang ever startles, soften its attack rather than bring the fizz back.
 - **Source:** [Graham 1975](https://doi.org/10.1111/j.1469-8986.1975.tb01284.x)
 
 ## one-boom-per-session
@@ -160,18 +161,32 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Kao et al. 2024](https://spiral.imperial.ac.uk/entities/publication/253c32f5-d124-4a23-88b5-9aaaf114608d)
 
 ## close-call-crawl
-- **Rule:** A burn into the last third slows to a crawl that stops and starts, and the screen dims a little, darker nearer the end. The dim lifts when the fuse grows back or the flame goes out. The Boom starts exactly the same way, so until the end you can't tell which it is. The crawl only ever shows the real fuse ([never-fake-reactions](#never-fake-reactions)).
+- **Rule:** A burn into the last third slows to a crawl that stalls and starts again, each stall its own length and silent, and the flame drips: burning drops fall slowly from it, swaying and cooling, more the nearer the end, until the flame goes out or cool comes in. The Boom starts exactly the same way, so until the end you can't tell which it is. The crawl and the drops only ever show the real fuse ([never-fake-reactions](#never-fake-reactions)).
 - **Principle:** Curiosity is the gap between what you know and what you want to know, and suspense lives in the doubt. Curiosity drove enjoyment more than anything else in the 1,699-player juice study.
 - **Evidence:** mixed.
-- **Tried:** a Boom you could see coming: the fuse just ran out, so there was no doubt left.
+- **Tried:** a Boom you could see coming: the fuse just ran out, so there was no doubt left. Dimming the whole screen, darker nearer the end: it read as suspense, but it was annoying, since it took over the screen for a moment that mostly turns out fine. The drops stay by the fuse.
 - **Source:** [Loewenstein 1994](https://doi.org/10.1037/0033-2909.116.1.75)
 
-## boom-in-the-dark
-- **Rule:** The Boom's own burn starts slow and races to the end, fastest last, in 1.6 s. As it empties, the screen goes dark: plain black, under the menu bar, so the fuse stays bright. Then 1–6 s of silence ([two-clocks](#two-clocks)), and it blows into the stillness: time starts from a near stop and eases back up over 0.9 s while the blast opens out, with real but faint smoke. Then just the symbol and the word ([quiet-boom](#quiet-boom)). It's the one loud moment, so it's big.
+## boom-in-the-stillness
+- **Rule:** The Boom's own burn crawls and stalls like a close call, sound and all, then races to the end, fastest last, in 2.8 s, showering drops that drift down and go out, its sizzle loudest and highest at the very end, and cuts out. Then 1–3 s of stillness ([two-clocks](#two-clocks)), and it blows into it: a flash, then time starts from a near stop and eases back up over 0.9 s while the blast opens out, with real but faint smoke. Then just the symbol and the word ([quiet-boom](#quiet-boom)). It's the one loud moment, so it's big, but the fire stays near the menu bar and only sparks fall further.
 - **Principle:** Hitstop and anticipation. A freeze on impact gives the eye time to feel the weight, and a wind-up points attention at what's coming.
 - **Evidence:** weak: craft.
-- **Tried:** a red tint, which read as an alarm (dark reads as suspense); a comic "BOOM!" word on screen; a wait of up to a minute, then up to 12 s, which felt like waiting rather than suspense; thick smoke.
+- **Tried:** a red tint, which read as an alarm; the screen going dark under the menu bar for the race and the silence, which read as suspense but blacked out the whole screen and was annoying; a comic "BOOM!" word on screen; a wait of up to a minute, then up to 12 s, which felt like waiting rather than suspense, then 1–6 s; a silent race, which left no build-up for the silence to hold; a race that only sped up, 1.6 s, which built less suspense than a close call's crawl; thick smoke; sparks that started as long streaks in the slow motion, a cartoon starburst (the motion blur is a real moment's worth, so in the stillness they're crisp, as on slow-motion film); Core Animation's emitters, round dots that couldn't streak and couldn't be rendered to look at frame by frame.
 - **Source:** [Sakurai on hitstop](https://sourcegaming.info/2015/11/11/thoughts-on-hitstop-sakurais-famitsu-column-vol-490-1/) (fan translation)
+
+## every-boom-its-own
+- **Rule:** Each Boom blows its own way: a kaboom at 0.8 to 1.25 of its size, its sparks and its fire's turbulence its own, all picked from the Boom's id, never from its heat, its tier or anything else you did. A bigger one sounds a little deeper, never louder. A kind is only a recipe, so a new look later, such as a skin, is a new recipe; four more wait for that.
+- **Principle:** Habituation is stimulus-specific. A repeated stimulus loses its punch, and a changed one brings the response back, so variety in flavour keeps a rare bang fresh without turning it up. Picking by id means more anger never buys a bigger show ([one-boom-per-session](#one-boom-per-session)).
+- **Evidence:** strong for habituation and its stimulus specificity. The kinds, their sizes and the juice they spend are craft, tuned by eye on rendered frames (`scripts/render-fuse.sh blast`).
+- **Tried:** five kinds picked at random, a burst, a crackle, a gold willow, a ring and the kaboom. The kaboom, with its sound, was the clear favourite, so for now every Boom is one, and the others are kept as recipes for skins.
+- **Source:** [Rankin et al. 2009](https://doi.org/10.1016/j.nlm.2008.09.012)
+
+## fuse-sounds-opt-in
+- **Rule:** The Boom is the only sound until you ask for more. Sound effects in Settings, at one volume: Minimal, the default, is the Boom alone, its build-up as the fuse races out, the silence and the bang. Medium adds the flame, one cartoon dynamite fuse for all it does: it catches with a flare, sizzles while the tip burns along and falls silent when it stalls, quiet on a long fuse and louder, higher and crackly near the end as it crawls and drips, and goes out in a comically short puff. Maximum adds cool growing it back and a fresh fuse, and plays the flame a little louder. Every fuse sound is pitched by how much fuse is left, like a string: the shorter, the higher, up to 1.8 times near the very end, so you hear the end coming without looking. All of it sits far under the bang, and sending a prompt, or one that does nothing, never makes a sound.
+- **Principle:** A burn heard at once points straight at you, the very link the Boom's delay and the Club's silent pings are there to break ([two-clocks](#two-clocks), [silent-pings](#silent-pings)), and juice follows an inverted U, so most prompts stay silent ([juice-inverted-u](#juice-inverted-u)). Alone at your desk, the trade can be worth it, so it's yours to make. The Boom's build-up starts about a second after your prompt, but the 1–3 s of silence still stands between it and the bang. Higher pitch reads as more urgent, one of the steadiest findings on warning sounds, and a shorter string sounding higher is the physics the fuse already plays by ([just-the-fuse](#just-the-fuse)). A sound for every prompt sent could be instant, since the hook reaches the app in about 15 ms, but most prompts do nothing, and a sound on hundreds a day would wear off and get the sound turned off for good, so the breeze answers a send instead.
+- **Evidence:** mixed, from the entries it leans on; strong that pitch carries urgency. The levels, the voice and the curve are craft, tuned by ear on `scripts/render-fuse.sh tour` and in the Boom Lab.
+- **Tried:** a sound of its own for each move, from separate recordings (a burn, a sizzle under the drops, a puff as it goes out): they didn't hang together, and a close call didn't sound like the burn it came from. One synthesised voice, noise shaped by the scene: it hung together, but sounded like static. A real fuse cut into a catch, a calm and a hot loop: real, but not satisfying to listen to. Eight cartoon dynamite fuses side by side (`scripts/render-fuse.sh fuses`): the seventh, a sparkler-like crisp crackle, won, the fifth and eighth after it; it's one loop, played faster and higher as the scene says. A note under the slider that people near you hear a burn. Two sliders, Boom and Fuse.
+- **Source:** [Kao 2020](https://doi.org/10.1016/j.entcom.2020.100359) · [Edworthy, Loxley & Dennis 1991](https://doi.org/10.1177/001872089103300206)
 
 ## summary-next-open
 - **Rule:** When a session closes, it waits in Today with its name, its aura, and a blue dot until you open it, there when you next look; opened, it tells its story (see [session-story](#session-story)). Nothing pops up when a session closes, and the top of the popover is only ever the session you're in.

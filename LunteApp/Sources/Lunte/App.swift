@@ -46,8 +46,11 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         }
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "FuseDemo") { return demo() }
+        if UserDefaults.standard.bool(forKey: "Lab") { return Lab.open(fuse) }
         if let clip = UserDefaults.standard.string(forKey: "HeroDemo") { return hero(clip) }
         #endif
+        fuse.cue = { [model] in Cues.play($0, left: $1, volume: model.sounds.cues(model.volume)) }
+        fuse.voice = { [model] in Flame.follow($0, flame: model.sounds.flame(model.volume), boom: model.volume) }
         watching = model.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
         render()
         #if DEBUG
@@ -74,9 +77,11 @@ final class MenuBar: NSObject, NSApplicationDelegate {
     /// `open dist/Lunte.app --args -FuseDemo YES`: the menu bar fuse plays every state on a loop, instead of the game's.
     private func demo() {
         Task {
-            while true {
+            for round in 0... {
                 for (wait, look) in FusePreviews.demo {
-                    if look.phase == .fusing { Blast.run(fuse: wait, sound: false) { _ in } } // the screen's show too, without the sound
+                    if look.phase == .fusing { // the screen's show too, without the sound, a different size each time round
+                        Blast.run(fuse: wait, volume: 0, scene: BlastScene(seed: UInt64(round))) { _ in }
+                    }
                     fuse.show(look)
                     try? await Task.sleep(for: .seconds(wait))
                 }
@@ -155,7 +160,7 @@ final class MenuBar: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(for: .seconds(0.8))
                 fuse.show(script[at])
                 if script[at].phase == .fusing {
-                    Blast.run(fuse: FuseScene.raceFor + 1, sound: false) { [fuse] _ in fuse.show(FuseLook(phase: .blown)) }
+                    Blast.run(fuse: FuseScene.raceFor + 1, volume: 0, scene: BlastScene(.kaboom)) { [fuse] _ in fuse.show(FuseLook(phase: .blown)) }
                 }
             }
         }
