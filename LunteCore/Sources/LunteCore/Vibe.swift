@@ -3,8 +3,9 @@
 import Foundation
 
 public struct Vibe: Codable, Equatable, Hashable, Sendable {
-    /// How hot the last 30 minutes ran. A vibe is only picked from the band you're in.
-    public enum Band: String, Codable, CaseIterable, Sendable { case calm, warm, hot, explosive }
+    /// How hot the last 30 minutes ran. A vibe is only picked from the band you're in. Session names (vibes.json v 2,
+    /// `Story.names`) also use cool: a session cool grew.
+    public enum Band: String, Codable, CaseIterable, Sendable { case calm, cool, warm, hot, explosive }
 
     public var emoji: String
     public var label: String
@@ -124,14 +125,15 @@ public struct FuseVibes: Codable, Equatable, Sendable {
     public var problems: [String] {
         var out: [String] = []
         if lunte != "fuse-vibes" { out.append(#""lunte" must be "fuse-vibes""#) }
-        if v != 1 { out.append(#""v" must be 1"#) }
+        if ![1, 2].contains(v) { out.append(#""v" must be 2"#) }
         let long = vibes.filter { $0.label.split(separator: " ").count > 5 || $0.when.split(separator: " ").count > 14 }.count
         if long > 0 { out.append("\(long) vibes have a label over 5 words or a \"when\" over 14 words") }
         if vibes.contains(where: { $0.label.isEmpty || $0.emoji.isEmpty || $0.story.isEmpty }) { out.append("every vibe needs an emoji, a label and a story") }
         let topics = Set(Vibe.topics.map(\.name)).subtracting(["other"]).union(["any"])
         let badTopics = vibes.compactMap(\.topic).filter { !topics.contains($0) }.count
         if badTopics > 0 { out.append("\(badTopics) vibes have a topic that isn't code, design, writing, business, voice, shipping, ideas or any") }
-        let missing = Vibe.Band.allCases.filter { b in !vibes.contains { $0.band == b } }
+        let bands: [Vibe.Band] = v == 1 ? [.calm, .warm, .hot, .explosive] : [.calm, .cool, .hot, .explosive] // v 2: session names
+        let missing = bands.filter { b in !vibes.contains { $0.band == b } }
         if !missing.isEmpty { out.append("no vibes for: " + missing.map(\.rawValue).joined(separator: ", ")) }
         return out
     }

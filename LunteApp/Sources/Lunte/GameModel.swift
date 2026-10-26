@@ -41,7 +41,6 @@ final class GameModel: ObservableObject {
     @Published var vibesOn = defaults.bool(forKey: "VibesOn") {
         didSet {
             defaults.set(vibesOn, forKey: "VibesOn")
-            scorer?.topicsOn = vibesOn
             vibe = nil
             vibePicked = nil
             vibesFile = []
@@ -107,7 +106,6 @@ final class GameModel: ObservableObject {
         // The fuse folder, where your AI saves labels.json and vibes.json (`lunte-hook setup` tells it how).
         try? FileManager.default.createDirectory(at: Fuse.dir, withIntermediateDirectories: true)
         scorer = Scorer(log: log) { [weak self] in self?.fuse = $0 }
-        scorer?.topicsOn = vibesOn
         if HeatDetector.isInstalled() { setUpDetector() }
         loadPersonalVibes()
         fuseSource = watch(Fuse.dir.path, [.write]) { [weak self] in

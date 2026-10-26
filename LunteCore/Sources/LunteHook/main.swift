@@ -34,7 +34,7 @@ case "check-fuse": // are labels.json (heat and cool) and vibes.json right, and 
         } else {
             problems.append("No vibes.json yet")
         }
-        print(problems.isEmpty ? "OK: \(labels.labels.count) messages rated for heat and cool, all found, and \(vibes) vibes. Lunte will tune the fuse now." : problems.joined(separator: "\n"))
+        print(problems.isEmpty ? "OK: \(labels.labels.count) messages rated for heat and cool, all found, and \(vibes) session names. Lunte will tune the fuse now." : problems.joined(separator: "\n"))
         exit(problems.isEmpty ? 0 : 1)
     } catch {
         print("labels.json isn't in the expected shape: \(error)")

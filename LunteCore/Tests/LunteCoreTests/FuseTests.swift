@@ -53,6 +53,17 @@ final class FuseTests: XCTestCase {
         XCTAssertEqual(bad.problems, [#""lunte" must be "fuse-labels""#, "1 ratings are outside 0–3"])
     }
 
+    /// vibes.json v 2 holds session names: the bands are calm, cool, hot and explosive. A v 1 file still checks out.
+    func testSessionNamesNeedEveryBand() {
+        let name = { (band: Vibe.Band) in Vibe("🚀", "Mad push to prod", band, when: "w", story: "s") }
+        let v2 = FuseVibes(lunte: "fuse-vibes", v: 2, made: nil, vibes: [.calm, .cool, .hot, .explosive].map(name))
+        XCTAssertEqual(v2.problems, [])
+        XCTAssertEqual(FuseVibes(lunte: "fuse-vibes", v: 2, made: nil, vibes: [.calm, .hot, .explosive].map(name)).problems, ["no vibes for: cool"])
+        XCTAssertEqual(FuseVibes(lunte: "fuse-vibes", v: 1, made: nil, vibes: [.calm, .warm, .hot, .explosive].map(name)).problems, [])
+        XCTAssertTrue(Fuse.setupText.contains(#""v": 2"#)) // setup asks for session names
+        XCTAssertFalse(Fuse.setupText.contains("pet peeves")) // names are a pat on the back, never a verdict
+    }
+
     func testLabelsWithAndWithoutCool() throws {
         let old = #"{"lunte":"fuse-labels","v":1,"labels":[{"sid":"s1","ts":1792744463.009,"rating":2}]}"#
         let before = try JSONDecoder().decode(FuseLabels.self, from: Data(old.utf8)) // a file from before cool

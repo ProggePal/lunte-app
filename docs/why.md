@@ -70,6 +70,20 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Tried:** two coils at 100 % and three at 150 % (today's look, the one people know, is better as full); full at 115 % (you can't see it grew); growth at the full mend (two banter prompts fill it, so there's no climb).
 - **Source:** [Nunes & Drèze 2006](https://doi.org/10.1086/500480)
 
+## session-names
+- **Rule:** A finished session gets a name for what you did and how it went ("Mad push to prod", "Business plan hours", "Kaboom"), never for what you did wrong or how the assistant took it: no blame and no anger words, because the aura already does the scoring. Facts pick the names that fit: the energy from what the fuse did, and the activity from the session's topic, or else the time of day. Then taste picks among them: the names your AI wrote at setup come first, a name never repeats in a day, and the one used longest ago comes round next. Without the Heat Detector there are no topics, so the time-of-day names stand in. Under three prompts gets a short name.
+- **Principle:** Identity and a laugh. "This is me" keeps a history worth opening, a benign joke turns a bad hour into a story, and variety in flavour keeps it fresh without putting chance in what you earn. Names are true or they aren't shown: a wrong name breaks trust the way a faked near-miss does.
+- **Evidence:** weak for names as such (craft), strong for the parts: peak-end, and good-natured humour as reappraisal. Replayed on one player's week: names from facts were all true; a model's or a rotation's were often false.
+- **Tried:** Laya picking a name from a text-free summary (it called 09:05 "Late-night grind" and a voice session "Pixel fussing", at 30–60 % sure); rotating names within a band (true only by luck); names that report behaviour ("A little prickly", "Mildly offended": they scold); clock times in the story ("held it together at 17:13": nobody remembers a time); prizes for prompts, best bud and hottest take (they didn't tell the line's story and put the model's misreads on show; parked for achievements); a last-session card pinned at the top (awkward; Today holds sessions now).
+- **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x) · [Samson & Gross 2012](https://doi.org/10.1080/02699931.2011.585069)
+
+## session-story
+- **Rule:** Opened, a session tells its shape in one kind line from the facts ("Up, down, and up again.", "Down to the wire, then back."), says what its aura was for in words, and shows its fuse in bars like Battery's level chart: zoomed to the session's own hours, 0 % always and 125 % only once it got there, grey down to 85 % so a calm session reads calm, green above 100 %, orange as it burns and red in the last third. When you were cool shows like Battery's charging: a light overlay on the bars and a line under the axis, with one symbol on the longest. No emoji or glitter on the chart: where it blew shows in the bars.
+- **Principle:** The peak-end rule, and recognition over recall: the shape is the story, and a familiar chart reads at a glance. The words and the bars use the same thresholds, so they never disagree.
+- **Evidence:** strong for peak-end; craft for the chart.
+- **Tried:** a step line with clock ticks (too sharp, read like a report); a soft line with embers, ash and twinkles (juice with no purpose); the reason for the aura on hover only (hidden, and it moved the layout); the whole day on the axis (a short session shrank to a few bars).
+- **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x)
+
 ## peak-end
 - **Rule:** A session's line is built from facts only and ends on the recovery when there is one: "Boomed at 14:12. Cooled off by 14:40."
 - **Principle:** The peak-end rule. We remember an experience by its peak and its end: most people chose to repeat a longer cold-water trial because it ended slightly warmer.

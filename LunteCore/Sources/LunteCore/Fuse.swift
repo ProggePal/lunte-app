@@ -71,30 +71,34 @@ public enum Fuse {
            {"lunte": "fuse-labels", "v": 1, "rater": "<your model name>", "made": "<today as YYYY-MM-DD>",
             "labels": [{"sid": "…", "ts": 1792744463.009, "rating": 3, "cool": 0}, …]}
 
-    5. Write about 20 personal vibes to ~/Library/Application Support/Lunte/fuse/vibes.json. A vibe names how a
-       stretch of a session feels, in Lunte's voice: dry, understated, a bit British ("Running rather hot",
-       "Firm but fair", "Suspiciously calm"). Base them on patterns you saw across the owner's chats: their kinds of
-       work, hours, habits and pet peeves. Spread them over the bands: about 6 calm, 6 warm, 5 hot and 3 explosive.
+    5. Write about 24 session names to ~/Library/Application Support/Lunte/fuse/vibes.json. When a session ends,
+       Lunte names it after what the owner did and how it went: "Mad push to prod", "Brainstorm firestorm",
+       "Business plan hours". Base them on the owner's own work, hours and habits, so they read like their week.
+       A name is a pat on the back or a laugh, never a verdict: no blame, nothing they did wrong, no anger words, and
+       nothing about how the assistant took it. Plain words with a wink, in Lunte's voice: dry, understated, a bit
+       British. No puns on puns, no emoji in the label. Spread them over the bands: about 6 calm, 6 cool, 6 hot and
+       6 explosive.
 
-           {"lunte": "fuse-vibes", "v": 1, "made": "<today as YYYY-MM-DD>", "vibes": [
-             {"emoji": "🧯", "label": "Migration grief", "band": "hot", "topic": "code",
-              "when": "the database keeps breaking and patience runs out",
-              "story": "What began as a tidy rename slowly became a test of human patience."}, …]}
+           {"lunte": "fuse-vibes", "v": 2, "made": "<today as YYYY-MM-DD>", "vibes": [
+             {"emoji": "🚀", "label": "Mad push to prod", "band": "hot", "topic": "shipping",
+              "when": "shipping in a hurry with the fuse running short",
+              "story": "Everything went out the door, some of it smouldering."}, …]}
 
        - label: 2 to 4 words. emoji: one. when: when it fits, at most 12 words. story: one dry sentence, at most 15 words.
-       - band: calm, warm, hot or explosive (explosive is right after the fuse blows).
-       - topic: what the work is about when this vibe fits: code, design, writing, business, voice, shipping or ideas.
-         Use "any" for vibes about mood, time or habits rather than a kind of work. A topic vibe only shows up when
-         the session is about that topic.
-       - About the mood, not the content: no quotes from messages, no names, nothing private.
-       - Don't show the vibes to the owner. They're found by playing.
+       - band: how the session went. calm: the fuse barely moved. cool: it grew, from banter, hype or thanks.
+         hot: it burned through half or more, or nearly blew. explosive: it blew; make it funny, never shaming.
+       - topic: what the work is about when this name fits: code, design, writing, business, voice, shipping or ideas.
+         Use "any" for names about time or habits rather than a kind of work. A topic name only shows up when the
+         session is about that topic.
+       - About what they did, not the content: no quotes from messages, no names, nothing private.
+       - Don't show the names to the owner. They're found by playing.
 
     6. Check both files, and fix anything it reports:
 
            "$HOME/Library/Application Support/Lunte/lunte-hook" check-fuse
 
-    7. Finish with one short line to the owner: how many messages you rated, that their vibes are set (without
-       listing them), and that they should now type `3 2 1 pow` to light their tuned fuse. Lunte tunes itself as soon
+    7. Finish with one short line to the owner: how many messages you rated, that their session names are
+       set (without listing them), and that they should now type `3 2 1 pow` to light their tuned fuse. Lunte tunes itself as soon
        as the files appear.
     """
 }
