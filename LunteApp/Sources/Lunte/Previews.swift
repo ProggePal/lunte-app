@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import FuseKit
 import LunteCore
 import SwiftUI
 
@@ -202,6 +203,8 @@ enum PopoverShots {
         let last = PopoverPreviews.lastSession
         let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, open: true).padding(14).frame(width: 308))),
                        ("9b-opened", AnyView(History(model: last, sessions: last.past, open: true, picked: Set(last.past.suffix(1).map(\.start))).padding(14).frame(width: 308))),
+                       ("pill-lab", AnyView(PillLab())),
+                       ] + (0..<66).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) } + [
                        ("club", AnyView(ClubView(model: PopoverPreviews.club))), ("club-none", AnyView(ClubView(model: fresh))),
                        ("settings", AnyView(SettingsView(model: fresh, updater: nil)))]
         Task {
@@ -223,6 +226,57 @@ enum PopoverShots {
                 }
             }
             NSApp.terminate(nil)
+        }
+    }
+}
+
+// ponytail: a lab to pick the pill by eye; delete it once one is picked.
+/// The pill on every made-up session, and a few made-up extremes, frame by frame through its replay, and at rest
+/// without its green.
+struct PillLab: View {
+    static let frames = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0]
+    var replay: Double? // just a few, this many seconds into their replay, both ways: a frame of a GIF
+
+    var body: some View {
+        let made = { (name: String, levels: [Double]) in
+            (name: name, boomed: levels.last == 0, story: levels.enumerated().map { (ts: Double($0.offset) * 600, left: $0.element) })
+        }
+        let rows = [PopoverPreviews.fresh, PopoverPreviews.lastSession].flatMap { m in
+            m.past.map { s in (name: m.names[s.start] ?? "Session", boomed: s.boom != nil,
+                               story: Array(Game.fuseLine(s, m.messages(in: s), now: Date().timeIntervalSince1970).dropLast())) }
+        } + [made("Kept its cool", [1, 1.1, 1.2, 1.25]), made("Up and down", [1, 0.6, 1, 0.5, 1, 0.4, 1, 0.7, 1.25, 0.8, 1.2]),
+             made("Close call", [1, 0.6, 0.2, 0.1, 0.5]), made("Hanging by a thread", [1, 0.5, 0.12]),
+             made("Burnt out", [1, 0.7, 0.4, 0.2, 0]), made("Long and churny", [1, 0.4, 1, 0.4, 1, 0.4, 1, 0.4, 1, 0.4, 1, 0.6, 1.1])]
+        if let replay {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(rows.indices.filter { ["Kept its cool", "Good company", "Full throttle", "Kaboom", "Close call", "Up and down"].contains(rows[$0].name) }, id: \.self) { i in
+                    HStack(spacing: 9) {
+                        let levels = rows[i].story.map(\.left), boomed = rows[i].boomed
+                        SessionFuse(levels: levels, boomed: boomed, replay: min(1, replay / SessionFuse.duration(levels, boomed: boomed)))
+                        Text(rows[i].name)
+                    }
+                }
+            }
+            .padding(14)
+            .frame(width: 260, alignment: .leading)
+            .fixedSize()
+        } else {
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            GridRow {
+                Text("")
+                ForEach(Self.frames, id: \.self) { Text(String(format: "%.2f", $0)).font(.caption).foregroundStyle(.secondary) }
+                Text("Neutral").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(rows.indices, id: \.self) { i in
+                GridRow {
+                    Text(rows[i].name).lineLimit(1)
+                    ForEach(Self.frames, id: \.self) { SessionFuse(levels: rows[i].story.map(\.left), boomed: rows[i].boomed, replay: $0) }
+                    SessionFuse(levels: rows[i].story.map(\.left), boomed: rows[i].boomed, green: false)
+                }
+            }
+        }
+        .padding(14)
+        .fixedSize()
         }
     }
 }

@@ -113,23 +113,6 @@ struct SessionChart: View {
     }
 }
 
-/// A session's own fuse, still and in ink, as big as in the menu bar and in a pill: as long as cool grew it, or as short
-/// as it got; the Boom's symbol if it blew.
-struct SessionPill: View {
-    let sitting: Sitting
-    let shown: Double
-
-    var body: some View {
-        Group {
-            if let boom = sitting.boom { Text(tier(boom.tier).emoji).font(.system(size: 12)) }
-            else { FuseIcon(left: shown).frame(width: FuseScene.fuseWidth, height: 22) }
-        }
-        .frame(width: FuseScene.fuseWidth + 10, height: 26)
-        .background(Color.primary.opacity(0.08), in: Capsule())
-        .accessibilityHidden(true)
-    }
-}
-
 /// Your earlier sessions, under the open one: today's in a section of their own, a row each, and the ones before behind
 /// Previously, a row that opens like Other Networks in Wi-Fi, onto a list by day that scrolls. A row opens its session
 /// under it. It's read from the log on this Mac and never sent, and it never adds up how long you worked.
@@ -140,6 +123,7 @@ struct History: View {
     @State var open = false
     @State var picked: Set<Double> = [] // the opened sessions, by start: each opens and closes on its own, so none moves another
     @State private var focus: Double? // the one opened last, to show whole
+    @State private var replays: [Double: Double] = [:] // a pill as it replays, by start
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -199,14 +183,22 @@ struct History: View {
     private func row(_ s: Sitting) -> some View {
         let opened = picked.contains(s.start), name = model.names[s.start] ?? "Session"
         let newest = s.start == sessions.last?.start && s.start > model.seen
+        let levels = Game.fuseLine(s, model.messages(in: s), now: Date().timeIntervalSince1970).dropLast().map(\.left), boomed = s.boom != nil
         return VStack(alignment: .leading, spacing: 8) {
             Button {
                 withAnimation(reduceMotion ? nil : MenuPanel.expand) { if opened { picked.remove(s.start) } else { picked.insert(s.start) } }
                 focus = opened ? nil : s.start
+                // The first time it's opened, its pill runs the session back.
+                if s.start > model.seen, !reduceMotion {
+                    replays[s.start] = 0
+                    DispatchQueue.main.async {
+                        withAnimation(.linear(duration: SessionFuse.duration(levels, boomed: boomed))) { replays[s.start] = 1 }
+                    }
+                }
                 model.opened(s)
             } label: {
                 HStack(spacing: 9) {
-                    SessionPill(sitting: s, shown: shown(s))
+                    SessionFuse(levels: levels, boomed: boomed, replay: replays[s.start] ?? (s.start > model.seen ? 0 : 1)) // unopened: fresh
                     Text(name).lineLimit(1)
                     Spacer(minLength: 0)
                     if s.aura > 0 { Text("+\(s.aura)").monospacedDigit().foregroundStyle(.secondary) }
@@ -224,13 +216,6 @@ struct History: View {
             if opened { SessionCard(model: model, sitting: s).padding(.top, 2).padding(.bottom, 10) }
         }
         .id(s.start)
-    }
-
-    /// The fuse a row shows: as long as cool grew it, else as short as it got.
-    private func shown(_ s: Sitting) -> Double {
-        let lefts = Game.fuseLine(s, model.messages(in: s), now: Date().timeIntervalSince1970).dropLast().map(\.left)
-        let peak = lefts.max() ?? 1
-        return peak >= 1.1 ? peak : max(0.08, lefts.min() ?? 1)
     }
 }
 

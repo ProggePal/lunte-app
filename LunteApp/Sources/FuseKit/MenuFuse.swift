@@ -72,7 +72,7 @@ public struct FuseScene {
     var still = false
 
     // The fuse is material from `head` (its start, where cool feeds it in) to `tail` (its burning tip).
-    private var head = Tween(0)
+    private(set) var head = Tween(0)
     private var tail = Tween(1)
     private var wind = Tween(0)  // the breeze while a prompt is rated, 0...1
     private var boom = Tween(0)  // the symbol's size, 0...1
@@ -641,7 +641,7 @@ public struct FuseScene {
 
     /// Where the bit of fuse at `s` sits when the fuse runs from `head` to `tail`, at rest. Three coils to a stick. Each
     /// coil keeps its own small quirks as it moves, since they belong to the fuse, not to the spot.
-    static func restingPoint(_ s: Double, head: Double, tail: Double, spring: Double = 0) -> CGPoint {
+    public static func restingPoint(_ s: Double, head: Double, tail: Double, spring: Double = 0) -> CGPoint {
         let s = s / full, head = head / full, tail = tail / full // as a share of full
         let reach = pitch * (1 + stretch * (1 - min(1, max(0, tail - head)))) * (1 + spring)
         let r = radius * (1 + 0.11 * quirk(s, 1)), angle = 6 * .pi * s + 0.22 * quirk(s, 2)
@@ -677,7 +677,7 @@ public struct FuseScene {
         0.6 * sin(17.3 * s + 1.1 * k) + 0.4 * sin(29.7 * s + 2.3 * k * k)
     }
 
-    private func stroke(_ ctx: CGContext, _ from: Double, _ to: Double, _ t: Double, _ colour: CGColor, width: Double) {
+    func stroke(_ ctx: CGContext, _ from: Double, _ to: Double, _ t: Double, _ colour: CGColor, width: Double) {
         let steps = max(2, Int((to - from) * 160))
         ctx.beginPath()
         ctx.move(to: point(from, t))
