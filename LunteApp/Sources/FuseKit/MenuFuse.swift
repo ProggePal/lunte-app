@@ -965,12 +965,14 @@ public struct FusePreviews: View {
 /// The fuse at rest, full and unlit, as a still icon: the menu bar's own drawing, in the text's colour.
 public struct FuseIcon: View {
     @Environment(\.colorScheme) private var scheme
-    public init() {}
+    let left: Double
+    /// A still fuse with `left` of a fresh one, 0...`FuseScene.full`: a session's own, in its row.
+    public init(left: Double = 1) { self.left = left }
 
     public var body: some View {
         Canvas { context, size in
             var scene = FuseScene()
-            scene.update(FuseLook(), at: -10, animated: false)
+            scene.update(FuseLook(left: left), at: -10, animated: false)
             let zoom = size.width / scene.width(at: 0)
             context.withCGContext { ctx in
                 ctx.translateBy(x: size.width, y: size.height / 2 + 9 * zoom)

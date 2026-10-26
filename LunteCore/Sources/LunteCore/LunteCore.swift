@@ -79,6 +79,8 @@ public struct Sitting: Equatable, Sendable {
     public var peakHeat = 0.0
     /// Prompts with cool of at least `Game.coolPrompt`.
     public var coolPrompts = 0
+    /// The furthest cool grew its fuse past fresh, 0...`Game.full` − 1.
+    public var grew = 0.0
     /// Its one Boom, with the escalations; nil if it never blew.
     public var boom: Boom?
     public var closeCalls: [CloseCall] = []

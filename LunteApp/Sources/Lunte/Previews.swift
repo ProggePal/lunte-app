@@ -82,7 +82,7 @@ enum PopoverPreviews {
                          reactions: line && reactions ? ["😂 Ola", "😂 Kari", "🫂 Ola", "😂 Sindre"] : [])
     }
 
-    /// A session that closed an hour ago, not seen yet: a slow burn, a Boom, and cooled off by the end.
+    /// A session that closed an hour ago, waiting in Today with its dot: a slow burn, a Boom, and cooled off by the end.
     static var lastSession: GameModel {
         var s = Session()
         s.earlier()
@@ -95,7 +95,7 @@ enum PopoverPreviews {
         s.calm(154, 100, cool: [130, 120, 110])
         s.add(97, heat: 0.4, "close, try once more")
         s.calm(95, 90, cool: [92])
-        return GameModel(preview: s.events, texts: s.texts, line: "it rewrote my README as a pirate", summary: true)
+        return GameModel(preview: s.events, texts: s.texts, line: "it rewrote my README as a pirate")
     }
 
     /// Three hours and 150 prompts: the oldest fold into a heat line.
@@ -199,7 +199,9 @@ enum PopoverShots {
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let popovers = PopoverPreviews.all.map { ($0.name, AnyView(PopoverView(model: $0.model, updater: nil))) }
         let fresh = PopoverPreviews.fresh
+        let last = PopoverPreviews.lastSession
         let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, open: true).padding(14).frame(width: 308))),
+                       ("9b-opened", AnyView(History(model: last, sessions: last.past, open: true, picked: Set(last.past.suffix(1).map(\.start))).padding(14).frame(width: 308))),
                        ("club", AnyView(ClubView(model: PopoverPreviews.club))), ("club-none", AnyView(ClubView(model: fresh))),
                        ("settings", AnyView(SettingsView(model: fresh, updater: nil)))]
         Task {
@@ -231,6 +233,7 @@ enum PopoverShots {
 #Preview("Blown") { PopoverView(model: PopoverPreviews.blown(), updater: nil) }
 #Preview("Blown, line written") { PopoverView(model: PopoverPreviews.blown(line: true), updater: nil) }
 #Preview("Last session") { PopoverView(model: PopoverPreviews.lastSession, updater: nil) }
+#Preview("A session opened") { let m = PopoverPreviews.lastSession; History(model: m, sessions: m.past, open: true, picked: Set(m.past.suffix(1).map(\.start))).padding(14).frame(width: 308) }
 #Preview("Long session") { PopoverView(model: PopoverPreviews.long, updater: nil) }
 #Preview("Fresh, no Club") { PopoverView(model: PopoverPreviews.fresh, updater: nil) }
 #Preview("Onboarding, every step") {

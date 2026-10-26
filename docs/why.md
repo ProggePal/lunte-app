@@ -133,7 +133,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Pichlmair & Johansen 2020](https://arxiv.org/abs/2011.09201)
 
 ## quiet-boom
-- **Rule:** After the bang the menu bar has no fire: an SF Symbol and a word, in the menu bar's own colour and font. First the tier's name, for at least 5 s, then "Still burning" while the heat keeps coming, or "Cooled off" 10 minutes after the Boom or its last step up, until the fresh stick. Escalating and calming down only swap the words, with a little spring, and they're still in between. The popover still says you're blown.
+- **Rule:** After the bang the menu bar has no fire: an SF Symbol and a word, in the menu bar's own colour and font. First the tier's name, for at least 5 s, then "Still burning" while the heat keeps coming, or "Calmed down" 10 minutes after the Boom or its last step up, until the fresh stick. Escalating and calming down only swap the words, with a little spring, and they're still in between. The popover still says you're blown.
 - **Principle:** Calm technology. A tool should live in the periphery and move to the centre only when it matters. You stay blown until 30 quiet minutes, often well over an hour, and a Boom that shouts all that time is noise in the corner of your eye. Keeping colour for the fuse also makes its red and green worth more.
 - **Evidence:** weak: a design frame, not an experiment.
 - **Tried:** red text; a big BOOM that stayed; a new blast for each tier; words that moved all the time. Each one kept shouting for the whole blown hour.
@@ -174,13 +174,14 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Sakurai on hitstop](https://sourcegaming.info/2015/11/11/thoughts-on-hitstop-sakurais-famitsu-column-vol-490-1/) (fan translation)
 
 ## summary-next-open
-- **Rule:** When a session closes, its summary waits for the next time you open the popover: how long it ran, its one line, its aura, and then the fuse across it, which ends full again at the close. It shows once, then goes away, and Today keeps it. Nothing pops up when a session closes.
-- **Principle:** The peak-end rule. We remember an experience by its peak and its end, so the summary ends on the recovery and what it earned. A session closes after you've left, so its summary is a memory device, there when you next look.
+- **Rule:** When a session closes, it waits in Today with its name, its aura, and a blue dot until you open it, there when you next look; opened, it tells its story (see [session-story](#session-story)). Nothing pops up when a session closes, and the top of the popover is only ever the session you're in.
+- **Principle:** The peak-end rule. We remember an experience by its peak and its end, so the story ends on the recovery and what it earned. A session closes after you've left, so its story is a memory device, there when you next look.
+- **Tried:** a last-session card pinned at the top the first time the popover opened after a session (awkward, and it pushed the live session away).
 - **Evidence:** strong, though in a meta-analysis the plain average predicted about as well.
 - **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x)
 
 ## history-not-a-score
-- **Rule:** Today lists today's earlier sessions, and Previously the ones before, by day, each as how many prompts and when, and opens any one's summary again. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions.
+- **Rule:** Today lists today's sessions, and Previously the ones before, by day, each as its own fuse, its name and its aura, and opens any one's story under it. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions.
 - **Principle:** Being watched doesn't help. Across 94 samples, electronic performance monitoring didn't improve performance and went with more stress. Hours added up would turn Lunte into a work monitor, for you or for a boss.
 - **Evidence:** mixed: a meta-analysis, with small effects that vary with how the monitoring is done.
 - **Source:** [Ravid et al. 2023](https://doi.org/10.1111/peps.12514)

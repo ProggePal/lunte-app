@@ -18,6 +18,12 @@ Look before and after you change how it moves or looks:
 - In Xcode, open `LunteApp/Package.swift`, pick the `FuseKit` scheme and open `MenuFuse.swift` for the same previews and a live playground. The script needs no Xcode. Xcode's own preview-export tool didn't answer when the fuse was built.
 - The renders can't show the screen-wide blast or the dim. To see those, run `scripts/build-app.sh`, then `open dist/Lunte.app --args -FuseDemo YES`. It loops a session on the real menu bar, with the screen show and without the sound.
 
+## The popover
+
+The popover and its windows live in `LunteApp/Sources/Lunte` (`Popover.swift`, `Sessions.swift` for Today and a session's story and chart, `Club.swift`). A finished session's name, arc and cool stretches come from `Story` in LunteCore, so they're tested there.
+- `scripts/render-popover.sh` draws every state in `Previews.swift`, light and dark, to `dist/popover/`, with contact sheets. `9b-opened` is a session opened under its row. Add a fixture there to see a new state.
+- The `see-lunte` skill (`.claude/skills/see-lunte`) covers the rest: the real panel with real data, installing a build, and matching system colours.
+
 ## Checks
 
 ```bash
