@@ -36,6 +36,8 @@ final class GameModel: ObservableObject {
     @Published private(set) var seen = defaults.double(forKey: "SeenSession")
     /// The fuse is burning towards a Boom that hasn't gone off yet.
     @Published private(set) var fusing = false
+    /// The popover is open. Its clocks stop while it's closed, so a closed panel never wakes the app.
+    @Published var popoverOpen = false
     /// A test Boom has blown, so the menu bar says BOOM.
     @Published private(set) var testBlown = false
     /// The vibe line, off by default while vibes are still taking shape. Off means no vibe is picked and no topic is
