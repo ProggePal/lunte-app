@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "lunte",
-  "owner": { "name": "Panter AS" },
+  "owner": { "name": "Pål Sørvik" },
   "plugins": [
     { "name": "lunte", "description": "Lunte's ears for Claude Code. Needs Lunte.app.", "source": "./" }
   ]
