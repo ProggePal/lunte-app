@@ -254,7 +254,7 @@ A new `test` event (less than 10 minutes old, not yet announced) lights a fuse w
 `scripts/build-app.sh [--release]` builds both packages and assembles `dist/Lunte.app`:
 - `Contents/MacOS/{Lunte,lunte-hook}`
 - `Contents/Frameworks/Sparkle.framework`
-- `Contents/Resources/{boom.wav,Lunte.icns,LayaKit-LICENSE.txt,plugin/}` (FluidUse's Apache-2.0 licence, which travels with the binary)
+- `Contents/Resources/{boom.wav,Lunte.icns,LayaKit-LICENSE.txt,Sparkle-LICENSE.txt,plugin/}` (FluidUse's Apache-2.0 and Sparkle's MIT licences, which travel with the binary)
 - `Contents/Info.plist`
 
 A dev build is signed ad-hoc. `--release` signs with `Developer ID Application: Panter AS (BF4LY62Q92)` and the hardened runtime. Notarizing and the appcast are a separate release step.

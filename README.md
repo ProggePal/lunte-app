@@ -68,4 +68,4 @@ Something you want in Lunte? Choose Submit a prompt… in Lunte's settings and i
 ## Credits
 Heat is read by [Laya](https://huggingface.co/convaiinnovations/laya-multilingual) (Apache-2.0), running on your Mac through FluidInference's [CoreML build](https://huggingface.co/FluidInference/laya-coreml) and the [FluidUse](https://github.com/FluidInference/FluidUse) runtime (Apache-2.0).
 
-Made in Oslo by Panter AS.
+Made in Oslo by Pål Sørvik.
