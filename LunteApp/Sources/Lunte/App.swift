@@ -43,6 +43,7 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         panel = MenuPanel(PopoverView(model: model, updater: updater))
         panel.closed = { [weak self] in
             self?.item.button?.highlight(false)
+            self?.model.popoverOpen = false
         }
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "FuseDemo") { return demo() }
@@ -173,6 +174,7 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         guard let button = item.button else { return }
         if panel.isVisible || panel.justClosed { return panel.dismiss() }
         NSApp.activate() // so the Boom's line takes typing
+        model.popoverOpen = true
         panel.show(under: button)
         DispatchQueue.main.async { button.highlight(true) } // after the click's own highlight lets go
     }

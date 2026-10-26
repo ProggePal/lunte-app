@@ -222,7 +222,7 @@ private struct FirstBoomCard: View {
                 if let owned = model.ownedTest {
                     Text("Your first Boom").foregroundStyle(.secondary)
                     Text("“\(owned.line)”")
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                    TimelineView(.animation(minimumInterval: 1, paused: !model.popoverOpen)) { context in
                         Text("Fresh fuse in " + countdown(max(0, owned.freshAt.timeIntervalSince(context.date)))).monospacedDigit().foregroundStyle(.secondary)
                     }
                 } else {
@@ -285,7 +285,7 @@ private struct FuseHeader: View {
     let hovered: Double?
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        TimelineView(.animation(minimumInterval: 1, paused: !model.popoverOpen)) { context in
             let now = context.date.timeIntervalSince1970
             let picked = hovered ?? boom?.ts
             VStack(alignment: .leading, spacing: 2) {
@@ -464,7 +464,7 @@ private struct Strip: View {
             ForEach(events, id: \.ts) { e in
                 Group {
                     if let mark = marks[e.ts] { Text(mark).font(.system(size: 12)) }
-                    else if e.awaitingRating(at: now) { RatingDot() }
+                    else if e.awaitingRating(at: now) { RatingDot(open: model.popoverOpen) }
                     else { Dot(heat: e.heat(at: now), cool: isCool(e)) }
                 }
                 .frame(width: cell, height: cell)
@@ -589,15 +589,18 @@ private struct Dot: View {
     }
 }
 
-/// A message Laya is still rating: a grey dot breathing until its colour arrives.
+/// A message Laya is still rating: a grey dot breathing until its colour arrives. It breathes by the clock, not a
+/// repeating animation, so it stops with the popover's other clocks while the panel is closed.
 private struct RatingDot: View {
+    let open: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var faint = false
 
     var body: some View {
-        Circle().fill(Color.secondary.opacity(0.35)).frame(width: 12, height: 12)
-            .opacity(faint ? 0.25 : 1)
-            .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 0.7).repeatForever()) { faint = true } } }
+        TimelineView(.animation(paused: !open || reduceMotion)) { context in
+            // 1 down to 0.25 and back, 0.7 s each way, eased at both ends
+            let breath = reduceMotion ? 1 : 0.625 + 0.375 * cos(context.date.timeIntervalSinceReferenceDate * .pi / 0.7)
+            Circle().fill(Color.secondary.opacity(0.35)).frame(width: 12, height: 12).opacity(breath)
+        }
     }
 }
 
