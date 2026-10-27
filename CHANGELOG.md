@@ -2,7 +2,7 @@
 
 What changed for you in each version of Lunte.
 
-## 0.5.0
+## 0.4.1
 
 ### Improvements
 - **Dive into a session.** Click one and it opens like a Control Center module: its fuse grows big and plays the session back, its heat runs along a small line over the clock, and the prompt it turned on shows in your own words. Point along the line to find any prompt, click for the next one, or drag across a stretch to see when it ran and how many prompts it had.
