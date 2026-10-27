@@ -25,7 +25,7 @@ Don't worry, it's only for show. The Mac is safe.
 - **Heat burns, cool grows.** Get mad at your AI and the fuse burns. Talk to it like your best bud and it grows back. Setup tunes both to how you talk.
 - **Boom.** Burn through it, and a few seconds later your Mac blows up. Out loud. Keep the heat coming and it turns into a Chain reaction, then a Meltdown.
 - **Sessions.** After 30 minutes without a prompt, you get a fresh stick and see how the session went.
-- **Clubs.** Make a Club with your friends. Your explosions are shared anonymously. Write a line to take the heat, and they'll roast your agent.
+- **Clubs.** Make a Club with your friends. Your explosions are shared anonymously. Comment to take the heat, and they'll roast your agent.
 - **Coming soon: Leagues.** Roasts, close calls and cool sessions earn your Club vibes, and Clubs race each other every day. Let the best vibes win.
 
 ## Install
@@ -55,10 +55,9 @@ That includes setup: your own AI rates your recent prompts so Lunte learns how y
 **So what does get shared?**
 Nothing, unless you join a Club. Then your Club sees:
 - your name
-- your Booms: when they went off, never who
-- the emoji you throw, with your name
-- your line about a Boom, if you write one. It has your name on it, so that's your call.
-- the vibes you add to the Club, never who earned what
+- anonymous Booms
+- your comments and emoji
+- the vibes you add
 
 Never your prompts, their scores, or how long you work. Later, a Club can go public and put its name and vibes on a public board.
 
