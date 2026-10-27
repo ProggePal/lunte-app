@@ -180,6 +180,13 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Evidence:** strong, though in a meta-analysis the plain average predicted about as well.
 - **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x)
 
+## session-replay
+- **Rule:** A session's pill runs it back once, at your next look, a beat after the popover opens, and counts as watched only once it has run to its end. Opening its row runs it back again, every time. The pointer on a row only stirs it, with the rating breeze.
+- **Principle:** The session is a memory device, there when you next look (see [summary-next-open](#summary-next-open)), so its story is told once and then kept, to be recognised at a glance: the long churny one, the one that nearly blew. Habituation: a story retold every time the pointer passes turns into a screensaver, and a sweep down the rows would restart them all at once. Opening a row asks for it, so that can't wear out. Its ash and embers aren't the soft line's juice (see [session-story](#session-story)): each dot is fuse that burnt and the scorch is where it blew, in the menu bar fuse's own look, so they're the facts.
+- **Tried:** running back only the first time its row was opened (the click opened the story under it too, so the eye was on that; a waiting pill showed a fresh fuse, which told you nothing; and opening the newest counted the older ones as seen, so they jumped to their end).
+- **Evidence:** strong for habituation; the timing is craft.
+- **Source:** [Rankin et al. 2009](https://doi.org/10.1016/j.nlm.2008.09.012)
+
 ## history-not-a-score
 - **Rule:** Today lists today's sessions, and Previously the ones before, by day, each as its own fuse, its name and its aura, and opens any one's story under it. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions.
 - **Principle:** Being watched doesn't help. Across 94 samples, electronic performance monitoring didn't improve performance and went with more stress. Hours added up would turn Lunte into a work monitor, for you or for a boss.

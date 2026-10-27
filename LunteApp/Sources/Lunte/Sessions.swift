@@ -124,7 +124,6 @@ struct History: View {
     @State var picked: Set<Double> = [] // the opened sessions, by start: each opens and closes on its own, so none moves another
     @State private var focus: Double? // the one opened last, to show whole
     @State private var replays: [Double: Double] = [:] // a pill as it replays, by start
-    @State private var hovered: Double? // the row the pointer's on, whose pill the breeze runs through
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -185,22 +184,24 @@ struct History: View {
         let opened = picked.contains(s.start), name = model.names[s.start] ?? "Session"
         let newest = s.start == sessions.last?.start && s.start > model.seen
         let levels = Game.fuseLine(s, model.messages(in: s), now: Date().timeIntervalSince1970).dropLast().map(\.left), boomed = s.boom != nil
+        let unplayed = s.start > model.played && Calendar.current.isDateInToday(Date(timeIntervalSince1970: s.start)) && !reduceMotion
+        /// Runs the session back in its pill, after `wait`.
+        func replay(after wait: Double = 0) -> Double {
+            let d = SessionFuse.duration(levels, boomed: boomed)
+            replays[s.start] = 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { withAnimation(.linear(duration: d)) { replays[s.start] = 1 } }
+            return wait + d
+        }
         return VStack(alignment: .leading, spacing: 8) {
             Button {
                 withAnimation(reduceMotion ? nil : MenuPanel.expand) { if opened { picked.remove(s.start) } else { picked.insert(s.start) } }
                 focus = opened ? nil : s.start
-                // The first time it's opened, its pill runs the session back.
-                if s.start > model.seen, !reduceMotion {
-                    replays[s.start] = 0
-                    DispatchQueue.main.async {
-                        withAnimation(.linear(duration: SessionFuse.duration(levels, boomed: boomed))) { replays[s.start] = 1 }
-                    }
-                }
+                if !opened, !reduceMotion { _ = replay() } // each time it's opened, its pill runs the session back
                 model.opened(s)
-            } label: {
+            } label: { Pointed { on in
                 HStack(spacing: 9) {
-                    SessionFuse(levels: levels, boomed: boomed, replay: replays[s.start] ?? (s.start > model.seen ? 0 : 1), // unopened: fresh
-                                breeze: hovered == s.start && !reduceMotion)
+                    SessionFuse(levels: levels, boomed: boomed, replay: replays[s.start] ?? (unplayed ? 0 : 1), // unplayed: fresh
+                                breeze: on && !reduceMotion)
                     Text(name).lineLimit(1)
                     Spacer(minLength: 0)
                     if s.aura > 0 { Text("+\(s.aura)").monospacedDigit().foregroundStyle(.secondary) }
@@ -209,8 +210,7 @@ struct History: View {
                         .rotationEffect(.degrees(opened ? 90 : 0))
                 }
                 .modifier(Lit())
-                .onHover { hovered = $0 ? s.start : hovered == s.start ? nil : hovered }
-            }
+            } }
             .buttonStyle(.plain)
             .help(Game.sessionLine(s))
             .accessibilityLabel(name + ", " + clock(s.start) + (s.boom != nil ? ", it went boom" : "") + (s.aura > 0 ? ", plus \(s.aura) aura" : ""))
@@ -219,7 +219,22 @@ struct History: View {
             if opened { SessionCard(model: model, sitting: s).padding(.top, 2).padding(.bottom, 10) }
         }
         .id(s.start)
+        // Not yet watched, it runs back once at your next look, a beat after the popover opens. Closed before its end,
+        // it runs back again next time.
+        // Why: the session's story is there when you next look (docs/why.md#session-replay)
+        .onChange(of: model.popoverOpen) { _, open in
+            guard open, unplayed else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + replay(after: 0.3)) { if model.popoverOpen { model.played(s) } }
+        }
     }
+}
+
+/// Whether the pointer's on a row, kept in the row, so moving it from row to row redraws those two rows, not the list.
+private struct Pointed<Content: View>: View {
+    @ViewBuilder let content: (Bool) -> Content
+    @State private var on = false
+
+    var body: some View { content(on).onHover { on = $0 } }
 }
 
 /// A list as tall as it is, up to `cap`, then it scrolls, with no scroller and soft ends, growing and shrinking with the

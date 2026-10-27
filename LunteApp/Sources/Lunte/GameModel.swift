@@ -34,6 +34,8 @@ final class GameModel: ObservableObject {
     @Published private(set) var names: [Double: String] = [:]
     /// When the newest session you've opened in Today started: a newer one waits there with a dot.
     @Published private(set) var seen = defaults.double(forKey: "SeenSession")
+    /// When the newest session whose pill you've watched run back started: a newer one in Today runs back at your next look.
+    @Published private(set) var played = defaults.object(forKey: "PlayedSession") as? Double ?? defaults.double(forKey: "SeenSession")
     /// The fuse is burning towards a Boom that hasn't gone off yet.
     @Published private(set) var fusing = false
     /// The popover is open. Its clocks stop while it's closed, so a closed panel never wakes the app.
@@ -228,6 +230,13 @@ final class GameModel: ObservableObject {
         guard s.start > seen else { return }
         seen = s.start
         defaults.set(seen, forKey: "SeenSession")
+    }
+
+    /// You watched a session's pill run back to its end.
+    func played(_ s: Sitting) {
+        guard s.start > played else { return }
+        played = s.start
+        defaults.set(played, forKey: "PlayedSession")
     }
 
     /// The closed sessions' names, from their facts and the session names your AI wrote at setup (vibes.json v 2).

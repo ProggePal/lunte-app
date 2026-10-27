@@ -5,8 +5,8 @@ import SwiftUI
 /// shape, so it's as tight as all the fuse the session was ever fed: the more, the tighter, squeezed up to fit the pill,
 /// and past the tightest it goes, trailing off its end. A Boom leaves a blast mark where the fuse began, with the ash
 /// flung out of it. `replay` runs the session back, from a fresh fuse at 0, with the menu bar's own feeds, burns and
-/// bang, and settles on the pill at rest at 1. With `breeze`, while the pointer's on its row, a breeze runs through it,
-/// as while a prompt is rated, stirring the ash and fanning the embers.
+/// bang, and settles on the pill at rest at 1. With `breeze`, once the pointer settles on its row, a breeze runs through
+/// it, as while a prompt is rated, stirring the ash and fanning the embers.
 // Why: heat burns the tip and cool feeds the start (docs/why.md#burn-tip-feed-start)
 public struct SessionFuse: View, Animatable {
     let levels: [Double] // the fuse line, in order, 0...`FuseScene.full`
@@ -17,6 +17,7 @@ public struct SessionFuse: View, Animatable {
     let breeze: Bool
     let gustAt: Double? // ponytail: the lab's moment into a breeze, for its stills
     @State private var hover: (on: Date, off: Date?)?
+    @State private var settled: Date? // when the pointer came onto its row
     @Environment(\.colorScheme) private var scheme
     static let width = 64.0, zoom = 1.2, pad = 7.0
     static let room = (width - 2 * pad) / zoom - 3.3 - FuseScene.radius - 1 // how far the coil can reach inside the pill
@@ -41,7 +42,9 @@ public struct SessionFuse: View, Animatable {
         .clipShape(Capsule())
         .onChange(of: breeze) { _, on in
             let now = Date()
-            if on { hover = (now, nil) } else if let h = hover {
+            settled = on ? now : nil
+            // Only once the pointer settles on its row, so the rows it crosses as a list scrolls stay still.
+            if on { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { if settled == now { hover = (Date(), nil) } } } else if let h = hover {
                 hover = (h.on, now)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { if hover?.off == now { hover = nil } } // once it's dropped
             }
