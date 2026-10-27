@@ -16,17 +16,25 @@ public enum Transcript {
     /// The human prompt in session `sid` closest to `ts` (within 5 s), or nil (unknown session, or Claude Code cleaned it up).
     /// A message sent while Claude is busy is recorded only when it's delivered, so without a close match this takes
     /// the first prompt recorded up to 10 minutes after `ts`.
-    public static func prompt(sid: String, ts: Double, root: URL = root) -> String? {
-        guard !sid.isEmpty, !sid.contains("/"),
-              let dirs = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return nil }
-        for dir in dirs {
-            // ponytail: reads the whole session file; the app caches the answer per event
-            guard let data = try? Data(contentsOf: dir.appendingPathComponent(sid + ".jsonl")) else { continue }
-            let prompts = parse(data, human: false)
-            if let close = prompts.filter({ abs($0.ts - ts) < 5 }).min(by: { abs($0.ts - ts) < abs($1.ts - ts) }) { return close.text }
-            return prompts.filter { $0.ts >= ts && $0.ts - ts < 600 }.min { $0.ts < $1.ts }?.text
+    public static func prompt(sid: String, ts: Double, root: URL = root) -> String? { prompts([(sid, ts)], root: root)[ts] }
+
+    /// The prompts behind many events at once, by when they came (as `prompt`), reading each session's file once.
+    public static func prompts(_ events: [(sid: String, ts: Double)], root: URL = root) -> [Double: String] {
+        guard let dirs = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [:] }
+        var out: [Double: String] = [:]
+        for (sid, wanted) in Dictionary(grouping: events.filter { !$0.sid.isEmpty && !$0.sid.contains("/") }, by: { $0.sid }) {
+            for dir in dirs {
+                // ponytail: reads the whole session file; the app caches the answers per event
+                guard let data = try? Data(contentsOf: dir.appendingPathComponent(sid + ".jsonl")) else { continue }
+                let prompts = parse(data, human: false)
+                for (_, ts) in wanted {
+                    out[ts] = prompts.filter { abs($0.ts - ts) < 5 }.min(by: { abs($0.ts - ts) < abs($1.ts - ts) })?.text
+                        ?? prompts.filter { $0.ts >= ts && $0.ts - ts < 600 }.min { $0.ts < $1.ts }?.text
+                }
+                break
+            }
         }
-        return nil
+        return out
     }
 
     /// Everything you typed since `since`, oldest first: machine messages, tool results, slash commands and

@@ -246,11 +246,29 @@ struct HeatLab: View {
         }
         let rows = [("One prompt", made(0, 1), nil), ("10 min", made(10, 6), nil), ("30 min", made(30, 12), nil),
                     ("2 h", made(120, 40), nil), ("5 h", made(300, 100), nil), ("2 h, pointing at one", made(120, 40), 15)]
+        // A session played through the real game, its pill and its line at the same moment of the replay.
+        let events = made(120, 40).enumerated().map { var e = $1; e.heat = $0 == 30 ? 1 : $0 == 12 ? 0.8 : e.heat; return e }
+        let sitting = Game.replay(events, now: events.last!.ts + 7200).sittings[0], line = Array(Game.fuseLine(sitting, events, now: events.last!.ts + 7200).dropLast())
+        let levels = line.map(\.left), times = line.map(\.ts), boomed = sitting.boom != nil
         VStack(alignment: .leading, spacing: 4) {
+            ForEach([0.2, 0.45, 0.7, 0.88], id: \.self) { p in
+                HStack { SessionFuse(levels: levels, boomed: boomed, replay: p); Text("replay \(p, specifier: "%.2f")").font(.caption).foregroundStyle(.secondary) }
+                let shown = sitting.boom.map { b in events.filter { $0.ts <= b.ts + 1800 } } ?? events
+                HeatLine(events: shown, impacts: shown.map { _ in 0 }, reading: nil, boom: sitting.boom?.ts, now: events.last!.ts + 7200, at: 0, shown: 0,
+                         story: p, intro: p, moment: { SessionFuse.moment(at: $0, levels, times, boomed: boomed) })
+                    .frame(height: 42).padding(.bottom, 8) // the line's own height and its headroom
+            }
+            ForEach([("A stretch dragged out", 60.0...190.0), ("A narrow one", 120.0...140.0)], id: \.0) { name, stretch in
+                Text(name).font(.caption).foregroundStyle(.secondary)
+                HeatLine(events: made(120, 40), impacts: made(120, 40).map { _ in 0 }, reading: nil, boom: nil, now: Date().timeIntervalSince1970,
+                         at: 0, shown: 0, stretch: stretch)
+                    .frame(height: 42).padding(.bottom, 8)
+            }
             ForEach(rows.indices, id: \.self) { i in
                 Text(rows[i].0).font(.caption).foregroundStyle(.secondary)
-                HeatLine(events: rows[i].1, moves: [], now: Date().timeIntervalSince1970, at: rows[i].1[rows[i].2 ?? 0].ts + 40, shown: rows[i].2 == nil ? 0 : 1)
-                    .frame(height: 36).padding(.bottom, 8)
+                HeatLine(events: rows[i].1, impacts: rows[i].1.map { _ in 0 }, reading: rows[i].2, boom: nil, now: Date().timeIntervalSince1970,
+                         at: rows[i].1[rows[i].2 ?? 0].ts + 40, shown: rows[i].2 == nil ? 0 : 1)
+                    .frame(height: 42).padding(.bottom, 8) // the line's own height and its headroom
             }
         }
         .padding(14)

@@ -30,6 +30,26 @@ public struct SessionFuse: View, Animatable {
     /// How long the replay takes on screen: as long as the fuse's moves, up to 4 seconds, then faster.
     public static func duration(_ levels: [Double], boomed: Bool) -> Double { min(4, Replay(levels, boomed: boomed).end) }
 
+    /// The moment of the session (along `times`, the fuse line's) that `replay` shows, and back, so a hairline over the
+    /// session's clock and the pill line up exactly: at the turns, and evenly in time between them, as each step plays
+    /// the stretch from the turn before it to its own. A Boom's prompt comes with the bang, not after the blast settles.
+    public static func moment(at replay: Double, _ levels: [Double], _ times: [Double], boomed: Bool) -> Double {
+        let play = Replay(levels, boomed: boomed), t = min(play.end, replay / 0.9 * play.end)
+        guard let first = times.first, let k = play.spans.lastIndex(where: { $0.at <= t }) else { return times.first ?? 0 }
+        let s = play.spans[k], next = k + 1 < play.spans.count ? play.spans[k + 1].at : play.bang ?? play.end
+        let a = times[min(s.from, times.count - 1)], b = times[min(s.to, times.count - 1)]
+        return times.count > 1 ? a + (b - a) * min(1, (t - s.at) / max(0.01, next - s.at)) : first
+    }
+
+    public static func replay(at moment: Double, _ levels: [Double], _ times: [Double], boomed: Bool) -> Double {
+        let play = Replay(levels, boomed: boomed), at = { (i: Int) in times[min(i, times.count - 1)] }
+        guard !times.isEmpty, let k = play.spans.lastIndex(where: { at($0.from) <= moment }) else { return 0 }
+        let s = play.spans[k], next = k + 1 < play.spans.count ? play.spans[k + 1].at : play.bang ?? play.end
+        if k == play.spans.count - 1, moment >= at(s.to) { return 1 }
+        let t = s.at + (next - s.at) * min(1, (moment - at(s.from)) / max(1, at(s.to) - at(s.from)))
+        return min(0.9, t / play.end * 0.9)
+    }
+
     public var body: some View {
         TimelineView(.animation(paused: hover == nil)) { timeline in
             // How far into the breeze, and when it began to drop, in seconds.
@@ -203,15 +223,20 @@ public struct SessionFuse: View, Animatable {
 struct Replay {
     let start: Double
     var steps: [(at: Double, look: FuseLook)] = []
+    var spans: [(at: Double, from: Int, to: Int)] = [] // when each step starts, and the stretch of the line it plays
     var ash: [Double] = [] // where along the fuse a dot of ash goes
     var bang: Double?
     var end = 0.0
 
     init(_ levels: [Double], boomed: Bool) {
         start = levels.first ?? 1
-        let moves = Self.swings(boomed ? Array(levels.dropLast()) : levels).dropFirst() + (boomed ? [0] : [])
-        var t = 0.15, now = start, head = 0.0 // where the fuse starts, along it: what's fed in runs it back
-        for l in moves where abs(l - now) > 0.01 {
+        let blew = levels.firstIndex { $0 < 0.001 } ?? levels.count - 1
+        let moves = Self.turns(boomed ? Array(levels.dropLast()) : levels).dropFirst() + (boomed ? [blew] : [])
+        var t = 0.15, now = start, head = 0.0, from = 0 // where the fuse starts, along it: what's fed in runs it back
+        for i in moves where abs((boomed && i == blew ? 0 : levels[i]) - now) > 0.01 {
+            let l = boomed && i == blew ? 0 : levels[i]
+            spans.append((t, from, i))
+            from = i
             if boomed, l < 0.001 {
                 steps.append((t, FuseLook(phase: .fusing, left: 0)))
                 lay(head: head, to: head)
@@ -249,15 +274,18 @@ struct Replay {
     }
 
     /// The line's turning points, from its start to its end, leaving out every swing smaller than 15 %.
-    static func swings(_ line: [Double]) -> [Double] {
+    static func swings(_ line: [Double]) -> [Double] { turns(line).map { line[$0] } }
+
+    /// Where along the line its turning points are.
+    static func turns(_ line: [Double]) -> [Int] {
         guard let first = line.first else { return [] }
-        var points = [first], turn = first, way = 0.0 // the furthest it's gone since the last turning point, and which way
-        for l in line.dropFirst() {
-            if way == 0 { if abs(l - first) >= 0.15 { (turn, way) = (l, l > first ? 1 : -1) }; continue }
-            if (l - turn) * way > 0 { turn = l } else if abs(l - turn) >= 0.15 { points.append(turn); (turn, way) = (l, -way) }
+        var points = [0], turn = 0, way = 0.0 // the furthest it's gone since the last turning point, and which way
+        for (i, l) in line.enumerated().dropFirst() {
+            if way == 0 { if abs(l - first) >= 0.15 { (turn, way) = (i, l > first ? 1 : -1) }; continue }
+            if (l - line[turn]) * way > 0 { turn = i } else if abs(l - line[turn]) >= 0.15 { points.append(turn); (turn, way) = (i, -way) }
         }
         if way != 0 { points.append(turn) }
-        if let last = line.last, abs(last - (points.last ?? last)) > 0.01 { points.append(last) } // where it really ended
+        if abs(line[line.count - 1] - line[points[points.count - 1]]) > 0.01 { points.append(line.count - 1) } // where it really ended
         return points
     }
 

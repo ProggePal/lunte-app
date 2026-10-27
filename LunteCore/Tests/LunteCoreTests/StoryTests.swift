@@ -31,21 +31,18 @@ final class StoryTests: XCTestCase {
         XCTAssertEqual(energy(calm.map { at($0, heat: $0 == 3 ? 1 : 0) }), .boom)
     }
 
-    func testTheMovesAreThePromptsThatTurnedIt() {
-        func moves(_ events: [Event]) -> [(Story.Move.Kind, Double)] {
+    func testTheStoryOpensOnItsPeak() {
+        func peak(_ events: [Event]) -> (Double?, [Double]) {
             let s = Game.replay(events, now: events.last!.ts + 100_000, timeZone: utc.timeZone).sittings[0]
-            return Story.moves(s, events, Game.fuseLine(s, events, now: events.last!.ts + 100_000)).map { ($0.kind, $0.event.ts) }
+            let impacts = Story.impacts(events, Game.fuseLine(s, events, now: events.last!.ts + 100_000))
+            return (Story.peak(s, events, impacts).map { events[$0].ts }, impacts)
         }
-        XCTAssertTrue(moves(calm.map { at($0) }).isEmpty) // steady: nothing turned it
-        XCTAssertTrue(moves(calm.map { at($0, heat: 0.3) }).isEmpty) // grey dots burn under a move's worth
-        // Burnt, then brought back, in that order.
-        let back = moves([at(0), at(1, heat: 0.5), at(2, heat: 0.8), at(3, cool: 1), at(4)])
-        XCTAssertEqual(back.map(\.0), [.burnt, .back])
-        XCTAssertEqual(back.map(\.1), [t0 + 120, t0 + 180])
-        // The prompt that set it off, and the biggest burn before it, but never the same prompt twice.
-        let boom = moves([at(0, heat: 0.7), at(1), at(2, heat: 0.75)])
-        XCTAssertEqual(boom.map(\.0), [.burnt, .setItOff])
-        XCTAssertEqual(moves([at(0), at(1, heat: 1), at(2, heat: 1)]).map(\.0), [.setItOff]) // after the Boom, nothing burns
+        // Burnt, then brought back: what each did, and the biggest is the peak.
+        let (back, impacts) = peak([at(0), at(1, heat: 0.5), at(2, heat: 0.8), at(3, cool: 1), at(4)])
+        XCTAssertEqual(impacts.map { ($0 * 100).rounded() }, [0, -25, -64, 50, 0]) // cool mends half of what's burning
+        XCTAssertEqual(back, t0 + 120)
+        XCTAssertEqual(peak([at(0, heat: 0.7), at(1), at(2, heat: 0.75)]).0, t0 + 120) // the one that set it off, though less burnt
+        XCTAssertEqual(peak([at(0), at(1, cool: 0.6), at(2)]).0, t0 + 60) // steady: the coolest
     }
 
     func testTheActivityIsTheTopicElseTheTime() {

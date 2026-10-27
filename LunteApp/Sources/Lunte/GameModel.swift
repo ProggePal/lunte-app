@@ -387,6 +387,15 @@ final class GameModel: ObservableObject {
         return text
     }
 
+    /// Reads the prompts behind `events` in one pass per Claude Code session, so pointing along a session shows each
+    /// at once. Kept in memory only.
+    func prefetch(_ events: [Event]) async {
+        let missing = events.filter { promptCache[$0.ts] == nil }.map { (sid: $0.sid, ts: $0.ts) }
+        guard !missing.isEmpty else { return }
+        let found = await Task.detached { Transcript.prompts(missing) }.value
+        promptCache.merge(found) { mine, _ in mine }
+    }
+
     /// The prompt behind an event, if it's been read already.
     func cachedPrompt(_ e: Event) -> String? { promptCache[e.ts] }
 

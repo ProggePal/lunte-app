@@ -41,31 +41,19 @@ public enum Story {
         return hour < 8 ? "early" : "day"
     }
 
-    /// A prompt that turned the session, and what it did to the fuse: a share of the stick, burnt (below 0) or brought
-    /// back (above), or for the one that set it off, all that was left.
-    public struct Move: Equatable, Sendable {
-        public enum Kind: String, Sendable { case setItOff = "Set it off", burnt = "Burnt the most", back = "Brought it back" }
-        public let kind: Kind
-        public let event: Event
-        public let change: Double
+    /// What each prompt did to the fuse, as a share of the stick: burnt (below 0) or brought back (above); the one that
+    /// set off a Boom, all that was left. `line` is the session's fuse line (`Game.fuseLine`).
+    public static func impacts(_ events: [Event], _ line: [(ts: Double, left: Double)]) -> [Double] {
+        events.map { e in (line.last { $0.ts <= e.ts }?.left ?? 1) - (line.last { $0.ts < e.ts }?.left ?? 1) }
     }
 
-    // Why: your own words at the turns are what you'll recall (docs/why.md#session-story)
-    /// At most three prompts that turned the session, in the order they came: the one that set off its Boom, the one
-    /// that burnt the most, and the one that brought it back the most, each only if it moved the fuse by `moveSize` or
-    /// more. Picked by what the fuse did, so a steady session has none. `line` is its fuse line (`Game.fuseLine`).
-    public static func moves(_ s: Sitting, _ events: [Event], _ line: [(ts: Double, left: Double)]) -> [Move] {
-        let before = { (t: Double) in line.last { $0.ts < t }?.left ?? 1 }
-        let turns = events.map { e in (e, (line.last { $0.ts <= e.ts }?.left ?? 1) - before(e.ts)) }.filter { $0.0.ts != s.boom?.ts }
-        var moves: [Move] = []
-        if let boom = s.boom, let e = events.first(where: { $0.ts == boom.ts }) { moves.append(Move(kind: .setItOff, event: e, change: -before(e.ts))) }
-        if let (e, change) = turns.min(by: { $0.1 < $1.1 }), change <= -moveSize { moves.append(Move(kind: .burnt, event: e, change: change)) }
-        if let (e, change) = turns.max(by: { $0.1 < $1.1 }), change >= moveSize { moves.append(Move(kind: .back, event: e, change: change)) }
-        return moves.sorted { $0.event.ts < $1.event.ts }
+    // Why: your own words at the peak are what you'll recall (docs/why.md#session-story)
+    /// The prompt that turned the session most, where its story opens: the one that set off its Boom, else the one that
+    /// moved the fuse most, else its coolest.
+    public static func peak(_ s: Sitting, _ events: [Event], _ impacts: [Double]) -> Int? {
+        if let boom = s.boom, let i = events.firstIndex(where: { $0.ts == boom.ts }) { return i }
+        return events.indices.max { (abs(impacts[$0]), events[$0].cool ?? 0) < (abs(impacts[$1]), events[$1].cool ?? 0) }
     }
-
-    /// How far a prompt has to move the fuse to turn the session: about what an orange dot burns.
-    public static let moveSize = 0.12
 
     /// A session to name: its facts, its prompts, and its fuse line.
     public typealias Told = (sitting: Sitting, events: [Event], line: [(ts: Double, left: Double)])
