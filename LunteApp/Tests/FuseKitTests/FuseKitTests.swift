@@ -173,4 +173,11 @@ final class FuseKitTests: XCTestCase {
         XCTAssertEqual(Replay.swings([1, 0.4, 0.5]), [1, 0.4, 0.5])                       // but where it ended is shown
         XCTAssertEqual(Replay.swings([]), [])
     }
+
+    /// A pill plays from the fresh fuse a second before the first prompt, so a Boom on that prompt still blows, at it.
+    func testABoomOnTheFirstPromptBlows() {
+        let levels = [1.0, 0, 0], times = [99.0, 100, 160]
+        XCTAssertNotNil(Replay(levels, boomed: true).bang)
+        XCTAssertEqual(SessionFuse.moment(at: 0.9, levels, times, boomed: true), 100, accuracy: 0.01)
+    }
 }

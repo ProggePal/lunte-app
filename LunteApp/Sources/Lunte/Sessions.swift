@@ -39,8 +39,7 @@ struct SessionCard: View {
         impacts = Story.impacts(events, line)
         peak = Story.peak(sitting, events, impacts)
         ranking = Self.ranked(sitting, events, impacts)
-        levels = line.dropLast().map(\.left)
-        times = line.dropLast().map(\.ts)
+        (levels, times) = Self.pill(line)
         _reading = State(initialValue: telling.opening ? nil : peak) // opening, it's read once it's told
     }
 
@@ -57,10 +56,17 @@ struct SessionCard: View {
         return max(0.05, SessionFuse.replay(at: events[i].ts, levels, times, boomed: s.boom != nil))
     }
 
+    /// A session's fuse line as its pill plays it: from the fresh fuse it began with, a second before its first prompt,
+    /// so that prompt's burn plays too (and a Boom on it), to where it ended.
+    static func pill(_ line: [(ts: Double, left: Double)]) -> (levels: [Double], times: [Double]) {
+        let line = line.prefix(1).map { (ts: $0.ts - 1, left: 1.0) } + line.dropLast()
+        return (line.map(\.left), line.map(\.ts))
+    }
+
     /// Where the pill comes to rest as the session opens: on its peak.
     static func goal(_ model: GameModel, _ s: Sitting) -> Double {
         let events = model.messages(in: s), line = Game.fuseLine(s, events, now: s.end + 3600)
-        let levels = line.dropLast().map(\.left), times = line.dropLast().map(\.ts)
+        let (levels, times) = pill(line)
         return rest(s, events, levels, times, on: Story.peak(s, events, Story.impacts(events, line)))
     }
 
@@ -382,7 +388,7 @@ struct HeatLine: View, Animatable {
                 if let band, abs(v.translation.width) > 3 { return select(moments(band), true) }
                 cycle(band.map(moments) ?? moments(v.location.x - reach...v.location.x + reach))
             })
-        .onChange(of: open) { _, open in if !open { (band, held) = (nil, nil) } }
+        .onChange(of: open) { _, open in if !open, band != nil { NSCursor.arrow.set() }; if !open { (band, held) = (nil, nil) } }
         .accessibilityElement()
         .accessibilityLabel("The session's heat over the clock, \(events.count) prompts")
     }
@@ -540,7 +546,10 @@ struct History: View {
             ZStack(alignment: .topLeading) {
                 if let s = sessions.first(where: { $0.start == opened }) { deep(s).zIndex(1) } else { list } // the growing pill over the list
             }
-            .onChange(of: model.popoverOpen) { _, open in if !open { collapse() } }
+            .onChange(of: model.popoverOpen) { _, open in
+                if open { span = first; firstLook() } else { collapse() }
+            }
+            .onChange(of: sessions.last?.start) { if model.popoverOpen { firstLook() } } // one that ends while you look
             // Out of a session by any way, its header, the menu bar's icon or closing: its pill at its end, nothing playing on.
             .onChange(of: opened) { was, _ in if let was { tellings.of(was).still() } }
         }
@@ -630,29 +639,50 @@ struct History: View {
         withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) { opened = nil }
     }
 
-    /// As the popover closes: out of any session, onto the first tab with sessions in it, so it always opens the same,
-    /// as the system's own menus start fresh. Each section asked twice changes nothing.
+    /// As the popover closes: out of any session, nothing left playing, onto the first span with sessions in it.
     private func collapse() {
         opened = nil
-        span = Span.allCases.first { span in sessions.contains(where: span.holds) } ?? .today
+        tellings.still()
+        span = first
+    }
+
+    /// The first span with sessions in it, which the popover opens on, so it always opens the same, as the system's own
+    /// menus start fresh: set as it closes, and again as it opens, for a day that's turned since.
+    private var first: Span { Span.allCases.first { span in sessions.contains(where: span.holds) } ?? .today }
+
+    /// Today's sessions whose pills you haven't watched run back, a beat after the popover opens, and count as watched
+    /// once they all have run to their end with it open. Closed before, they run back again next time.
+    // Why: the session's story is there when you next look (docs/why.md#session-replay)
+    private func firstLook() {
+        let waiting = sessions.filter(unplayed)
+        guard let newest = waiting.last else { return }
+        let end = waiting.map { replay($0, after: 0.3) }.max() ?? 0, runs = waiting.map { tellings.of($0.start).run }
+        DispatchQueue.main.asyncAfter(deadline: .now() + end) {
+            if zip(waiting, runs).allSatisfy({ tellings.of($0.start).run == $1 }) { model.played(newest) }
+        }
+    }
+
+    /// A session today whose pill you haven't watched run back.
+    private func unplayed(_ s: Sitting) -> Bool {
+        s.start > model.played && Calendar.current.isDateInToday(Date(timeIntervalSince1970: s.start)) && !reduceMotion
     }
 
     /// Runs a session back in its pill, after `wait`, up to `goal`, and says when it's done.
     private func replay(_ s: Sitting, after wait: Double = 0, to goal: Double = 1) -> Double {
-        let telling = tellings.of(s.start), d = SessionFuse.duration(levels(s), boomed: s.boom != nil) * goal, cut = telling.cut
+        let telling = tellings.of(s.start), d = SessionFuse.duration(levels(s), boomed: s.boom != nil) * goal, run = telling.begin()
         telling.goal = goal
         telling.story = 0
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
-            guard telling.cut == cut else { return } // closed before it began
+            guard telling.run == run else { return } // closed, or run back again, before it began
             withAnimation(.linear(duration: d)) { telling.story = goal }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + wait + d) { if telling.cut == cut { telling.opening = false } } // told
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait + d) { if telling.run == run { telling.opening = false } } // told
         return wait + d
     }
 
     /// A session's fuse line, as its pill draws it.
     private func levels(_ s: Sitting) -> [Double] {
-        Game.fuseLine(s, model.messages(in: s), now: Date().timeIntervalSince1970).dropLast().map(\.left)
+        SessionCard.pill(Game.fuseLine(s, model.messages(in: s), now: Date().timeIntervalSince1970)).levels
     }
 
     /// Newest day first, and newest session first within it.
@@ -672,7 +702,7 @@ struct History: View {
     /// the newest waits to be opened, and a chevron to dive in.
     private func row(_ s: Sitting) -> some View {
         let name = model.names[s.start] ?? "Session", newest = s.start == sessions.last?.start && s.start > model.seen
-        let unplayed = s.start > model.played && Calendar.current.isDateInToday(Date(timeIntervalSince1970: s.start)) && !reduceMotion
+        let unplayed = unplayed(s)
         return Button { open(s) } label: {
             Hovering { over in
                 HStack(spacing: 9) {
@@ -695,13 +725,6 @@ struct History: View {
         .buttonStyle(.plain)
         .accessibilityLabel(name + ", " + clock(s.start) + (s.boom != nil ? ", it went boom" : "") + (s.aura > 0 ? ", plus \(s.aura) aura" : ""))
         .id(s.start)
-        // Not yet watched, it runs back once at your next look, a beat after the popover opens. Closed before its end,
-        // it runs back again next time.
-        // Why: the session's story is there when you next look (docs/why.md#session-replay)
-        .onChange(of: model.popoverOpen) { _, open in
-            guard open, unplayed else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + replay(s, after: 0.3)) { if model.popoverOpen { model.played(s) } }
-        }
     }
 }
 
@@ -720,12 +743,19 @@ final class Telling: ObservableObject {
     @Published var opening = false // told as the session opens, so its card holds back all but the line till it's done
     @Published var goal = 1.0 // where the story stops as it opens: on its peak
     @Published private(set) var cut = 0 // a fresh pill, so a replay on its way doesn't carry on
+    private(set) var run = 0 // the replay on its way, so the steps still to come of one before it do nothing
+
+    /// A new replay: what's still to come of any before it does nothing.
+    func begin() -> Int {
+        run += 1
+        return run
+    }
 
     /// Stops the replay where it is and puts the pill at its end, with no motion.
     func still() {
         var now = Transaction()
         now.disablesAnimations = true
-        withTransaction(now) { cut += 1; story = 1; opening = false; goal = 1 }
+        withTransaction(now) { cut += 1; run += 1; story = 1; opening = false; goal = 1 }
     }
 }
 
@@ -739,6 +769,9 @@ final class Tellings {
         all[start] = t
         return t
     }
+
+    /// Every pill at its end, nothing playing on.
+    func still() { all.values.forEach { $0.still() } }
 }
 
 /// A session's pill, as far as its `Telling` has run it.

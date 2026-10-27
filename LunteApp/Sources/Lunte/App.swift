@@ -181,7 +181,8 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         // Inside a session, the icon goes back to your sessions, as Control Center's does from a module.
         if panel.isVisible, model.diving != nil {
             withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) { model.diving = nil }
-            return panel.makeKey()
+            panel.makeKey()
+            return DispatchQueue.main.async { button.highlight(true) } // still lit, after the click's own highlight lets go
         }
         if panel.isVisible || panel.justClosed { return panel.dismiss() }
         NSApp.activate() // so the Boom's line takes typing
@@ -248,8 +249,17 @@ final class MenuPanel: NSPanel {
     override func resignKey() {
         super.resignKey()
         // A click on the icon goes to the icon, which may act on what's open rather than close it.
-        if let e = NSApp.currentEvent, e.type == .leftMouseDown, e.window === item, staysForItem() { return }
+        if let e = NSApp.currentEvent, e.type == .leftMouseDown, e.window === item, staysForItem() { return rekey() }
         dismiss()
+    }
+
+    /// Once the mouse is up, key again if the icon didn't take it back itself (pressed and dragged away, or moved with
+    /// Cmd), so a click anywhere else or Escape closes it again.
+    private func rekey() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self, isVisible, !isKeyWindow else { return }
+            NSEvent.pressedMouseButtons == 0 ? makeKey() : rekey()
+        }
     }
 
     override func cancelOperation(_ sender: Any?) { dismiss() }

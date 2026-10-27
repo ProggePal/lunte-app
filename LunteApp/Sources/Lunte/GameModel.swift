@@ -641,6 +641,7 @@ final class GameModel: ObservableObject {
         testBlown = false
         connected = true
         onboarded = true
+        retuning = false
         defaults.set(true, forKey: "Connected")
         defaults.set(true, forKey: "Onboarded")
     }

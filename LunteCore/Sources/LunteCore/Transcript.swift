@@ -27,12 +27,12 @@ public enum Transcript {
             for dir in dirs {
                 // ponytail: reads the whole session file; the app caches the answers per event
                 guard let data = try? Data(contentsOf: dir.appendingPathComponent(sid + ".jsonl"), options: .mappedIfSafe) else { continue }
-                let prompts = parse(data, human: false)
+                // What you typed, as the hook read it: never a system reminder, a hand-back or a pasted block, so one
+                // of those nearer the time never stands in for your prompt.
+                let prompts = parse(data, human: false).map { (ts: $0.ts, text: Classifier.human($0.text)) }.filter { !$0.text.isEmpty }
                 for (_, ts) in wanted {
-                    let text = prompts.filter { abs($0.ts - ts) < 5 }.min(by: { abs($0.ts - ts) < abs($1.ts - ts) })?.text
+                    out[ts] = prompts.filter { abs($0.ts - ts) < 5 }.min(by: { abs($0.ts - ts) < abs($1.ts - ts) })?.text
                         ?? prompts.filter { $0.ts >= ts && $0.ts - ts < 600 }.min { $0.ts < $1.ts }?.text
-                    // What you typed, as the hook read it: never a system reminder, a hand-back or a pasted block.
-                    out[ts] = text.map(Classifier.human).flatMap { $0.isEmpty ? nil : $0 }
                 }
                 break
             }
