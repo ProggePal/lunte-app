@@ -68,7 +68,7 @@ struct SessionCard: View {
         let lead = picked ?? peak, intro = telling.opening ? min(1, (telling.story ?? 1) / telling.goal) : 1
         VStack(alignment: .leading, spacing: 3) {
             HeatLine(events: events, impacts: impacts, reading: reading, boom: sitting.boom?.ts, now: now, at: at, shown: shown,
-                     story: telling.story ?? 1, intro: intro, point: point, select: select, cycle: cycle) { [levels, times, boomed = sitting.boom != nil] in
+                     story: telling.story ?? 1, intro: intro, open: model.popoverOpen, point: point, select: select, cycle: cycle) { [levels, times, boomed = sitting.boom != nil] in
                 SessionFuse.moment(at: $0, levels, times, boomed: boomed)
             }
             .frame(height: 36 + Hills.top).padding(.top, -Hills.top).padding(.bottom, 6) // its headroom in the gap above
@@ -105,6 +105,13 @@ struct SessionCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { await model.prefetch(events) }
+        // Closed with the pointer still on the line (Escape, another app), it lets go at once: nothing's left showing
+        // or moving when it opens again.
+        .onChange(of: model.popoverOpen) { _, open in
+            guard !open else { return }
+            (picked, left, shown) = (nil, nil, 0)
+            if aim != peak { (aim, reading) = (peak, peak) }
+        }
     }
 
     /// The pointer along the line, at moment `t`, or gone: the hairline and the pill glide there, and the strongest
@@ -116,10 +123,10 @@ struct SessionCard: View {
             settle(on: peak)
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { shown = 0 }
             // A beat first, so a pointer on its way to close the session snaps the pill to its end instead.
-            let now = Date()
+            let now = Date(), cut = telling.cut
             left = now
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                guard left == now, let story = telling.story else { return }
+                guard left == now, telling.cut == cut, let story = telling.story else { return } // closed since: it stays at its end
                 let goal = Self.rest(sitting, events, levels, times, on: peak)
                 // At the pace it's told when it opens, so it doesn't rush, but never long.
                 let way = abs(goal - story) * SessionFuse.duration(levels, boomed: sitting.boom != nil)
@@ -209,6 +216,7 @@ struct HeatLine: View, Animatable {
     var shown: Double
     var story = 1.0
     var intro = 1.0
+    var open = true // the popover's open: closed, nothing draws again
     var point: (Double?, Int?) -> Void = { _, _ in }
     var select: (ClosedRange<Double>?, Bool) -> Void = { _, _ in } // a stretch dragged out, by its moments; done once let go
     var cycle: (ClosedRange<Double>) -> Void = { _ in } // a click, among the prompts in these moments
@@ -236,11 +244,11 @@ struct HeatLine: View, Animatable {
 
     var body: some View {
         let _ = rested
-        let _ = pops.expect(reading)
+        let _ = wake()
         // The hills, drawn once; over them only what moves draws again.
         Hills(events: events, now: now, span: span).equatable().overlay {
             // Frames only while something moves: the pointer's there, the story's being told, or a dot's still changing.
-            TimelineView(.animation(paused: !(shown > 0.01 || intro < 1 || pops.moving))) { timeline in
+            TimelineView(.animation(paused: !open || !(shown > 0.01 || intro < 1 || pops.moving))) { timeline in
             Canvas { ctx, size in
                 guard !events.isEmpty else { return }
                 let (first, _, length) = span, base = Hills.base, rise = Hills.rise, dip = Hills.dip
@@ -356,6 +364,7 @@ struct HeatLine: View, Animatable {
                 if let band, abs(v.translation.width) > 3 { return select(moments(band), true) }
                 cycle(band.map(moments) ?? moments(v.location.x - reach...v.location.x + reach))
             })
+        .onChange(of: open) { _, open in if !open { (band, held) = (nil, nil) } }
         .accessibilityElement()
         .accessibilityLabel("The session's heat over the clock, \(events.count) prompts")
     }
@@ -388,6 +397,13 @@ struct HeatLine: View, Animatable {
 
     /// 0 to 1, eased in and out.
     private func ease(_ v: Double) -> Double { let c = min(1, max(0, v)); return c * c * (3 - 2 * c) }
+
+    /// A new prompt to read wakes the dots' clock, so its dot grows in; it stops once they settle, and 1.6 s on at the
+    /// latest, so it can never be left running.
+    private func wake() {
+        guard pops.expect(reading) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { pops.rest(); rested.toggle() }
+    }
 }
 
 /// The dots popping up along a heat line, each growing toward how close the line is to it and shrinking once it's
@@ -399,12 +415,16 @@ final class Pops {
     private(set) var moving = false // a dot is still growing or fading
     private(set) var settledNow = false // they've just come to rest
 
-    /// A new prompt to read wakes the dots, so its own grows in.
-    func expect(_ reading: Int?) {
-        guard reading != self.reading else { return }
+    /// A new prompt to read wakes the dots, so its own grows in: true if it did.
+    func expect(_ reading: Int?) -> Bool {
+        guard reading != self.reading else { return false }
         self.reading = reading
         moving = true
+        return true
     }
+
+    /// They've settled, whatever the last frame said.
+    func rest() { moving = false }
 
     func step(to now: Date, _ targets: [Int: Double]) -> [Int: Double] {
         let dt = min(0.05, max(0, now.timeIntervalSince(last ?? now)))
@@ -490,6 +510,7 @@ struct History: View {
                     ForEach(today.reversed(), id: \.start) { row($0) }
                 }
             }
+            .onChange(of: model.popoverOpen) { _, open in if !open { collapse() } }
         }
         if !before.isEmpty {
             Divider()
@@ -515,7 +536,15 @@ struct History: View {
                     }
                 }
             }
+            .onChange(of: model.popoverOpen) { _, open in if !open { collapse() } }
         }
+    }
+
+    /// Closes every session and Previously as the popover closes, so it always opens collapsed, as the system's own
+    /// menus start fresh. Each section asks, so it's done twice when both are there, which changes nothing.
+    private func collapse() {
+        for start in picked { tellings.of(start).still() }
+        (picked, focus, open) = ([], nil, false)
     }
 
     /// Newest day first, and newest session first within it.
@@ -540,10 +569,13 @@ struct History: View {
         let telling = tellings.of(s.start)
         /// Runs the session back in its pill, after `wait`, up to `goal`.
         func replay(after wait: Double = 0, to goal: Double = 1) -> Double {
-            let d = SessionFuse.duration(levels, boomed: boomed) * goal
+            let d = SessionFuse.duration(levels, boomed: boomed) * goal, cut = telling.cut
             telling.goal = goal
             telling.story = 0
-            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { withAnimation(.linear(duration: d)) { telling.story = goal } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+                guard telling.cut == cut else { return } // closed before it began
+                withAnimation(.linear(duration: d)) { telling.story = goal }
+            }
             return wait + d
         }
         return VStack(alignment: .leading, spacing: 8) {

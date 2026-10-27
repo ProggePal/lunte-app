@@ -18,18 +18,21 @@ public enum Transcript {
     /// the first prompt recorded up to 10 minutes after `ts`.
     public static func prompt(sid: String, ts: Double, root: URL = root) -> String? { prompts([(sid, ts)], root: root)[ts] }
 
-    /// The prompts behind many events at once, by when they came (as `prompt`), reading each session's file once.
+    /// The prompts behind many events at once, by when they came (as `prompt`), reading each session's file once, with
+    /// only what you typed (`Classifier.human`).
     public static func prompts(_ events: [(sid: String, ts: Double)], root: URL = root) -> [Double: String] {
         guard let dirs = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [:] }
         var out: [Double: String] = [:]
         for (sid, wanted) in Dictionary(grouping: events.filter { !$0.sid.isEmpty && !$0.sid.contains("/") }, by: { $0.sid }) {
             for dir in dirs {
                 // ponytail: reads the whole session file; the app caches the answers per event
-                guard let data = try? Data(contentsOf: dir.appendingPathComponent(sid + ".jsonl")) else { continue }
+                guard let data = try? Data(contentsOf: dir.appendingPathComponent(sid + ".jsonl"), options: .mappedIfSafe) else { continue }
                 let prompts = parse(data, human: false)
                 for (_, ts) in wanted {
-                    out[ts] = prompts.filter { abs($0.ts - ts) < 5 }.min(by: { abs($0.ts - ts) < abs($1.ts - ts) })?.text
+                    let text = prompts.filter { abs($0.ts - ts) < 5 }.min(by: { abs($0.ts - ts) < abs($1.ts - ts) })?.text
                         ?? prompts.filter { $0.ts >= ts && $0.ts - ts < 600 }.min { $0.ts < $1.ts }?.text
+                    // What you typed, as the hook read it: never a system reminder, a hand-back or a pasted block.
+                    out[ts] = text.map(Classifier.human).flatMap { $0.isEmpty ? nil : $0 }
                 }
                 break
             }

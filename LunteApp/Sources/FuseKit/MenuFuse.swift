@@ -92,6 +92,7 @@ public struct FuseScene {
 
     /// Moves to `new`. Without `animated` it snaps, as on launch.
     mutating func update(_ new: FuseLook, at t: Double, animated: Bool = true) {
+        effects.removeAll { $0.end < t - 5 } // long done, the bang's slowed clock and all, so a long session never drags
         let old = look, before = width(at: t)
         look = new
         // Wider at once, narrower only after the move, and never while blown, so the menu bar doesn't jitter.

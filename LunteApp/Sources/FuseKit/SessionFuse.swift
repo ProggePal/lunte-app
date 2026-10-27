@@ -28,13 +28,13 @@ public struct SessionFuse: View, Animatable {
     }
 
     /// How long the replay takes on screen: as long as the fuse's moves, up to 4 seconds, then faster.
-    public static func duration(_ levels: [Double], boomed: Bool) -> Double { min(4, Replay(levels, boomed: boomed).end) }
+    public static func duration(_ levels: [Double], boomed: Bool) -> Double { min(4, Replay.of(levels, boomed: boomed).end) }
 
     /// The moment of the session (along `times`, the fuse line's) that `replay` shows, and back, so a hairline over the
     /// session's clock and the pill line up exactly: at the turns, and evenly in time between them, as each step plays
     /// the stretch from the turn before it to its own. A Boom's prompt comes with the bang, not after the blast settles.
     public static func moment(at replay: Double, _ levels: [Double], _ times: [Double], boomed: Bool) -> Double {
-        let play = Replay(levels, boomed: boomed), t = min(play.end, replay / 0.9 * play.end)
+        let play = Replay.of(levels, boomed: boomed), t = min(play.end, replay / 0.9 * play.end)
         guard let first = times.first, let k = play.spans.lastIndex(where: { $0.at <= t }) else { return times.first ?? 0 }
         let s = play.spans[k], next = k + 1 < play.spans.count ? play.spans[k + 1].at : play.bang ?? play.end
         let a = times[min(s.from, times.count - 1)], b = times[min(s.to, times.count - 1)]
@@ -42,7 +42,7 @@ public struct SessionFuse: View, Animatable {
     }
 
     public static func replay(at moment: Double, _ levels: [Double], _ times: [Double], boomed: Bool) -> Double {
-        let play = Replay(levels, boomed: boomed), at = { (i: Int) in times[min(i, times.count - 1)] }
+        let play = Replay.of(levels, boomed: boomed), at = { (i: Int) in times[min(i, times.count - 1)] }
         guard !times.isEmpty, let k = play.spans.lastIndex(where: { at($0.from) <= moment }) else { return 0 }
         let s = play.spans[k], next = k + 1 < play.spans.count ? play.spans[k + 1].at : play.bang ?? play.end
         if k == play.spans.count - 1, moment >= at(s.to) { return 1 }
@@ -74,7 +74,7 @@ public struct SessionFuse: View, Animatable {
 
     private func draw(_ context: GraphicsContext, _ size: CGSize, gust: (in: Double, off: Double?)?) {
         let dark = scheme == .dark, ink = dark ? CGColor(gray: 1, alpha: 0.85) : FuseScene.ink
-        let play = Replay(levels, boomed: boomed), end = play.end, rest = end + 20
+        let play = Replay.of(levels, boomed: boomed), end = play.end, rest = end + 20
         let settle = replay > 0.99 ? 1 : max(0, (replay - 0.9) / 0.1) // the last tenth lets the flame and sparks fade
         let seed = Int(levels.reduce(0, +) * 1000) &+ levels.count
         context.withCGContext { ctx in
@@ -227,6 +227,19 @@ struct Replay {
     var ash: [Double] = [] // where along the fuse a dot of ash goes
     var bang: Double?
     var end = 0.0
+
+    // ponytail: every pill's replay by its line, cleared past 64; a list only ever shows a few dozen
+    nonisolated(unsafe) private static var made: [[Double]: Replay] = [:] // drawn on the main thread only
+
+    /// The replay for a line, made once: it's drawn every frame a pill moves, and asked for on every move of a pointer.
+    static func of(_ levels: [Double], boomed: Bool) -> Replay {
+        let key = levels + [boomed ? 1 : 0]
+        if let made = made[key] { return made }
+        if made.count > 64 { made.removeAll() }
+        let new = Replay(levels, boomed: boomed)
+        made[key] = new
+        return new
+    }
 
     init(_ levels: [Double], boomed: Bool) {
         start = levels.first ?? 1
