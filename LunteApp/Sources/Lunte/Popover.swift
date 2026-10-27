@@ -35,6 +35,7 @@ struct PopoverView: View {
                 History(model: model, sessions: model.past, opened: $model.diving)
                 if model.diving == nil, ![.ready, .loading].contains(model.detector) { Divider(); DetectorStatus(model: model) } // its download, while it lasts
                 if model.diving == nil, [.ready, .loading].contains(model.detector), model.coolUntuned || model.fuseLine != nil { Divider(); CoolNudge(model: model) }
+                if model.diving == nil, model.crash != nil { Divider(); CrashNudge(model: model) }
             }
             if model.diving == nil {
                 Divider()
@@ -741,6 +742,20 @@ private struct CoolNudge: View {
                 Spacer(minLength: 6)
                 Button("Redo setup", action: model.retune).buttonStyle(.link)
             }
+        }
+    }
+}
+
+/// Lunte crashed since it last asked: a way to send it in, as Redo setup is for cool. It's there until you've sent it
+/// or said no.
+private struct CrashNudge: View {
+    @ObservedObject var model: GameModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Lunte crashed last time").foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 6)
+            Button("Report it…", action: model.reportCrash).buttonStyle(.link)
         }
     }
 }

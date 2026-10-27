@@ -42,6 +42,8 @@ final class GameModel: ObservableObject {
     @Published var popoverOpen = false
     /// The earlier session dived into, by start, which has the popover to itself; the menu bar's icon comes back out.
     @Published var diving: Double?
+    /// Lunte's newest crash since the last one offered, which the popover asks you to report, or nil.
+    @Published private(set) var crash: (url: URL, at: Date)?
     /// A test Boom has blown, so the menu bar says BOOM.
     @Published private(set) var testBlown = false
     /// The vibe line, off by default while vibes are still taking shape. Off means no vibe is picked and no topic is
@@ -125,6 +127,7 @@ final class GameModel: ObservableObject {
         Notifier.setUp()
         let demo = ["FuseDemo", "Lab"].contains { UserDefaults.standard.bool(forKey: $0) } || UserDefaults.standard.string(forKey: "HeroDemo") != nil
         if !demo { linkHook() } // a demo build never takes your Claude Code hook from your own Lunte
+        if !demo { crash = Self.newestCrash() }
         let dir = log.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         dirSource = watch(dir.path, [.write]) { [weak self] in self?.changed() } // events.jsonl created, replaced or removed
@@ -155,8 +158,9 @@ final class GameModel: ObservableObject {
     #if DEBUG
     /// For previews: the game these events make, now, with their prompts' text. Nothing is watched, polled, sent or saved.
     init(preview events: [Event], texts: [Double: String], club: String? = "Antler", feed: [ClubEvent] = [],
-         line: String? = nil, reactions: [String] = [], members: [String] = [], mine: Set<String> = []) {
+         line: String? = nil, reactions: [String] = [], members: [String] = [], mine: Set<String> = [], crashed: Bool = false) {
         connected = true
+        crash = crashed ? (URL(fileURLWithPath: "/dev/null"), Date()) : nil
         onboarded = true
         detector = .ready
         state = Game.replay(events, now: Date().timeIntervalSince1970)
@@ -421,14 +425,36 @@ final class GameModel: ObservableObject {
     /// Your idea, straight to the Lunte team's inbox on the relay.
     func submitPrompt() {
         guard let (name, prompt) = Alerts.submitPrompt() else { return }
+        send(name, prompt, thanks: "If we build it, you're credited in the changelog.")
+    }
+
+    /// The newest crash report macOS wrote for Lunte since the last one offered. The first launch only starts from then.
+    private static func newestCrash() -> (url: URL, at: Date)? {
+        guard let seen = defaults.object(forKey: "CrashSeen") as? Date else { defaults.set(Date(), forKey: "CrashSeen"); return nil }
+        return CrashReport.since(seen).last
+    }
+
+    /// The crash, filled in for you to say what you were doing, sign and send. Nothing goes until you do; cancelled,
+    /// it's gone, and sent, it's gone. One that can't reach the relay stays to try again.
+    func reportCrash() {
+        guard let crash else { return }
+        let done = { [weak self] in self?.crash = nil; defaults.set(crash.at, forKey: "CrashSeen") }
+        let report = (try? String(contentsOf: crash.url, encoding: .utf8)).flatMap { CrashReport.summary($0) } ?? ""
+        guard let (name, prompt) = Alerts.submitPrompt("Lunte crashed", "Say what you were doing, if you remember, and send it. It's only what's below: never your prompts.",
+                                                      text: "What I was doing: \n\n" + report, send: "Send") else { return done() }
+        send(name, prompt, thanks: "We'll look into it.", sent: done)
+    }
+
+    private func send(_ name: String, _ prompt: String, thanks: String, sent: @escaping () -> Void = {}) {
         Task {
             do {
                 try await Relay.submitPrompt(name: name, prompt: prompt)
-                Alerts.tell("Thanks, it's in", "If we build it, you're credited in the changelog.")
+                sent()
+                Alerts.tell("Thanks, it's in", thanks)
             } catch let error as RelayError where error.status == 429 {
                 Alerts.tell("That's a lot of ideas", "You've sent the most we take in an hour. Try again a bit later.")
             } catch {
-                Alerts.tell("Couldn't send your prompt", "Check your connection and try again. " + error.localizedDescription)
+                Alerts.tell("Couldn't send it", "Check your connection and try again. " + error.localizedDescription)
             }
         }
     }

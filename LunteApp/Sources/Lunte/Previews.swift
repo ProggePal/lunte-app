@@ -12,6 +12,7 @@ enum PopoverPreviews {
         [
             ("1-working", working), ("2-last-third", lastThird), ("3-held", held), ("4-blown", blown()),
             ("5-blown-line", blown(line: true)), ("5b-blown-line-sent", blown(line: true, reactions: false)), ("6-last-session", lastSession), ("7-long", long), ("8-fresh", fresh),
+            ("8b-crashed", crashed),
         ] + onboarding
     }
 
@@ -114,6 +115,13 @@ enum PopoverPreviews {
         s.earlier(boom: true)
         s.calm(300, 240, cool: [270])
         return GameModel(preview: s.events, texts: s.texts, club: nil)
+    }
+
+    /// Lunte crashed since it last asked, so the popover asks you to report it.
+    static var crashed: GameModel {
+        var s = Session()
+        s.earlier()
+        return GameModel(preview: s.events, texts: s.texts, crashed: true)
     }
 
     /// A Club with a day and a bit behind it: joins, a Boom nobody owned, Ola's line with laughs on it, one of yours,
@@ -336,6 +344,7 @@ struct PillLab: View {
 #Preview("A session opened") { let m = PopoverPreviews.lastSession; History(model: m, sessions: m.past, opened: .constant(m.past.last?.start)).padding(14).frame(width: 308) }
 #Preview("Long session") { PopoverView(model: PopoverPreviews.long, updater: nil) }
 #Preview("Fresh, no Club") { PopoverView(model: PopoverPreviews.fresh, updater: nil) }
+#Preview("Crashed") { PopoverView(model: PopoverPreviews.crashed, updater: nil) }
 #Preview("Onboarding, every step") {
     ScrollView(.horizontal) {
         HStack(alignment: .top) { ForEach(PopoverPreviews.onboarding, id: \.name) { PopoverView(model: $0.model, updater: nil) } }
