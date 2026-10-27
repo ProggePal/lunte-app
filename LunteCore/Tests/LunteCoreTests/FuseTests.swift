@@ -53,6 +53,20 @@ final class FuseTests: XCTestCase {
         XCTAssertEqual(bad.problems, [#""lunte" must be "fuse-labels""#, "1 ratings are outside 0–3"])
     }
 
+    /// The vibe chip: one in twenty angry-or-worse is hot, one in twenty buddy-or-better is cool.
+    func testTheChipIsTheSameMathForEveryone() {
+        func chip(hot: Int, cool: Int, of n: Int = 100, coolRated: Bool = true) -> String? {
+            let labels = (0..<n).map { i in FuseLabels.Label(sid: "s", ts: Double(i), rating: i < hot ? 2 : 0, cool: coolRated ? (i >= n - cool ? 2 : 0) : nil) }
+            return FuseLabels(lunte: "fuse-labels", v: 1, labels: labels).chip?.name
+        }
+        XCTAssertEqual(chip(hot: 11, cool: 7), "The Roaster") // Paal's setup
+        XCTAssertEqual(chip(hot: 5, cool: 4), "Short Fuse")
+        XCTAssertEqual(chip(hot: 1, cool: 9), "Best Bud")
+        XCTAssertEqual(chip(hot: 4, cool: 4), "Ice Cold")
+        XCTAssertNil(chip(hot: 5, cool: 5, of: 20)) // too few ratings to say
+        XCTAssertNil(chip(hot: 11, cool: 0, coolRated: false)) // rated before cool: no chip rather than a wrong one
+    }
+
     /// vibes.json v 2 holds session names: the bands are calm, cool, hot and explosive. A v 1 file still checks out.
     func testSessionNamesNeedEveryBand() {
         let name = { (band: Vibe.Band) in Vibe("🚀", "Mad push to prod", band, when: "w", story: "s") }

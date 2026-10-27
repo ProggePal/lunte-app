@@ -135,6 +135,28 @@ public struct FuseLabels: Codable, Equatable, Sendable {
 
     /// How many messages have no cool rating.
     public var missingCool: Int { labels.filter { $0.cool == nil }.count }
+
+    /// Your vibe chip: who you are with your agent, from your AI's ratings at setup.
+    public struct Chip: Equatable, Sendable {
+        public let name: String, line: String
+        public init(name: String, line: String) { self.name = name; self.line = line }
+    }
+
+    /// Your chip, on the same scale for everyone, so "what did you get?" has an answer: hot is angry or worse, cool is
+    /// buddy or better, each counting from one rated message in twenty. Every one flatters, and none is a telling-off.
+    /// Nil until there are enough ratings, and with cool unrated, since a chip is true or it isn't shown.
+    // Why: a result of your own the moment setup ends is the share at install (the HQ's GROWTH.md)
+    // ponytail: the one-in-twenty line is set on one player's ratings (11 % hot, 7 % cool); move it once the House has played
+    public var chip: Chip? {
+        guard labels.count >= 30, missingCool * 2 < labels.count else { return nil }
+        let share = { (count: Int) in Double(count) / Double(self.labels.count) >= 0.05 }
+        switch (share(labels.filter { $0.rating >= 2 }.count), share(labels.filter { ($0.cool ?? 0) >= 2 }.count)) {
+        case (true, true): return Chip(name: "The Roaster", line: "You roast your agent, and love it anyway.")
+        case (true, false): return Chip(name: "Short Fuse", line: "You care. Loudly.")
+        case (false, true): return Chip(name: "Best Bud", line: "You and your agent are tight.")
+        case (false, false): return Chip(name: "Ice Cold", line: "Nothing your agent does gets to you.")
+        }
+    }
 }
 
 /// profile.json, written by Lunte: your personal layer on top of Laya. A ridge regression over the log probabilities of

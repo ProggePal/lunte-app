@@ -645,6 +645,7 @@ struct History: View {
             // Why: the session card is the screenshot (docs/why.md#session-story)
             HStack(spacing: 4) {
                 if let club = model.clubName { Image(systemName: "house.fill").font(.system(size: 9)); Text(club).lineLimit(1) }
+                if let chip = model.chip { Text((model.clubName == nil ? "" : "· ") + chip.name).lineLimit(1) } // so "what did you get?" gets asked
                 Spacer(minLength: 8)
                 Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 14, height: 14)
                 Text("Lunte").fontWeight(.semibold)

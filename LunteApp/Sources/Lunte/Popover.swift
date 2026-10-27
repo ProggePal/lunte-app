@@ -117,6 +117,14 @@ private struct OnboardingView: View {
             Divider()
             VStack(alignment: .leading, spacing: 14) {
                 if now == nil {
+                    // Who you are with your agent, from your AI's ratings: the first thing worth showing someone.
+                    if let chip = model.chip {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("You're \(chip.name)").font(.title3.weight(.semibold))
+                            Text(chip.line).foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
                     Step(symbol: "flame", title: "Ready for your first Boom?", now: true) {
                         Text("Open Claude Code and type “\(Self.phrase)”.").textSelection(.enabled)
                     } action: {

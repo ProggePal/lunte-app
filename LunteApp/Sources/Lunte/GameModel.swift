@@ -167,6 +167,7 @@ final class GameModel: ObservableObject {
         past = state.sittings.filter { !$0.isOpen }
         names = named(past, now: Date().timeIntervalSince1970, personal: [])
         promptCache = texts
+        previewChip = FuseLabels.Chip(name: "The Roaster", line: "You roast your agent, and love it anyway.")
         self.club = club.map { _ in "PREVIEW" }
         clubName = club
         clubFeed = feed
@@ -718,6 +719,22 @@ final class GameModel: ObservableObject {
             }
         }
     }
+
+    /// Your vibe chip, from your AI's ratings at setup (`FuseLabels.chip`), read again only when labels.json changes.
+    var chip: FuseLabels.Chip? {
+        #if DEBUG
+        if let previewChip { return previewChip }
+        #endif
+        let made = (try? Fuse.labelsURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        if made != chipRead.made {
+            chipRead = (made, (try? Data(contentsOf: Fuse.labelsURL)).flatMap { try? JSONDecoder().decode(FuseLabels.self, from: $0) }?.chip)
+        }
+        return chipRead.chip
+    }
+    private var chipRead: (made: Date?, chip: FuseLabels.Chip?) = (nil, nil)
+    #if DEBUG
+    var previewChip: FuseLabels.Chip?
+    #endif
 
     /// An invite, `lunte://join/K7M2QX`, as Claude opens it after installing Lunte: asked at once if you're set up,
     /// or kept until setup ends.
