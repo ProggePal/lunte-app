@@ -14,10 +14,15 @@ enum Bang {
     /// and higher for a small Boom, slower and deeper for a big one, at the same `volume`, 0...1 of `cap`.
     static func prepare(pitch: Double = 1, volume: Double = 1) {
         cancel()
+        ready = load(pitch: pitch, volume: volume)
+    }
+
+    /// `boom.wav` on an engine of its own, running, its player waiting, and how long to keep it.
+    private static func load(pitch: Double, volume: Double) -> (engine: AVAudioEngine, player: AVAudioPlayerNode, seconds: Double)? {
         guard volume > 0, let url = Cues.url("boom"),
               let file = try? AVAudioFile(forReading: url),
               let bang = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
-              (try? file.read(into: bang)) != nil else { return }
+              (try? file.read(into: bang)) != nil else { return nil }
         let e = AVAudioEngine(), player = AVAudioPlayerNode(), speed = AVAudioUnitVarispeed()
         speed.rate = Float(pitch)
         e.attach(player)
@@ -26,8 +31,19 @@ enum Bang {
         e.connect(speed, to: e.mainMixerNode, format: bang.format)
         player.volume = cap * Float(volume) * (bang.format.channelCount == 1 ? Float(2).squareRoot() : 1) // the mixer puts mono 3 dB down a side
         player.scheduleBuffer(bang)
-        guard (try? e.start()) != nil else { return }
-        ready = (e, player, Double(bang.frameLength) / bang.format.sampleRate / pitch + 0.5)
+        guard (try? e.start()) != nil else { return nil }
+        return (e, player, Double(bang.frameLength) / bang.format.sampleRate / pitch + 0.5)
+    }
+
+    private static var echo: AVAudioEngine?
+
+    /// The bang in a session's playback, now, on its own engine, so it never touches a live Boom's.
+    static func echo(volume: Double) {
+        guard let (e, player, seconds) = load(pitch: 1, volume: volume) else { return }
+        echo?.stop()
+        echo = e
+        player.play()
+        Task { try? await Task.sleep(for: .seconds(seconds)); if echo === e { e.stop(); echo = nil } } // lets the speakers sleep
     }
 
     /// The bang, now, if it's ready.
@@ -69,6 +85,35 @@ enum Sounds: String, CaseIterable {
     /// How loud the flame and the moves' own sounds play at `volume`, as a share of `Bang.cap`; the Boom plays at it.
     func flame(_ volume: Double) -> Double { self == .boom ? 0 : volume }
     func cues(_ volume: Double) -> Double { self == .fireworks ? volume : 0 }
+}
+
+/// A session's playback out loud as you dive into it: the flame and the bang as its pill runs up to its story, as
+/// your sound effects say, at `share` of your volume, and never while you point along it.
+// Why: you asked for this one, but it's yours, not the room's (docs/why.md#session-replay)
+@MainActor
+enum Playback {
+    static let share = 0.3 // of the real thing: quiet enough to read as yours, not a Boom in the room
+    private static var run = 0
+
+    /// Plays the pill's run from 0 to `goal` over `seconds`, for as long as `going` says.
+    static func play(_ levels: [Double], boomed: Bool, to goal: Double, over seconds: Double, sounds: Sounds, volume: Double,
+                     while going: @escaping () -> Bool) {
+        run += 1
+        let mine = run, quiet = volume * share, bang = SessionFuse.bang(levels, boomed: boomed)
+        guard quiet > 0 else { return }
+        Task {
+            let start = Date()
+            var banged = false
+            while mine == run, going() {
+                let done = min(1, Date().timeIntervalSince(start) / max(0.01, seconds)), at = done * goal
+                Flame.follow(SessionFuse.voice(at: at, levels, boomed: boomed), flame: sounds.flame(quiet), boom: quiet)
+                if let bang, !banged, at >= bang { banged = true; Bang.echo(volume: quiet) }
+                if done >= 1 { break }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            Flame.follow(FuseScene.Voice(), flame: 0, boom: 0) // glides out
+        }
+    }
 }
 
 /// The flame's voice out loud, a cartoon dynamite fuse (`fuse.wav`), following the menu bar fuse frame by frame

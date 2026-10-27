@@ -45,6 +45,18 @@ public struct SessionFuse: View, Animatable {
         return times.count > 1 ? a + (b - a) * min(1, (t - s.at) / max(0.01, next - s.at)) : first
     }
 
+    /// What the replay sounds like at `replay`: the menu bar flame's own voice as the pill plays the session back.
+    public static func voice(at replay: Double, _ levels: [Double], boomed: Bool) -> FuseScene.Voice {
+        let play = Replay.of(levels, boomed: boomed), t = min(play.end, replay / 0.9 * play.end)
+        return play.scene(at: t).voice(at: t)
+    }
+
+    /// Where along the replay its bang lands, 0...1, if it Boomed.
+    public static func bang(_ levels: [Double], boomed: Bool) -> Double? {
+        let play = Replay.of(levels, boomed: boomed)
+        return play.bang.map { $0 / play.end * 0.9 }
+    }
+
     public static func replay(at moment: Double, _ levels: [Double], _ times: [Double], boomed: Bool) -> Double {
         let play = Replay.of(levels, boomed: boomed), at = { (i: Int) in times[min(i, times.count - 1)] }
         guard !times.isEmpty, let k = play.spans.lastIndex(where: { at($0.from) <= moment }) else { return 0 }

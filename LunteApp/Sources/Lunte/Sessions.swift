@@ -661,7 +661,15 @@ struct History: View {
     /// Dives into a session: its pill grows into the big one and runs the session back, up to the prompt it opens on.
     private func open(_ s: Sitting) {
         withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) { opened = s.start }
-        if !reduceMotion { tellings.of(s.start).opening = true; _ = replay(s, to: SessionCard.goal(model, s)) }
+        if !reduceMotion {
+            let telling = tellings.of(s.start), goal = SessionCard.goal(model, s)
+            telling.opening = true
+            let seconds = replay(s, to: goal)
+            // Out loud, quieter, while it's told; pointing along the line stops it.
+            Playback.play(levels(s), boomed: s.boom != nil, to: goal, over: seconds, sounds: model.sounds, volume: model.volume) { [model] in
+                telling.opening && model.popoverOpen
+            }
+        }
         model.opened(s)
     }
 

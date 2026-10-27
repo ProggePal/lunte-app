@@ -166,6 +166,17 @@ final class FuseKitTests: XCTestCase {
         XCTAssertEqual(SessionFuse.moment(at: 1, [1, 0.5, 0], [0, 60, 120], boomed: true), 120) // a Boom ends where it blew
     }
 
+    /// Guards docs/why.md#session-replay: a dive's playback sounds as the menu bar did, and bangs where it blew.
+    func testThePlaybackHasTheFusesVoice() {
+        let blew = [1, 0.5, 0.0]
+        let bang = SessionFuse.bang(blew, boomed: true)!
+        XCTAssertGreaterThan(bang, 0.5)
+        XCTAssertLessThan(bang, 0.9)
+        XCTAssertTrue(SessionFuse.voice(at: bang - 0.05, blew, boomed: true).race) // the race before the silence and the bang
+        XCTAssertNil(SessionFuse.bang([1, 0.5, 0.8], boomed: false))
+        XCTAssertEqual(SessionFuse.voice(at: 0, [1, 0.5, 0.8], boomed: false).sizzle, 0) // nothing burns before the first move
+    }
+
     func testReplaySwings() {
         XCTAssertEqual(Replay.swings([1, 0.6, 1, 0.5, 1.2]), [1, 0.6, 1, 0.5, 1.2])
         XCTAssertEqual(Replay.swings([1, 0.8, 0.5, 0.55, 0.3, 1.1, 1.2]), [1, 0.3, 1.2]) // a wobble on the way is no swing
