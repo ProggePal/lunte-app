@@ -663,7 +663,7 @@ private struct Footer: View {
     }
 }
 
-/// Lunte's settings in a window of their own: the Boom's sound, the model's ratings, onboarding, an idea for Lunte,
+/// Lunte's settings in a window of their own: the sound, the model's ratings, onboarding, an idea for Lunte,
 /// updates, and Quit.
 @MainActor
 enum SettingsWindow {
@@ -688,12 +688,54 @@ struct SettingsView: View {
     let updater: SPUStandardUpdaterController?
 
     var body: some View {
+        VStack(spacing: 0) {
+            settings
+            HStack { // last, as the last thing you'd do, bare at the bottom like a dialog's button
+                Spacer()
+                Button("Quit Lunte") { NSApp.terminate(nil) }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .frame(width: 400)
+        .fixedSize()
+    }
+
+    private var settings: some View {
         Form {
-            Section {
-                Toggle("Sound", isOn: $model.soundOn)
-                Toggle("Show model ratings", isOn: $model.showRatings)
+            Section { // the app and its version, then its settings
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 40, height: 40)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Lunte").font(.headline)
+                        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+                            Text("Version \(version)").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Button("Check for updates…") { updater?.checkForUpdates(nil) }.disabled(updater == nil)
+                }
             }
             Section {
+                // Why: the Boom is the only sound unless you ask (docs/why.md#fuse-sounds-opt-in)
+                HStack { // one line, like the rows under it; the form would wrap the control under its label
+                    Text("Sound effects")
+                    Spacer()
+                    Picker("Sound effects", selection: $model.sounds) {
+                        Text("Boom").tag(Sounds.boom)
+                        Text("Sizzle").tag(Sounds.sizzle)
+                        Text("Fireworks").tag(Sounds.fireworks)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                volume("Volume", $model.volume) { Bang.play(volume: model.volume) }
+            } footer: {
+                Text(model.sounds.about).foregroundStyle(.secondary)
+            }
+            Section {
+                Toggle("Show model ratings", isOn: $model.showRatings)
                 // Testing your Boom, connecting and tuning all live in onboarding, so Settings only starts or skips it.
                 if model.connected && model.onboarded {
                     LabeledContent("Onboarding") { Button("Replay", action: model.replayOnboarding) }
@@ -701,15 +743,21 @@ struct SettingsView: View {
                     LabeledContent("Onboarding") { Button("Skip", action: model.skipOnboarding) }
                 }
                 LabeledContent("Something you want in Lunte?") { Button("Submit a prompt…", action: model.submitPrompt) }
-                LabeledContent("Updates") { Button("Check…") { updater?.checkForUpdates(nil) }.disabled(updater == nil) }
-            }
-            Section {
-                LabeledContent("Lunte") { Button("Quit") { NSApp.terminate(nil) } }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400)
-        .fixedSize()
+        .scrollDisabled(true)
+    }
+
+    /// A volume slider like the Mac's own, which plays what it sets when you let go.
+    private func volume(_ name: String, _ value: Binding<Double>, sample: @escaping () -> Void) -> some View {
+        Slider(value: value, in: 0...1) { Text(name) } minimumValueLabel: {
+            Image(systemName: "speaker.fill").foregroundStyle(.secondary)
+        } maximumValueLabel: {
+            Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
+        } onEditingChanged: { editing in
+            if !editing { sample() }
+        }
     }
 }
 

@@ -24,6 +24,76 @@ final class FuseKitTests: XCTestCase {
         }
     }
 
+    /// Cool and a fresh fuse have sounds of their own; launching, being rated and a prompt that does nothing stay
+    /// silent, and the flame speaks through its voice, not a cue.
+    // Why: the Boom is the only sound unless you ask (docs/why.md#fuse-sounds-opt-in)
+    func testOnlyMovesMakeASound() {
+        var scene = FuseScene()
+        XCTAssertEqual(scene.update(FuseLook(left: 0.8), at: 0, animated: false), [])
+        XCTAssertEqual(scene.update(FuseLook(left: 0.8, prompt: 1, rating: true), at: 1), [])
+        XCTAssertEqual(scene.update(FuseLook(left: 0.8, prompt: 1), at: 2), []) // rated: nothing
+        XCTAssertEqual(scene.update(FuseLook(left: 0.5, prompt: 2, bite: 0.3), at: 3), [])
+        XCTAssertEqual(scene.update(FuseLook(left: 0.7, prompt: 3), at: 4), [.grow])
+        XCTAssertEqual(scene.update(FuseLook(left: 0.6, prompt: 4, bite: 0.3), at: 5), [.grow])
+        XCTAssertEqual(scene.update(FuseLook(phase: .fusing, left: 0), at: 6), [])
+        XCTAssertEqual(scene.update(FuseLook(phase: .blown), at: 10), [])
+        XCTAssertEqual(scene.update(FuseLook(), at: 20), [.fresh])
+    }
+
+    /// One voice for the flame: it catches with a flare, sizzles as the tip burns along and falls silent when it stalls,
+    /// louder and higher in the last third, and ends in a short puff. The Boom's race crawls the same way, ends loudest,
+    /// and cuts out into silence before the bang.
+    // Why: one voice for the flame, and the suspense before the bang (docs/why.md#fuse-sounds-opt-in)
+    func testTheFlameHasOneVoice() {
+        var calm = FuseScene(), close = FuseScene()
+        calm.update(FuseLook(left: 1), at: 0, animated: false)
+        XCTAssertEqual(calm.voice(at: 0.5), FuseScene.Voice(pitch: FuseScene.pitch(1))) // unlit: nothing
+        calm.update(FuseLook(left: 0.8, prompt: 1, bite: 0.2), at: 1)
+        close.update(FuseLook(left: 0.5), at: 0, animated: false)
+        close.update(FuseLook(left: 0.1, prompt: 1, bite: 0.4), at: 1)
+        XCTAssertGreaterThan(calm.voice(at: 1.05).sizzle, calm.voice(at: 2.5).sizzle) // it catches, then burns on, quietly
+        let crawl = stride(from: 2.0, to: 5, by: 0.02).map { close.voice(at: $0) }
+        XCTAssertGreaterThan(crawl.map(\.sizzle).max()!, 2.5 * calm.voice(at: 1.5).sizzle) // the last third is far louder
+        XCTAssertLessThan(crawl.map(\.sizzle).min()!, 0.1) // and falls silent when it stalls
+        XCTAssertGreaterThan(crawl.map(\.pitch).max()!, calm.voice(at: 1.5).pitch) // and it's higher
+        let out = stride(from: 2.0, to: 12, by: 0.01).map { calm.voice(at: $0) }
+        XCTAssertEqual(out.last, FuseScene.Voice(pitch: FuseScene.pitch(0.8))) // gone, once it has puffed
+        XCTAssertEqual(out.filter { $0.smoke > 0.05 }.count, 15, accuracy: 10) // in a puff of about a tenth of a second
+
+        var race = FuseScene()
+        race.update(FuseLook(left: 0.3), at: 0, animated: false)
+        race.update(FuseLook(phase: .fusing, left: 0), at: 1)
+        let build = stride(from: 1.05, to: 1 + FuseScene.raceFor - 0.02, by: 0.02).map { race.voice(at: $0) }
+        XCTAssertTrue(build.allSatisfy(\.race))
+        XCTAssertLessThan(build.map(\.sizzle).min()!, 0.1) // it stalls like a close call
+        XCTAssertEqual(build.map(\.sizzle).max(), build.suffix(10).map(\.sizzle).max()) // and is loudest at the very end
+        let silence = stride(from: 1 + FuseScene.raceFor + 1, to: 1 + FuseScene.raceFor + 3, by: 0.1).map { race.voice(at: $0) }
+        XCTAssertTrue(silence.allSatisfy { $0.sizzle == 0 && $0.smoke < 0.05 }) // then silence
+
+        // Like a string: the shorter the fuse, the higher, never past 1.8.
+        XCTAssertEqual(FuseScene.pitch(1), 1, accuracy: 1e-9)
+        XCTAssertLessThan(FuseScene.pitch(FuseScene.full), 1)
+        XCTAssertGreaterThan(FuseScene.pitch(1.0 / 3), FuseScene.pitch(0.5))
+        XCTAssertEqual(FuseScene.pitch(0), 1.8, accuracy: 1e-9)
+    }
+
+    /// A recorded flame plays its calm loop on a long fuse and its hot one near the end, the catch once as a burn flares
+    /// and the puff once as it goes out.
+    func testARecordedFlameFollowsTheVoice() {
+        var synth = FlameSynth(rate: 1000)
+        synth.recording = .init(catching: Array(repeating: 1, count: 50), calm: [0.1, 0.1], hot: [0.5, 0.5])
+        synth.puff = Array(repeating: 2, count: 50)
+        var out = [Float](repeating: 0, count: 500)
+        func play(_ voice: FuseScene.Voice) -> [Float] { synth.voice = voice; synth.render(out.count, gain: 1, into: &out); return out }
+        XCTAssertEqual(play(FuseScene.Voice(sizzle: 1, crackle: 0.1)).last!, 0.1, accuracy: 0.01) // calm, once it has glided up
+        XCTAssertEqual(play(FuseScene.Voice(sizzle: 1, crackle: 0.9)).last!, 0.5, accuracy: 0.01) // hot near the end
+        let caught = play(FuseScene.Voice(sizzle: 1, crackle: 0.9, flare: 1))
+        XCTAssertGreaterThan(caught.first!, 1) // the catch rides on top
+        XCTAssertEqual(play(FuseScene.Voice(sizzle: 1, crackle: 0.9, flare: 1)).first!, 0.5, accuracy: 0.01) // once
+        XCTAssertGreaterThan(play(FuseScene.Voice(crackle: 0.9, smoke: 1)).first!, 1.5) // the puff
+        XCTAssertEqual(play(FuseScene.Voice(crackle: 0.9, smoke: 1)).first!, 0, accuracy: 0.01) // once, then quiet
+    }
+
     /// The bang jolts what's in the menu bar while there's something to see, and has settled by the time the word lands.
     func testTheBangJolts() {
         var scene = FuseScene()
