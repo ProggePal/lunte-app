@@ -300,24 +300,27 @@ private struct FuseHeader: View {
             VStack(alignment: .leading, spacing: 2) {
                 let (trailing, left) = trailing(now)
                 TitleRow(trailing: trailing, left: left, pointing: hovered != nil && hovered != model.session.last?.ts) // dark only for now's
-                ZStack(alignment: .topLeading) { // a ZStack, not a background, so the room counts toward the height
-                    if model.state.sitting != nil { Room(ratings: model.showRatings) }
-                    VStack(alignment: .leading, spacing: 2) {
-                        if let e = picked.flatMap({ ts in model.session.first { $0.ts == ts } }) {
-                            PromptLines(model: model, event: e, boom: boom, now: now, picked: hovered == nil, drift: drift)
-                        } else {
-                            Text(state(now)).foregroundStyle(.secondary)
-                                .help("If you send nothing else. Every prompt starts the \(Int(Game.sittingGap / 60)) minutes over.")
-                            if let hottest = model.state.currentBurns.max(by: { $0.heat(at: now) < $1.heat(at: now) }) {
-                                PromptText(model: model, event: hottest, lines: 1).foregroundStyle(.secondary)
-                                    .id(hottest.ts)
-                                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.14).delay(0.05)),
-                                            removal: .opacity.animation(.easeIn(duration: 0.05))))
-                            }
+                let lines = VStack(alignment: .leading, spacing: 2) {
+                    if let e = picked.flatMap({ ts in model.session.first { $0.ts == ts } }) {
+                        PromptLines(model: model, event: e, boom: boom, now: now, picked: hovered == nil, drift: drift)
+                    } else {
+                        Text(state(now)).foregroundStyle(.secondary)
+                            .help("If you send nothing else. Every prompt starts the \(Int(Game.sittingGap / 60)) minutes over.")
+                        if let hottest = model.state.currentBurns.max(by: { $0.heat(at: now) < $1.heat(at: now) }) {
+                            PromptText(model: model, event: hottest, lines: 1).foregroundStyle(.secondary)
+                                .id(hottest.ts)
+                                .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.14).delay(0.05)),
+                                        removal: .opacity.animation(.easeIn(duration: 0.05))))
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                // While a session's open, only the room counts toward the height, never the words over it (an emoji's
+                // taller line too), so pointing at a dot never moves anything.
+                if model.state.sitting != nil {
+                    Room(ratings: model.showRatings).frame(maxWidth: .infinity, alignment: .topLeading).overlay(alignment: .topLeading) { lines }
+                } else {
+                    lines.frame(maxWidth: .infinity, alignment: .topLeading)
+                }
             }
         }
     }
@@ -354,7 +357,8 @@ private struct Room: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(" \n ")
+            Text(" ") // two lines, as the lines over it are: each its own, 2 points apart
+            Text(" ")
             if ratings { Text(" \n \n ").font(.caption2) }
         }
         .hidden()
