@@ -23,8 +23,8 @@ Look before and after you change how it moves or looks:
 
 ## The popover
 
-The popover and its windows live in `LunteApp/Sources/Lunte` (`Popover.swift`, `Sessions.swift` for Today and a session's story and chart, `Club.swift`). A finished session's name, arc and cool stretches come from `Story` in LunteCore, so they're tested there.
-- `scripts/render-popover.sh` draws every state in `Previews.swift`, light and dark, to `dist/popover/`, with contact sheets. `9b-opened` is a session opened under its row. Add a fixture there to see a new state.
+The popover and its windows live in `LunteApp/Sources/Lunte` (`Popover.swift`, `Sessions.swift` for Today and a session's heat line, `Club.swift`). A finished session's name, what each prompt did and its peak come from `Story` in LunteCore, so they're tested there.
+- `scripts/render-popover.sh` draws every state in `Previews.swift`, light and dark, to `dist/popover/`, with contact sheets. `scripts/render-popover.sh 9b pill-lab` draws just the states whose names start with those, which is much quicker. `9b-opened` is a session dived into. Add a fixture there to see a new state.
 - The `see-lunte` skill (`.claude/skills/see-lunte`) covers the rest: the real panel with real data, installing a build, and matching system colours.
 
 ## Checks

@@ -2,16 +2,19 @@
 # Renders the popover in every preview state, light and dark, to dist/popover/*.png: the same states as the Xcode
 # previews in LunteApp/Sources/Lunte/Previews.swift. Nothing is watched, polled or sent. Then, with ffmpeg, contact
 # sheets of the numbered states, four to a row: dist/sheet-light.png and dist/sheet-dark.png.
+# Name states to draw just those, by how their names start: `scripts/render-popover.sh 9b pill-lab`. The pill lab's
+# replay frames take minutes, so they're drawn only when named: `scripts/render-popover.sh replay`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 scripts/build-app.sh | grep -E "error|Built" # quiet, but a failed build still says why
 rm -rf dist/popover
-dist/Lunte.app/Contents/MacOS/Lunte -PopoverShots "$PWD/dist/popover"
+dist/Lunte.app/Contents/MacOS/Lunte -PopoverShots "$PWD/dist/popover" -PopoverOnly "$*"
 ls dist/popover
 command -v ffmpeg >/dev/null || { echo "no ffmpeg, so no contact sheets"; exit 0; }
 cd dist/popover
 for mode in light dark; do
   files=($(ls | grep -E "^[0-9]+-.*-$mode\.png$" | sort -V))
+  (( ${#files[@]} < 2 )) && continue # a sheet takes two
   w=0 h=0
   for f in "${files[@]}"; do
     set -- $(sips -g pixelWidth -g pixelHeight "$f" | awk '/pixel/ {print $2}')

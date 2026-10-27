@@ -14,6 +14,7 @@ use can't target Lunte (Spotlight hasn't indexed it). So Lunte draws itself.
 scripts/render-popover.sh
 ```
 
+- Name states to draw just those, by how their names start (`scripts/render-popover.sh 9b pill-lab`): much quicker.
 - Builds, then writes `dist/popover/<state>-light.png` and `-dark.png` for every fixture in
   `LunteApp/Sources/Lunte/Previews.swift`: the popover states (1–9), onboarding (10–15), and the `club`, `club-none`
   and `settings` windows. The same states are Xcode `#Preview`s.

@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import FuseKit
 import LunteCore
 import SwiftUI
 
@@ -192,7 +193,8 @@ enum PopoverPreviews {
 }
 
 /// `Lunte -PopoverShots DIR`: draws every preview state and the Club's window, light and dark, to DIR/<state>-light.png
-/// and -dark.png, then quits. Nothing is watched, polled or sent.
+/// and -dark.png, then quits. Nothing is watched, polled or sent. `-PopoverOnly "9b pill"` draws just the states whose
+/// names start with those; the lab's replay frames only so ("replay"), as they take minutes.
 @MainActor
 enum PopoverShots {
     static func render(to dir: String) {
@@ -200,12 +202,15 @@ enum PopoverShots {
         let popovers = PopoverPreviews.all.map { ($0.name, AnyView(PopoverView(model: $0.model, updater: nil))) }
         let fresh = PopoverPreviews.fresh
         let last = PopoverPreviews.lastSession
-        let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, open: true).padding(14).frame(width: 308))),
-                       ("9b-opened", AnyView(History(model: last, sessions: last.past, open: true, picked: Set(last.past.suffix(1).map(\.start))).padding(14).frame(width: 308))),
+        let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, span: .all, opened: .constant(nil)).padding(14).frame(width: 308))),
+                       ("9b-opened", AnyView(History(model: last, sessions: last.past, opened: .constant(last.past.last?.start)).padding(14).frame(width: 308))),
+                       ("pill-lab", AnyView(PillLab())), ("heat-lab", AnyView(HeatLab())),
+                       ] + (0..<120).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) } + [
                        ("club", AnyView(ClubView(model: PopoverPreviews.club))), ("club-none", AnyView(ClubView(model: fresh))),
                        ("settings", AnyView(SettingsView(model: fresh, updater: nil)))]
         Task {
-            for (name, content) in popovers + windows {
+            let only = (UserDefaults.standard.string(forKey: "PopoverOnly") ?? "").split(separator: " ")
+            for (name, content) in popovers + windows where only.isEmpty ? !name.hasPrefix("replay-") : only.contains(where: { name.hasPrefix($0) }) {
                 for dark in [false, true] {
                     let view = NSHostingView(rootView: content.background(Color(nsColor: .windowBackgroundColor)))
                     let window = NSWindow(contentRect: NSRect(x: 40, y: 40, width: 290, height: 400), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -227,13 +232,108 @@ enum PopoverShots {
     }
 }
 
+// ponytail: a lab to see the heat line at every length; delete it with the pill lab.
+/// The opened session's heat line for sessions from one prompt to five hours, all starting at 14:05, and one with a
+/// prompt pointed at.
+struct HeatLab: View {
+    var body: some View {
+        let start = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970 + 14 * 3600 + 5 * 60
+        let made = { (minutes: Double, count: Int) in
+            (0..<count).map { i in
+                Event(ts: start + (count > 1 ? Double(i) / Double(count - 1) : 0) * minutes * 60, burn: .none,
+                      heat: [0.1, 0.05, 0.4, 0.1, 0, 0.7, 0.2, 0.05, 0.95, 0.1][i % 10], cool: i % 7 == 3 ? 0.8 : 0)
+            }
+        }
+        let rows = [("One prompt", made(0, 1), nil), ("10 min", made(10, 6), nil), ("30 min", made(30, 12), nil),
+                    ("2 h", made(120, 40), nil), ("5 h", made(300, 100), nil), ("2 h, pointing at one", made(120, 40), 15)]
+        // A session played through the real game, its pill and its line at the same moment of the replay.
+        let events = made(120, 40).enumerated().map { var e = $1; e.heat = $0 == 30 ? 1 : $0 == 12 ? 0.8 : e.heat; return e }
+        let sitting = Game.replay(events, now: events.last!.ts + 7200).sittings[0], line = Array(Game.fuseLine(sitting, events, now: events.last!.ts + 7200).dropLast())
+        let levels = line.map(\.left), times = line.map(\.ts), boomed = sitting.boom != nil
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach([0.2, 0.45, 0.7, 0.88], id: \.self) { p in
+                HStack { SessionFuse(levels: levels, boomed: boomed, replay: p); Text("replay \(p, specifier: "%.2f")").font(.caption).foregroundStyle(.secondary) }
+                let shown = sitting.boom.map { b in events.filter { $0.ts <= b.ts + 1800 } } ?? events
+                HeatLine(events: shown, impacts: shown.map { _ in 0 }, reading: nil, boom: sitting.boom?.ts, now: events.last!.ts + 7200, at: 0, shown: 0,
+                         story: p, intro: p, moment: { SessionFuse.moment(at: $0, levels, times, boomed: boomed) })
+                    .frame(height: 42).padding(.bottom, 8) // the line's own height and its headroom
+            }
+            ForEach([("A stretch dragged out", 60.0...190.0), ("A narrow one", 120.0...140.0)], id: \.0) { name, stretch in
+                Text(name).font(.caption).foregroundStyle(.secondary)
+                HeatLine(events: made(120, 40), impacts: made(120, 40).map { _ in 0 }, reading: nil, boom: nil, now: Date().timeIntervalSince1970,
+                         at: 0, shown: 0, stretch: stretch)
+                    .frame(height: 42).padding(.bottom, 8)
+            }
+            ForEach(rows.indices, id: \.self) { i in
+                Text(rows[i].0).font(.caption).foregroundStyle(.secondary)
+                HeatLine(events: rows[i].1, impacts: rows[i].1.map { _ in 0 }, reading: rows[i].2, boom: nil, now: Date().timeIntervalSince1970,
+                         at: rows[i].1[rows[i].2 ?? 0].ts + 40, shown: rows[i].2 == nil ? 0 : 1)
+                    .frame(height: 42).padding(.bottom, 8) // the line's own height and its headroom
+            }
+        }
+        .padding(14)
+        .frame(width: 308)
+    }
+}
+
+// ponytail: a lab to pick the pill by eye; delete it once one is picked.
+/// The pill on every made-up session, and a few made-up extremes, frame by frame through its replay, and at rest
+/// without its green.
+struct PillLab: View {
+    static let frames = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0]
+    var replay: Double? // just a few, this many seconds into their replay, then a breeze: a frame of a GIF
+
+    var body: some View {
+        let made = { (name: String, levels: [Double]) in
+            (name: name, boomed: levels.last == 0, story: levels.enumerated().map { (ts: Double($0.offset) * 600, left: $0.element) })
+        }
+        let rows = [PopoverPreviews.fresh, PopoverPreviews.lastSession].flatMap { m in
+            m.past.map { s in (name: m.names[s.start] ?? "Session", boomed: s.boom != nil,
+                               story: Array(Game.fuseLine(s, m.messages(in: s), now: Date().timeIntervalSince1970).dropLast())) }
+        } + [made("Kept its cool", [1, 1.1, 1.2, 1.25]), made("Up and down", [1, 0.6, 1, 0.5, 1, 0.4, 1, 0.7, 1.25, 0.8, 1.2]),
+             made("Close call", [1, 0.6, 0.2, 0.1, 0.5]), made("Hanging by a thread", [1, 0.5, 0.12]),
+             made("Burnt out", [1, 0.7, 0.4, 0.2, 0]), made("Long and churny", [1, 0.4, 1, 0.4, 1, 0.4, 1, 0.4, 1, 0.4, 1, 0.6, 1.1])]
+        if let replay {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(rows.indices.filter { ["Kept its cool", "Good company", "Kaboom", "Burnt out", "Close call", "Up and down", "Long and churny"].contains(rows[$0].name) }, id: \.self) { i in
+                    HStack(spacing: 9) {
+                        let levels = rows[i].story.map(\.left), boomed = rows[i].boomed, d = SessionFuse.duration(levels, boomed: boomed)
+                        SessionFuse(levels: levels, boomed: boomed, replay: min(1, replay / d), gustAt: replay > 4.6 ? replay - 4.6 : nil)
+                        Text(rows[i].name)
+                    }
+                }
+            }
+            .padding(14)
+            .frame(width: 260, alignment: .leading)
+            .fixedSize()
+        } else {
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            GridRow {
+                Text("")
+                ForEach(Self.frames, id: \.self) { Text(String(format: "%.2f", $0)).font(.caption).foregroundStyle(.secondary) }
+                Text("Neutral").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(rows.indices, id: \.self) { i in
+                GridRow {
+                    Text(rows[i].name).lineLimit(1)
+                    ForEach(Self.frames, id: \.self) { SessionFuse(levels: rows[i].story.map(\.left), boomed: rows[i].boomed, replay: $0) }
+                    SessionFuse(levels: rows[i].story.map(\.left), boomed: rows[i].boomed, green: false)
+                }
+            }
+        }
+        .padding(14)
+        .fixedSize()
+        }
+    }
+}
+
 #Preview("Working") { PopoverView(model: PopoverPreviews.working, updater: nil) }
 #Preview("Last third") { PopoverView(model: PopoverPreviews.lastThird, updater: nil) }
 #Preview("Held it together") { PopoverView(model: PopoverPreviews.held, updater: nil) }
 #Preview("Blown") { PopoverView(model: PopoverPreviews.blown(), updater: nil) }
 #Preview("Blown, line written") { PopoverView(model: PopoverPreviews.blown(line: true), updater: nil) }
 #Preview("Last session") { PopoverView(model: PopoverPreviews.lastSession, updater: nil) }
-#Preview("A session opened") { let m = PopoverPreviews.lastSession; History(model: m, sessions: m.past, open: true, picked: Set(m.past.suffix(1).map(\.start))).padding(14).frame(width: 308) }
+#Preview("A session opened") { let m = PopoverPreviews.lastSession; History(model: m, sessions: m.past, opened: .constant(m.past.last?.start)).padding(14).frame(width: 308) }
 #Preview("Long session") { PopoverView(model: PopoverPreviews.long, updater: nil) }
 #Preview("Fresh, no Club") { PopoverView(model: PopoverPreviews.fresh, updater: nil) }
 #Preview("Onboarding, every step") {
@@ -241,7 +341,7 @@ enum PopoverShots {
         HStack(alignment: .top) { ForEach(PopoverPreviews.onboarding, id: \.name) { PopoverView(model: $0.model, updater: nil) } }
     }
 }
-#Preview("Previously, open") { History(model: PopoverPreviews.fresh, sessions: PopoverPreviews.fresh.past, open: true).padding(14).frame(width: 308) }
+#Preview("Previously, open") { History(model: PopoverPreviews.fresh, sessions: PopoverPreviews.fresh.past, span: .all, opened: .constant(nil)).padding(14).frame(width: 308) }
 #Preview("Settings") { SettingsView(model: PopoverPreviews.fresh, updater: nil) }
 #Preview("Club window") { ClubView(model: PopoverPreviews.club) }
 #Preview("Club window, no Club") { ClubView(model: PopoverPreviews.fresh) }

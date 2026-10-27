@@ -22,17 +22,20 @@ final class DisplayTests: XCTestCase {
             #"{"type":"user","timestamp":"2026-10-22T14:50:00.000Z","message":{"content":[{"type":"tool_result","content":"ok"}]}}"#,
             #"{"type":"user","isMeta":true,"timestamp":"2026-10-22T14:50:30.000Z","message":{"content":"system note"}}"#,
             #"{"type":"user","timestamp":"2026-10-22T14:52:00.000Z","message":{"content":"sent while you were busy"}}"#,
+            #"{"type":"user","timestamp":"2026-10-22T15:00:00.000Z","message":{"content":"<system-reminder>a note</system-reminder>"}}"#,
+            #"{"type":"user","timestamp":"2026-10-22T15:00:03.000Z","message":{"content":"the real one"}}"#,
         ]
         try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: project.appendingPathComponent("s1.jsonl"))
         let at = { (s: String) in ISO8601DateFormatter().date(from: s)!.timeIntervalSince1970 }
         XCTAssertEqual(Transcript.prompt(sid: "s1", ts: at("2026-10-22T14:40:01Z"), root: root), "why did you delete my tests")
         XCTAssertEqual(Transcript.prompt(sid: "s1", ts: at("2026-10-22T14:41:01Z"), root: root), "wtf")
         XCTAssertEqual(Transcript.prompt(sid: "s1", ts: at("2026-10-22T14:50:00Z"), root: root), "sent while you were busy") // queued
+        XCTAssertEqual(Transcript.prompt(sid: "s1", ts: at("2026-10-22T15:00:00Z"), root: root), "the real one") // not the nearer reminder
         XCTAssertNil(Transcript.prompt(sid: "s1", ts: at("2026-10-22T15:30:00Z"), root: root)) // nothing close or after
         XCTAssertNil(Transcript.prompt(sid: "nope", ts: at("2026-10-22T14:40:00Z"), root: root))
         XCTAssertNil(Transcript.prompt(sid: "../s1", ts: at("2026-10-22T14:40:00Z"), root: root))
         // A resumed chat copies its history into a new file; each prompt still counts once.
         try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: project.appendingPathComponent("s2.jsonl"))
-        XCTAssertEqual(Transcript.all(since: 0, root: root).map(\.text), ["why did you delete my tests", "wtf", "sent while you were busy"])
+        XCTAssertEqual(Transcript.all(since: 0, root: root).map(\.text), ["why did you delete my tests", "wtf", "sent while you were busy", "the real one"])
     }
 }

@@ -34,10 +34,14 @@ final class GameModel: ObservableObject {
     @Published private(set) var names: [Double: String] = [:]
     /// When the newest session you've opened in Today started: a newer one waits there with a dot.
     @Published private(set) var seen = defaults.double(forKey: "SeenSession")
+    /// When the newest session whose pill you've watched run back started: a newer one in Today runs back at your next look.
+    @Published private(set) var played = defaults.object(forKey: "PlayedSession") as? Double ?? defaults.double(forKey: "SeenSession")
     /// The fuse is burning towards a Boom that hasn't gone off yet.
     @Published private(set) var fusing = false
     /// The popover is open. Its clocks stop while it's closed, so a closed panel never wakes the app.
     @Published var popoverOpen = false
+    /// The earlier session dived into, by start, which has the popover to itself; the menu bar's icon comes back out.
+    @Published var diving: Double?
     /// A test Boom has blown, so the menu bar says BOOM.
     @Published private(set) var testBlown = false
     /// The vibe line, off by default while vibes are still taking shape. Off means no vibe is picked and no topic is
@@ -58,7 +62,7 @@ final class GameModel: ObservableObject {
     private var scorer: Scorer?
     /// The Heat Detector model on this Mac (contract §6). Nothing downloads until you press Download.
     enum Detector: Equatable {
-        case notInstalled, downloading(Double), settingUp, ready, failed(String)
+        case notInstalled, downloading(Double), settingUp, loading, ready, failed(String) // loading: an installed one, at launch
         /// How far the download is, while it's downloading.
         var share: Double? { if case .downloading(let share) = self { share } else { nil } }
     }
@@ -126,9 +130,12 @@ final class GameModel: ObservableObject {
         dirSource = watch(dir.path, [.write]) { [weak self] in self?.changed() } // events.jsonl created, replaced or removed
         // The fuse folder, where your AI saves labels.json and vibes.json (`lunte-hook setup` tells it how).
         try? FileManager.default.createDirectory(at: Fuse.dir, withIntermediateDirectories: true)
-        scorer = Scorer(log: log) { [weak self] in self?.fuse = $0 }
+        scorer = Scorer(log: log) { [weak self] status in
+            self?.fuse = status
+            if status.isTuned { self?.retuning = false } // tuned again, cool and all
+        }
         scorer?.heard = { [weak self] in self?.heard = $0 }
-        if HeatDetector.isInstalled() { setUpDetector() }
+        if HeatDetector.isInstalled() { setUpDetector(first: false) }
         loadPersonalVibes()
         fuseSource = watch(Fuse.dir.path, [.write]) { [weak self] in
             guard let self else { return }
@@ -242,6 +249,13 @@ final class GameModel: ObservableObject {
         guard s.start > seen else { return }
         seen = s.start
         defaults.set(seen, forKey: "SeenSession")
+    }
+
+    /// You watched a session's pill run back to its end.
+    func played(_ s: Sitting) {
+        guard s.start > played else { return }
+        played = s.start
+        defaults.set(played, forKey: "PlayedSession")
     }
 
     /// The closed sessions' names, from their facts and the session names your AI wrote at setup (vibes.json v 2).
@@ -392,6 +406,15 @@ final class GameModel: ObservableObject {
         return text
     }
 
+    /// Reads the prompts behind `events` in one pass per Claude Code session, so pointing along a session shows each
+    /// at once. Kept in memory only.
+    func prefetch(_ events: [Event]) async {
+        let missing = events.filter { promptCache[$0.ts] == nil }.map { (sid: $0.sid, ts: $0.ts) }
+        guard !missing.isEmpty else { return }
+        let found = await Task.detached { Transcript.prompts(missing) }.value
+        promptCache.merge(found) { mine, _ in mine }
+    }
+
     /// The prompt behind an event, if it's been read already.
     func cachedPrompt(_ e: Event) -> String? { promptCache[e.ts] }
 
@@ -439,8 +462,10 @@ final class GameModel: ObservableObject {
         defaults.set(true, forKey: "DetectorLater")
     }
 
-    private func setUpDetector() {
-        detector = .settingUp
+    /// Loads the Heat Detector: just installed, it's setting up, which shows; at launch it's only loading, about a
+    /// second, which doesn't.
+    private func setUpDetector(first: Bool = true) {
+        detector = first ? .settingUp : .loading
         Task {
             let loaded = await scorer?.loadModel() == true
             detector = loaded ? .ready : .failed("The Heat Detector wouldn't start. Try downloading it again.")
@@ -449,6 +474,12 @@ final class GameModel: ObservableObject {
 
     /// The one prompt that has your AI set up your fuse (contract §8).
     func copySetupPrompt() { copyToClipboard(Fuse.setupPrompt) }
+
+    /// You've tuned heat but Lunte has no cool model, as when you tuned before cool came, or too few of the rated
+    /// messages were cool to learn it: then every prompt reads as 0 cool, and nothing grows your fuse back.
+    var coolUntuned: Bool {
+        FileManager.default.fileExists(atPath: Fuse.profileURL.path) && !FileManager.default.fileExists(atPath: Fuse.coolURL.path)
+    }
 
     /// "Tuning your fuse… 40 of 212", or why it failed; nil when untuned or tuned.
     var fuseLine: String? {
@@ -610,8 +641,18 @@ final class GameModel: ObservableObject {
         testBlown = false
         connected = true
         onboarded = true
+        retuning = false
         defaults.set(true, forKey: "Connected")
         defaults.set(true, forKey: "Onboarded")
+    }
+
+    /// Setup again to tune cool, from the cool nudge: its tune step stays open, though you've tuned heat before, until
+    /// a new tune is done.
+    @Published private(set) var retuning = false
+
+    func retune() {
+        retuning = true
+        replayOnboarding()
     }
 
     /// Start the onboarding over, from the checklist.

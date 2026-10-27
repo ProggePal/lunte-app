@@ -23,7 +23,6 @@ final class StoryTests: XCTestCase {
 
     let calm = (0..<8).map { Double($0) }
     func energy(_ events: [Event]) -> Story.Energy { let t = told(events); return Story.energy(t.sitting, t.line) }
-    func arc(_ events: [Event]) -> String { let t = told(events); return Story.arc(t.sitting, t.line) }
 
     func testEnergyIsWhatTheFuseDid() {
         XCTAssertEqual(energy(calm.map { at($0) }), .steady)
@@ -32,31 +31,18 @@ final class StoryTests: XCTestCase {
         XCTAssertEqual(energy(calm.map { at($0, heat: $0 == 3 ? 1 : 0) }), .boom)
     }
 
-    func testTheStoryTellsTheShapeKindly() {
-        XCTAssertTrue(["Steady all the way.", "Smooth from start to finish.", "Not a bump in sight."].contains(arc(calm.map { at($0) })))
-        // Into the last third and out again: a close call.
-        let close = [at(0, heat: 0.6), at(1, heat: 0.6), at(2, cool: 1), at(3)]
-        XCTAssertTrue(["Down to the wire, then back.", "Close, but not quite."].contains(arc(close)))
-        XCTAssertEqual(arc([at(0, cool: 1), at(1, heat: 0.7), at(2), at(3)]), "Up, down, and up again.")
-        XCTAssertTrue(["Better and better.", "Only up from here."].contains(arc(calm.map { at($0, cool: $0 < 2 ? 1 : 0) })))
-        // A burn to 75 % that's still there at the end is bumpy; orange bars are never "smooth".
-        XCTAssertEqual(arc([at(0), at(1, heat: 0.5), at(2), at(3)]), "A bumpy ride.")
-        XCTAssertTrue(["Went out with a bang.", "Short and loud."].contains(arc([at(0), at(1, heat: 1), at(2)])))
-        let slow = [at(0, heat: 0.6), at(6, heat: 0.6), at(11, heat: 0.6)]
-        XCTAssertTrue(["Built up to a big finish.", "A long fuse, then a bang."].contains(arc(slow)))
-    }
-
-    func testTheAuraSaysWhatItWasFor() {
-        let close = told([at(0, heat: 0.6), at(1, heat: 0.6), at(2, cool: 1), at(3)])
-        XCTAssertEqual(Story.auraLine(close.sitting), "+3 aura for holding it together")
-        XCTAssertEqual(Story.auraLine(told(calm.map { at($0) }).sitting), "+1 aura for a cool session, your first today")
-        XCTAssertNil(Story.auraLine(told([at(0)]).sitting))
-    }
-
-    func testCoolLastsAsLongAsItsMend() {
-        let events = [at(0, cool: 1), at(10, cool: 0.5), at(60, cool: 0.8), at(61, cool: 0.1), at(62, heat: 0.9)]
-        let stretches = Story.coolStretches(events)
-        XCTAssertEqual(stretches, [t0...(t0 + 40 * 60), (t0 + 3600)...(t0 + 3600 + Game.cooling)]) // two that overlap run together
+    func testTheStoryOpensOnItsPeak() {
+        func peak(_ events: [Event]) -> (Double?, [Double]) {
+            let s = Game.replay(events, now: events.last!.ts + 100_000, timeZone: utc.timeZone).sittings[0]
+            let impacts = Story.impacts(events, Game.fuseLine(s, events, now: events.last!.ts + 100_000))
+            return (Story.peak(s, events, impacts).map { events[$0].ts }, impacts)
+        }
+        // Burnt, then brought back: what each did, and the biggest is the peak.
+        let (back, impacts) = peak([at(0), at(1, heat: 0.5), at(2, heat: 0.8), at(3, cool: 1), at(4)])
+        XCTAssertEqual(impacts.map { ($0 * 100).rounded() }, [0, -25, -64, 50, 0]) // cool mends half of what's burning
+        XCTAssertEqual(back, t0 + 120)
+        XCTAssertEqual(peak([at(0, heat: 0.7), at(1), at(2, heat: 0.75)]).0, t0 + 120) // the one that set it off, though less burnt
+        XCTAssertEqual(peak([at(0), at(1, cool: 0.6), at(2)]).0, t0 + 60) // steady: the coolest
     }
 
     func testTheActivityIsTheTopicElseTheTime() {

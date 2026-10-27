@@ -150,4 +150,34 @@ final class FuseKitTests: XCTestCase {
         XCTAssertEqual(scene.width(at: 700.5), wide)
         XCTAssertEqual(scene.width(at: 705), FuseScene.fuseWidth)
     }
+
+    /// A session's pill replays every swing of 15 % or more, and always ends where the session did.
+    /// The pill and a hairline over the session's clock line up: a moment goes to the replay and back, and the replay
+    /// only ever walks forward through the session.
+    func testReplayLinesUpWithTheClock() {
+        let levels = [1, 0.6, 0.6, 1, 0.5], times = [0.0, 100, 200, 300, 400]
+        for t in [0.0, 100, 300, 350] {
+            let back = SessionFuse.moment(at: SessionFuse.replay(at: t, levels, times, boomed: false), levels, times, boomed: false)
+            XCTAssertEqual(back, t, accuracy: 1, "\(t)")
+        }
+        XCTAssertEqual(SessionFuse.moment(at: 1, levels, times, boomed: false), 400)
+        let walk = stride(from: 0.0, through: 1, by: 0.01).map { SessionFuse.moment(at: $0, levels, times, boomed: false) }
+        XCTAssertEqual(walk, walk.sorted())
+        XCTAssertEqual(SessionFuse.moment(at: 1, [1, 0.5, 0], [0, 60, 120], boomed: true), 120) // a Boom ends where it blew
+    }
+
+    func testReplaySwings() {
+        XCTAssertEqual(Replay.swings([1, 0.6, 1, 0.5, 1.2]), [1, 0.6, 1, 0.5, 1.2])
+        XCTAssertEqual(Replay.swings([1, 0.8, 0.5, 0.55, 0.3, 1.1, 1.2]), [1, 0.3, 1.2]) // a wobble on the way is no swing
+        XCTAssertEqual(Replay.swings([1, 0.9, 1]), [1])                                   // a scratch
+        XCTAssertEqual(Replay.swings([1, 0.4, 0.5]), [1, 0.4, 0.5])                       // but where it ended is shown
+        XCTAssertEqual(Replay.swings([]), [])
+    }
+
+    /// A pill plays from the fresh fuse a second before the first prompt, so a Boom on that prompt still blows, at it.
+    func testABoomOnTheFirstPromptBlows() {
+        let levels = [1.0, 0, 0], times = [99.0, 100, 160]
+        XCTAssertNotNil(Replay(levels, boomed: true).bang)
+        XCTAssertEqual(SessionFuse.moment(at: 0.9, levels, times, boomed: true), 100, accuracy: 0.01)
+    }
 }

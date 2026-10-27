@@ -2,6 +2,22 @@
 
 What changed for you in each version of Lunte.
 
+## 0.5.0
+
+### Improvements
+- **Dive into a session.** Click one and it opens like a Control Center module: its fuse grows big and plays the session back, its heat runs along a small line over the clock, and the prompt it turned on shows in your own words. Point along the line to find any prompt, click for the next one, or drag across a stretch to see when it ran and how many prompts it had.
+
+  ![Diving into a session](https://raw.githubusercontent.com/ProggePal/lunte-app/main/docs/clips/session.gif)
+- **Every session is its own fuse.** Each one in your list is a little copy of your fuse as it ended: its burns left as ash, a Boom left as a scorch.
+- **A smaller popover.** Your sessions show today's, or this week's, this month's or all of them, five at a time. The Club and Settings sit in one quiet footer, with how many prompts you've sent today.
+- **Your fuse, prompt by prompt.** Point at your dots and the percentage shows what each prompt left of your fuse. Cool dots are a clearer green, and the ones that were hot and cool at once show both.
+- **Missing cool?** If you set Lunte up before it learned cool, it now says so, and Redo setup tunes it.
+
+### Fixes
+- No more "Setting up…" flash when Lunte starts.
+- A prompt's text no longer shows Claude Code's own notes.
+- Lunte rests completely while the popover's closed, and long sessions draw faster.
+
 ## 0.4.0
 
 ### Improvements

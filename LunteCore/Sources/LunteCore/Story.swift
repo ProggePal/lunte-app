@@ -41,39 +41,18 @@ public enum Story {
         return hour < 8 ? "early" : "day"
     }
 
-    /// The session's shape in one kind line, from the facts: "Up, down, and up again." Sessions with the same shape
-    /// take turns with the wordings, by when they started.
-    public static func arc(_ s: Sitting, _ line: [(ts: Double, left: Double)]) -> String {
-        let (low, peak, end) = shape(s, line), grew = peak >= 1.1
-        let pick = { (lines: [String]) in lines[Int(s.start / 1800) % lines.count] }
-        if let boom = s.boom {
-            if grew { return pick(["Flew a little close to the sun.", "Up, up, and away."]) }
-            let slow = boom.ts - (boom.litBy.first?.ts ?? boom.ts) >= Game.slowBurn
-            return slow ? pick(["Built up to a big finish.", "A long fuse, then a bang."]) : pick(["Went out with a bang.", "Short and loud."])
-        }
-        if !s.closeCalls.isEmpty { return pick(["Down to the wire, then back.", "Close, but not quite."]) }
-        if grew { return low >= 0.85 ? pick(["Better and better.", "Only up from here."]) : "Up, down, and up again." }
-        // 85 %: where the bars turn orange, so the words never call a burned session smooth.
-        if low < 0.85 { return end >= 0.9 ? pick(["A wobble, then a strong finish.", "Bumps, then smooth."]) : "A bumpy ride." }
-        return pick(["Steady all the way.", "Smooth from start to finish.", "Not a bump in sight."])
+    /// What each prompt did to the fuse, as a share of the stick: burnt (below 0) or brought back (above); the one that
+    /// set off a Boom, all that was left. `line` is the session's fuse line (`Game.fuseLine`).
+    public static func impacts(_ events: [Event], _ line: [(ts: Double, left: Double)]) -> [Double] {
+        events.map { e in (line.last { $0.ts <= e.ts }?.left ?? 1) - (line.last { $0.ts < e.ts }?.left ?? 1) }
     }
 
-    /// What its aura was for, said plainly, or nil with none.
-    public static func auraLine(_ s: Sitting) -> String? {
-        if s.aura == Game.closeCallAura { return "+\(s.aura) aura for holding it together" }
-        if s.aura == Game.coolSittingAura { return "+\(s.aura) aura for a cool session, your first today" }
-        return nil
-    }
-
-    /// When you were cool: each cool prompt for as long as its mend counts (`Game.cooling`, 30 minutes), run together
-    /// where they overlap.
-    public static func coolStretches(_ events: [Event]) -> [ClosedRange<Double>] {
-        var out: [ClosedRange<Double>] = []
-        for t in events.filter({ $0.burn != .heat && ($0.cool ?? 0) >= Game.coolPrompt }).map(\.ts).sorted() {
-            if let last = out.last, t <= last.upperBound { out[out.count - 1] = last.lowerBound...(t + Game.cooling) }
-            else { out.append(t...(t + Game.cooling)) }
-        }
-        return out
+    // Why: your own words at the peak are what you'll recall (docs/why.md#session-story)
+    /// The prompt that turned the session most, where its story opens: the one that set off its Boom, else the one that
+    /// moved the fuse most, else its coolest.
+    public static func peak(_ s: Sitting, _ events: [Event], _ impacts: [Double]) -> Int? {
+        if let boom = s.boom, let i = events.firstIndex(where: { $0.ts == boom.ts }) { return i }
+        return events.indices.max { (abs(impacts[$0]), events[$0].cool ?? 0) < (abs(impacts[$1]), events[$1].cool ?? 0) }
     }
 
     /// A session to name: its facts, its prompts, and its fuse line.
