@@ -60,6 +60,11 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    /// `lunte://join/K7M2QX`, as Claude opens it after installing Lunte from an invite.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { model.invited(url) }
+    }
+
     #if DEBUG
     /// `Lunte -PanelShot OUT.png`: opens the real panel under the real item, draws it to OUT.png, prints where it sits
     /// against the item, and quits.
@@ -374,7 +379,7 @@ enum Alerts {
     }
 
     /// An alert with one text field per placeholder. Returns the trimmed values, or nil on Cancel.
-    static func ask(_ title: String, _ info: String, fields: [String]) -> [String]? {
+    static func ask(_ title: String, _ info: String, fields: [String], values: [String] = []) -> [String]? {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = info
@@ -385,12 +390,13 @@ enum Alerts {
         let inputs = fields.enumerated().map { i, placeholder in
             let field = NSTextField(frame: NSRect(x: 0, y: box.frame.height - CGFloat(i + 1) * height - CGFloat(i) * gap, width: width, height: height))
             field.placeholderString = placeholder
+            if i < values.count { field.stringValue = values[i] }
             box.addSubview(field)
             return field
         }
         zip(inputs, inputs.dropFirst()).forEach { $0.nextKeyView = $1 }
         alert.accessoryView = box
-        alert.window.initialFirstResponder = inputs.first
+        alert.window.initialFirstResponder = inputs.first { $0.stringValue.isEmpty } ?? inputs.first // the first one left to fill
         NSApp.activate()
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         return inputs.map { $0.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) }

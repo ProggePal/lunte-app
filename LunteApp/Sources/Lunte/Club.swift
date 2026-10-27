@@ -1,4 +1,5 @@
 import AppKit
+import LunteCore
 import SwiftUI
 
 /// The Club's own window, opened from its row in the popover, so the popover stays about you.
@@ -75,7 +76,8 @@ struct ClubView: View {
             HStack(spacing: 8) {
                 Text("Invite code").foregroundStyle(.secondary)
                 Text(club).font(.body.monospaced()).textSelection(.enabled)
-                Button("Copy") { copyToClipboard(club) }.controlSize(.small)
+                Button("Copy invite") { copyToClipboard(Invite.line(club)) }.controlSize(.small) // a line for Claude Code
+                    .help("Copies a line to paste into Claude Code, which installs Lunte and joins this Club")
                 Spacer()
                 Menu {
                     Button("Leave Club", role: .destructive, action: model.leaveClub)
@@ -96,7 +98,7 @@ struct ClubView: View {
             Text("When one of you blows up, the rest of your Club hears about it, never who. Laugh at your agents together.")
                 .multilineTextAlignment(.center).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
-                Button("Join a Club…", action: model.joinClub).buttonStyle(.borderedProminent)
+                Button("Join a Club…") { model.joinClub() }.buttonStyle(.borderedProminent)
                 Button("Create a Club…", action: model.createClub)
             }
             .controlSize(.large)

@@ -31,7 +31,7 @@ Don't worry, it's only for show. The Mac is safe.
 ## Install
 1. Ask your agent to install it, with the line at the top. Or download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
 2. Open it, click Lunte in your menu bar, and follow the three steps: download the Heat Detector (483 MB, once), connect to Claude Code, and tune hot and cool to you. Then type `3 2 1 boom` in Claude Code for your first Boom.
-3. Join a Club with its six-letter code, or create one, from the Club row in the popover.
+3. Join a Club: paste a member's invite into Claude Code, or type its six-letter code in the Club row in the popover. Or create one, and its invite lands on your clipboard for your team.
 
 You need a Mac with Apple Silicon and Claude Code.
 
@@ -45,6 +45,8 @@ open /Applications/Lunte.app
 ```
 
 If Lunte is in Applications already, just open it: it updates itself. Then tell them to click Lunte in the menu bar and follow the three steps.
+
+Invited to a Club ("join my Club K7M2QX")? Once Lunte is open, also run `open "lunte://join/K7M2QX"` with their six-letter code. Lunte asks their name when setup is done.
 
 ## Questions
 **Do you sell my prompts?**

@@ -129,3 +129,20 @@ public struct GameState: Equatable, Sendable {
     /// Every close call, oldest first.
     public var closeCalls: [CloseCall] { sittings.flatMap(\.closeCalls) }
 }
+
+/// A Club's invite: a line for Claude Code that installs Lunte and joins the Club, and the `lunte://join/K7M2QX` link
+/// Claude opens once it's in.
+// Why: the invite has to survive the install, or each step loses people (the HQ's GROWTH.md)
+public enum Invite {
+    public static func line(_ code: String) -> String {
+        "Hey Claude, install Lunte and join my Club \(code). It blows up my Mac if I get mad at you: https://github.com/ProggePal/lunte-app"
+    }
+
+    /// The Club code in an invite link, if it's one: six letters from the relay's alphabet, nothing else, since any app
+    /// can open the link and the code goes into the relay's path.
+    public static func code(_ url: URL) -> String? {
+        guard url.scheme == "lunte", url.host == "join", url.pathComponents.count == 2 else { return nil }
+        let code = url.pathComponents[1].uppercased()
+        return code.range(of: "^[A-HJ-NP-Z2-9]{6}$", options: .regularExpression) != nil ? code : nil
+    }
+}

@@ -19,7 +19,9 @@ final class GameModel: ObservableObject {
     /// True once the onboarding phrase has reached the log: the hook is wired up.
     @Published private(set) var connected = defaults.bool(forKey: "Connected")
     /// True once you've owned your first (test) Boom and got a fresh stick. Already-connected Macs count as done.
-    @Published private(set) var onboarded = defaults.object(forKey: "Onboarded") as? Bool ?? defaults.bool(forKey: "Connected")
+    @Published private(set) var onboarded = defaults.object(forKey: "Onboarded") as? Bool ?? defaults.bool(forKey: "Connected") {
+        didSet { if onboarded, !oldValue { askToJoin() } } // an invite waits for setup to finish
+    }
     /// Onboarding: what you owned your test Boom with, and when the 10-second fresh stick lands.
     @Published private(set) var ownedTest: (line: String, freshAt: Date)?
     /// Your messages from the last 30 minutes (no onboarding test), for the vibe.
@@ -689,27 +691,47 @@ final class GameModel: ObservableObject {
             do {
                 let code = try await Relay.createClub(named: f[0])
                 try await join(code, f[1])
-                copyToClipboard(code)
-                Alerts.tell("Your Club is \(code)", "The code is on your clipboard. Send it to the people you want in.")
+                copyToClipboard(Invite.line(code))
+                Alerts.tell("Your Club is \(code)", "Its invite is on your clipboard. Send it to the people you want in: they paste it into Claude Code, and Claude does the rest. Roasts need two laughs, so bring two people.")
             } catch {
                 Alerts.tell("Couldn't create a Club", error.localizedDescription)
             }
         }
     }
 
-    func joinClub() {
-        guard let f = Alerts.ask("Join a Club", "Ask a member for the six-letter code.", fields: ["Club code", "Your name"]),
+    /// Joins a Club, its code filled in when an invite brought you here. In another Club, you leave that one first.
+    func joinClub(_ invited: String? = nil) {
+        let info = invited == nil ? "Ask a member for the six-letter code." : "You were invited. Say who you are in it."
+        let leaving = club.map { _ in " You'll leave \(clubName ?? "your Club")." } ?? ""
+        guard let f = Alerts.ask(invited.map { "Join Club \($0)?" } ?? "Join a Club", info + leaving, fields: ["Club code", "Your name"],
+                                 values: invited.map { [$0] } ?? []),
               !f[0].isEmpty, !f[1].isEmpty else { return }
         Task {
             do {
                 let code = f[0].uppercased()
+                if club != nil, club != code { leaveClub() }
                 try await join(code, f[1])
-                copyToClipboard(code)
-                Alerts.tell("You're in Club \(code)", "When someone in it blows up, you'll hear about it.")
+                copyToClipboard(Invite.line(code))
+                Alerts.tell("You're in \(clubName ?? "Club " + code)", "When someone in it blows up, you'll hear about it. Its invite is on your clipboard, for whoever's next.")
             } catch {
                 Alerts.tell("Couldn't join", error.localizedDescription)
             }
         }
+    }
+
+    /// An invite, `lunte://join/K7M2QX`, as Claude opens it after installing Lunte: asked at once if you're set up,
+    /// or kept until setup ends.
+    func invited(_ url: URL) {
+        guard let code = Invite.code(url), code != club else { return }
+        defaults.set(code, forKey: "Invite")
+        if onboarded { askToJoin() }
+    }
+
+    /// The invite waiting, if any, as a Join with its code filled in, from the run loop, so the alert never blocks a job.
+    private func askToJoin() {
+        guard let code = defaults.string(forKey: "Invite") else { return }
+        defaults.removeObject(forKey: "Invite")
+        RunLoop.main.perform(inModes: [.common]) { MainActor.assumeIsolated { self.joinClub(code) } }
     }
 
     func leaveClub() {

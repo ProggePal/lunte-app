@@ -3,6 +3,16 @@ import XCTest
 
 /// The first Boom is the onboarding test, and the review's crash-loop fix.
 final class OnboardingTests: XCTestCase {
+    func testInviteLinks() {
+        XCTAssertEqual(Invite.code(URL(string: "lunte://join/K7M2QX")!), "K7M2QX")
+        XCTAssertEqual(Invite.code(URL(string: "lunte://join/k7m2qx")!), "K7M2QX") // typed in lower case
+        XCTAssertNil(Invite.code(URL(string: "lunte://join/K7M2Q")!)) // too short
+        XCTAssertNil(Invite.code(URL(string: "lunte://join/K7M2QI")!)) // I isn't in the alphabet
+        XCTAssertNil(Invite.code(URL(string: "lunte://join/K7M2QX/../../prompts")!)) // nothing but the code
+        XCTAssertNil(Invite.code(URL(string: "https://join/K7M2QX")!))
+        XCTAssertTrue(Invite.line("K7M2QX").contains("join my Club K7M2QX"))
+    }
+
     func testPhrase() {
         for prompt in ["3 2 1 boom", "3, 2, 1… BOOM!", "this is a test 3 2 1 pow", "This is a test 3, 2, 1… POW!", "321 pow", "ok 3-2-1 pow wtf"] {
             XCTAssertEqual(Classifier.classify(prompt), .test, prompt)
