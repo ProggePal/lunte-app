@@ -2,6 +2,13 @@
 import XCTest
 
 final class FuseKitTests: XCTestCase {
+    /// A grey has two components, not four: mixing one never reads past them.
+    func testMixTakesAGrey() {
+        let half = Palette.mix(CGColor(gray: 1, alpha: 0.85), Palette.rgb(0, 0, 0), 0.5).components!
+        XCTAssertEqual(half[0], 0.5, accuracy: 0.01)
+        XCTAssertEqual(half[2], 0.5, accuracy: 0.01)
+    }
+
     /// Burns at the tip and cool fed in at the start, one at a time or from one prompt, always settle on what's left.
     func testFuseSettlesOnWhatsLeft() {
         var scene = FuseScene()

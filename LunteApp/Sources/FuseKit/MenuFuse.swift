@@ -841,8 +841,10 @@ enum Palette {
     static let green = rgb(0.32, 0.85, 0.5)
     static let soot = rgb(0.32, 0.27, 0.24)
 
+    /// Any two colours, a grey's two components too (that out-of-range read crashed a session's pill in dark mode).
     static func mix(_ a: CGColor, _ b: CGColor, _ f: Double) -> CGColor {
-        let x = a.components ?? [0, 0, 0, 1], y = b.components ?? [0, 0, 0, 1], f = min(1, max(0, f))
+        func srgb(_ c: CGColor) -> [CGFloat] { c.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil)?.components ?? [0, 0, 0, 1] }
+        let x = srgb(a), y = srgb(b), f = min(1, max(0, f))
         return rgb(x[0] + (y[0] - x[0]) * f, x[1] + (y[1] - x[1]) * f, x[2] + (y[2] - x[2]) * f)
     }
 }
