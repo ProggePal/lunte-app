@@ -41,6 +41,7 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         button.target = self
         button.action = #selector(toggle)
         panel = MenuPanel(PopoverView(model: model, updater: updater))
+        panel.staysForItem = { [weak self] in self?.model.diving != nil } // the icon comes back out of a session instead
         panel.closed = { [weak self] in
             self?.item.button?.highlight(false)
             self?.model.popoverOpen = false
@@ -177,6 +178,11 @@ final class MenuBar: NSObject, NSApplicationDelegate {
 
     @objc private func toggle() {
         guard let button = item.button else { return }
+        // Inside a session, the icon goes back to your sessions, as Control Center's does from a module.
+        if panel.isVisible, model.diving != nil {
+            withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) { model.diving = nil }
+            return panel.makeKey()
+        }
         if panel.isVisible || panel.justClosed { return panel.dismiss() }
         NSApp.activate() // so the Boom's line takes typing
         model.popoverOpen = true
@@ -192,7 +198,9 @@ final class MenuPanel: NSPanel {
     static let resize = 0.25
     static let expand = Animation.easeInOut(duration: resize) // what the content uses, so the two move together
     var closed: () -> Void = {}
+    var staysForItem: () -> Bool = { false } // whether a click on the menu bar's icon leaves it open, for the icon to act on
     private var closedAt = Date.distantPast
+    private weak var item: NSWindow? // the menu bar icon's own window
 
     init(_ content: some View) {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 308, height: 200), styleMask: [.borderless, .nonactivatingPanel],
@@ -226,6 +234,7 @@ final class MenuPanel: NSPanel {
         guard let item = button.window?.frame,
               let screen = NSScreen.screens.first(where: { $0.frame.minX <= item.midX && item.midX < $0.frame.maxX })?.frame else { return }
         setFrameTopLeftPoint(NSPoint(x: min(item.minX, screen.maxX - frame.width - 8), y: min(item.minY, screen.maxY) - 4))
+        self.item = button.window
         makeKeyAndOrderFront(nil)
     }
 
@@ -238,6 +247,8 @@ final class MenuPanel: NSPanel {
 
     override func resignKey() {
         super.resignKey()
+        // A click on the icon goes to the icon, which may act on what's open rather than close it.
+        if let e = NSApp.currentEvent, e.type == .leftMouseDown, e.window === item, staysForItem() { return }
         dismiss()
     }
 

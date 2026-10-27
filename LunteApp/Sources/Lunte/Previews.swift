@@ -202,8 +202,8 @@ enum PopoverShots {
         let popovers = PopoverPreviews.all.map { ($0.name, AnyView(PopoverView(model: $0.model, updater: nil))) }
         let fresh = PopoverPreviews.fresh
         let last = PopoverPreviews.lastSession
-        let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, open: true).padding(14).frame(width: 308))),
-                       ("9b-opened", AnyView(History(model: last, sessions: last.past, open: true, picked: Set(last.past.suffix(1).map(\.start))).padding(14).frame(width: 308))),
+        let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, span: .all, opened: .constant(nil)).padding(14).frame(width: 308))),
+                       ("9b-opened", AnyView(History(model: last, sessions: last.past, opened: .constant(last.past.last?.start)).padding(14).frame(width: 308))),
                        ("pill-lab", AnyView(PillLab())), ("heat-lab", AnyView(HeatLab())),
                        ] + (0..<120).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) } + [
                        ("club", AnyView(ClubView(model: PopoverPreviews.club))), ("club-none", AnyView(ClubView(model: fresh))),
@@ -333,7 +333,7 @@ struct PillLab: View {
 #Preview("Blown") { PopoverView(model: PopoverPreviews.blown(), updater: nil) }
 #Preview("Blown, line written") { PopoverView(model: PopoverPreviews.blown(line: true), updater: nil) }
 #Preview("Last session") { PopoverView(model: PopoverPreviews.lastSession, updater: nil) }
-#Preview("A session opened") { let m = PopoverPreviews.lastSession; History(model: m, sessions: m.past, open: true, picked: Set(m.past.suffix(1).map(\.start))).padding(14).frame(width: 308) }
+#Preview("A session opened") { let m = PopoverPreviews.lastSession; History(model: m, sessions: m.past, opened: .constant(m.past.last?.start)).padding(14).frame(width: 308) }
 #Preview("Long session") { PopoverView(model: PopoverPreviews.long, updater: nil) }
 #Preview("Fresh, no Club") { PopoverView(model: PopoverPreviews.fresh, updater: nil) }
 #Preview("Onboarding, every step") {
@@ -341,7 +341,7 @@ struct PillLab: View {
         HStack(alignment: .top) { ForEach(PopoverPreviews.onboarding, id: \.name) { PopoverView(model: $0.model, updater: nil) } }
     }
 }
-#Preview("Previously, open") { History(model: PopoverPreviews.fresh, sessions: PopoverPreviews.fresh.past, open: true).padding(14).frame(width: 308) }
+#Preview("Previously, open") { History(model: PopoverPreviews.fresh, sessions: PopoverPreviews.fresh.past, span: .all, opened: .constant(nil)).padding(14).frame(width: 308) }
 #Preview("Settings") { SettingsView(model: PopoverPreviews.fresh, updater: nil) }
 #Preview("Club window") { ClubView(model: PopoverPreviews.club) }
 #Preview("Club window, no Club") { ClubView(model: PopoverPreviews.fresh) }

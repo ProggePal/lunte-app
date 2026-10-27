@@ -16,15 +16,19 @@ public struct SessionFuse: View, Animatable {
     let green: Bool // ponytail: the lab's neutral alternative; goes once one is picked
     let breeze: Bool
     let gustAt: Double? // ponytail: the lab's moment into a breeze, for its stills
+    let fixed: Double? // this wide, or nil to fill its frame, every part to scale, so it can grow open
     @State private var hover: (on: Date, off: Date?)?
     @State private var settled: Date? // when the pointer came onto its row
     @Environment(\.colorScheme) private var scheme
-    static let width = 64.0, zoom = 1.2, pad = 7.0
+    public static let width = 64.0
+    static let zoom = 1.2, pad = 7.0
     static let room = (width - 2 * pad) / zoom - 3.3 - FuseScene.radius - 1 // how far the coil can reach inside the pill
     static let ground = CGPoint(x: FuseScene.start + 7, y: 9.5) // where a Boom leaves its mark: a little in, to fit
 
-    public init(levels: [Double], boomed: Bool, replay: Double = 1, green: Bool = true, breeze: Bool = false, gustAt: Double? = nil) {
+    public init(levels: [Double], boomed: Bool, replay: Double = 1, green: Bool = true, breeze: Bool = false, gustAt: Double? = nil,
+                width: Double? = 64) {
         self.levels = levels; self.boomed = boomed; self.replay = replay; self.green = green; self.breeze = breeze; self.gustAt = gustAt
+        fixed = width
     }
 
     /// How long the replay takes on screen: as long as the fuse's moves, up to 4 seconds, then faster.
@@ -57,7 +61,8 @@ public struct SessionFuse: View, Animatable {
                 ?? hover.map { h in (in: timeline.date.timeIntervalSince(h.on), off: h.off?.timeIntervalSince(h.on)) }
             Canvas { context, size in draw(context, size, gust: gust) }
         }
-        .frame(width: Self.width, height: 26)
+        .aspectRatio(Self.width / 26, contentMode: .fit)
+        .frame(width: fixed.map { CGFloat($0) }, height: fixed.map { CGFloat($0 * 26 / Self.width) })
         .background(Color.primary.opacity(0.08), in: Capsule())
         .clipShape(Capsule())
         .onChange(of: breeze) { _, on in
@@ -77,10 +82,11 @@ public struct SessionFuse: View, Animatable {
         let play = Replay.of(levels, boomed: boomed), end = play.end, rest = end + 20
         let settle = replay > 0.99 ? 1 : max(0, (replay - 0.9) / 0.1) // the last tenth lets the flame and sparks fade
         let seed = Int(levels.reduce(0, +) * 1000) &+ levels.count
+        let k = size.width / Self.width // drawn bigger as the pill is, every part to scale
         context.withCGContext { ctx in
             // The fuse's own coordinates, its start a pad in from the left.
-            ctx.translateBy(x: Self.pad + (3.3 - FuseScene.start) * Self.zoom, y: size.height / 2 + 9.5 * Self.zoom)
-            ctx.scaleBy(x: Self.zoom, y: -Self.zoom)
+            ctx.translateBy(x: (Self.pad + (3.3 - FuseScene.start) * Self.zoom) * k, y: size.height / 2 + 9.5 * Self.zoom * k)
+            ctx.scaleBy(x: Self.zoom * k, y: -Self.zoom * k)
             // The replay at `t`, or, long after its end, the pill at rest: the same fuse, every flame out, and a Boom
             // only its mark, before the menu bar's word would come in.
             let frame = { (t: Double, alpha: Double, wind: (on: Double, off: Double?)?) in

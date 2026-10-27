@@ -41,7 +41,7 @@ struct SessionCard: View {
         ranking = Self.ranked(sitting, events, impacts)
         levels = line.dropLast().map(\.left)
         times = line.dropLast().map(\.ts)
-        _reading = State(initialValue: peak)
+        _reading = State(initialValue: telling.opening ? nil : peak) // opening, it's read once it's told
     }
 
     /// Its prompts by what they did to the fuse, strongest first, the one that set off a Boom before all.
@@ -66,12 +66,12 @@ struct SessionCard: View {
 
     var body: some View {
         let lead = picked ?? peak, intro = telling.opening ? min(1, (telling.story ?? 1) / telling.goal) : 1
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 8) {
             HeatLine(events: events, impacts: impacts, reading: reading, boom: sitting.boom?.ts, now: now, at: at, shown: shown,
                      story: telling.story ?? 1, intro: intro, open: model.popoverOpen, point: point, select: select, cycle: cycle) { [levels, times, boomed = sitting.boom != nil] in
                 SessionFuse.moment(at: $0, levels, times, boomed: boomed)
             }
-            .frame(height: 36 + Hills.top).padding(.top, -Hills.top).padding(.bottom, 6) // its headroom in the gap above
+            .frame(height: 36 + Hills.top).padding(.top, -Hills.top).padding(.bottom, 8) // its headroom in the gap above
             if let lead {
                 // Its dot leads, following the pointer small; the words come in once it rests there, and grow it full.
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -94,17 +94,25 @@ struct SessionCard: View {
                             }
                         }
                         .id(i)
-                        .transition(.opacity)
+                        // A beat after its dot: the dot says where, then the words say what.
+                        .transition(.asymmetric(insertion: .opacity.animation(reduceMotion ? nil : .easeIn(duration: 0.25).delay(0.15)),
+                                                removal: .opacity.animation(reduceMotion ? nil : .easeOut(duration: 0.12))))
                     }
                 }
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: reading == lead)
                 .frame(maxWidth: .infinity, minHeight: 50, maxHeight: 50, alignment: .topLeading) // three lines, so pointing along never moves what's under it
                 .modifier(Revealed(story: intro))
             }
-            if let boom = sitting.boom { Said(model: model, boom: model.litID(boom)).padding(.top, 4).modifier(Revealed(story: intro)) }
+            if let boom = sitting.boom { Said(model: model, boom: model.litID(boom)).padding(.top, 6).modifier(Revealed(story: intro)) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { await model.prefetch(events) }
+        // Told, or pointed into: the story's own prompt is read, its dot first, then its words.
+        .onChange(of: telling.opening) { _, opening in
+            guard !opening, aim == nil, reading == nil else { return }
+            aim = peak
+            withAnimation(reduceMotion ? nil : .easeIn(duration: 0.25)) { reading = peak }
+        }
         // Closed with the pointer still on the line (Escape, another app), it lets go at once: nothing's left showing
         // or moving when it opens again.
         .onChange(of: model.popoverOpen) { _, open in
@@ -187,8 +195,8 @@ struct SessionCard: View {
 }
 
 /// A prompt's dot: red for the one that set off a Boom, else as the live session draws it.
-private func dotTint(_ e: Event, boom: Bool, now: Double) -> Color {
-    boom ? .red : isCool(e) && e.heat(at: now) < 0.35 ? .green.opacity(0.6) : dotColor(e.heat(at: now))
+private func dotTint(_ e: Event, boom: Bool, now: Double) -> AnyShapeStyle {
+    boom ? AnyShapeStyle(Color.red) : dotStyle(heat: e.heat(at: now), cool: isCool(e))
 }
 
 /// Held back while a session's story is told on opening (`story` below 1), fading in over its last moments.
@@ -225,6 +233,7 @@ struct HeatLine: View, Animatable {
     @State private var band: ClosedRange<Double>? // the stretch being dragged out
     var stretch: ClosedRange<Double>? = nil // ponytail: the lab's stretch, for its stills
     @State private var held: Double? // where a click or a stretch was let go, which holds till the pointer moves on
+    @State private var resting: CGPoint? // where the pointer sat as the story began, which it has to move off to take over
     @State private var pops = Pops()
     @State private var rested = false // flipped once the dots settle, so the frames stop
 
@@ -294,7 +303,13 @@ struct HeatLine: View, Animatable {
                     var c = ctx
                     c.opacity = min(1, 2 * grow)
                     c.fill(Path(ellipseIn: CGRect(x: p.x - r - ring, y: p.y - r - ring, width: 2 * (r + ring), height: 2 * (r + ring))), with: .color(paper))
-                    c.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)), with: .color(dotTint(e, boom: e.ts == boom, now: now)))
+                    let disc = CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)
+                    if isCool(e), heat >= 0.35, e.ts != boom { // both: its heat into green, corner to corner, as the dots go
+                        c.fill(Path(ellipseIn: disc), with: .linearGradient(Gradient(colors: [dotColor(heat), .green.opacity(0.85)]),
+                                                                           startPoint: CGPoint(x: disc.minX, y: disc.minY), endPoint: CGPoint(x: disc.maxX, y: disc.maxY)))
+                    } else {
+                        c.fill(Path(ellipseIn: disc), with: .style(dotTint(e, boom: e.ts == boom, now: now)))
+                    }
                 }
                 // The pointer's hairline, or as the story's told, just the prompts popping up as it passes them.
                 let telling = intro < 1 && !pointing ? min(1, (1 - intro) * 20) : 0
@@ -343,7 +358,10 @@ struct HeatLine: View, Animatable {
         .onGeometryChange(for: Double.self) { $0.size.width } action: { width = $0 }
         .contentShape(Rectangle())
         .onContinuousHover { phase in
-            guard case .active(let p) = phase, width > 10, !events.isEmpty else { letGo(); return point(nil, nil) }
+            guard case .active(let p) = phase, width > 10, !events.isEmpty else { resting = nil; letGo(); return point(nil, nil) }
+            // A pointer left where the row was clicked doesn't stop the story as it's told: only one that moves does.
+            if intro < 1, hypot(p.x - (resting ?? p).x, p.y - (resting ?? p).y) < 10 { resting = resting ?? p; return }
+            resting = nil
             if let h = held { if abs(p.x - h) < 12 { return }; letGo() } // what you chose stays till you move on
             point(moment(at: p.x, width), pick(near: p.x))
         }
@@ -485,66 +503,156 @@ private struct Hills: View, Equatable {
     }
 }
 
-/// Your earlier sessions, under the open one: today's in a section of their own, a row each, and the ones before behind
-/// Previously, a row that opens like Other Networks in Wi-Fi, onto a list by day that scrolls. A row opens its session
-/// under it. It's read from the log on this Mac and never sent, and it never adds up how long you worked.
+/// Your earlier sessions, under the one you're in: today's, or this week's, this month's or all of them from a menu in
+/// the header, five rows showing and the rest scrolling, newest first, by day past today. Clicking one dives into it,
+/// the way Control Center's modules open: its pill grows into a big lunte beside its name, and the rest of its story
+/// comes in under it. The back arrow, or closing the popover, comes back out, its pill at its end. It's read from the
+/// log on this Mac and never sent, and it never adds up how long you worked.
 // Why: your history is yours, never a score of your work (docs/why.md#history-not-a-score)
 struct History: View {
     @ObservedObject var model: GameModel
     let sessions: [Sitting] // oldest first
-    @State var open = false
-    @State var picked: Set<Double> = [] // the opened session, by start: one at a time, so the panel never fills with them
-    @State private var focus: Double? // the one opened last, to show whole
+    @State var span = Span.today
+    @Binding var opened: Double? // the session dived into, by start, which takes the whole popover
     @State private var tellings = Tellings() // each session's replay, which only its pill and card watch
+    @Namespace private var hero // a row's pill and the same grown, so one becomes the other
+    @State private var overSpan = false // the pointer's on the span's header, which shows its chevron
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Which sessions the list shows: today's, this week's (from the week's first day), this month's, or all.
+    enum Span: String, CaseIterable {
+        case today = "Today", week = "This week", month = "This month", all = "All sessions"
+
+        func holds(_ s: Sitting) -> Bool {
+            let day = Date(timeIntervalSince1970: s.start), calendar = Calendar.current
+            switch self {
+            case .today: return calendar.isDateInToday(day)
+            case .week: return calendar.isDate(day, equalTo: Date(), toGranularity: .weekOfYear)
+            case .month: return calendar.isDate(day, equalTo: Date(), toGranularity: .month)
+            case .all: return true
+            }
+        }
+    }
+
     var body: some View {
-        let today = sessions.filter { Calendar.current.isDateInToday(Date(timeIntervalSince1970: $0.start)) }
-        let before = sessions.filter { !Calendar.current.isDateInToday(Date(timeIntervalSince1970: $0.start)) }
-        if !today.isEmpty {
-            Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Today").fontWeight(.medium).foregroundStyle(.secondary)
-                // Three rows, then it scrolls; more room while one of them is open.
-                Capped(cap: today.contains { picked.contains($0.start) } ? 380 : 3 * 26 + 2 * 8 + 6, focus: focus) {
-                    ForEach(today.reversed(), id: \.start) { row($0) }
-                }
+        if !sessions.isEmpty {
+            if opened == nil { Divider() } // a session dived into has the popover to itself
+            ZStack(alignment: .topLeading) {
+                if let s = sessions.first(where: { $0.start == opened }) { deep(s).zIndex(1) } else { list } // the growing pill over the list
             }
             .onChange(of: model.popoverOpen) { _, open in if !open { collapse() } }
+            // Out of a session by any way, its header, the menu bar's icon or closing: its pill at its end, nothing playing on.
+            .onChange(of: opened) { was, _ in if let was { tellings.of(was).still() } }
         }
-        if !before.isEmpty {
-            Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                Button { withAnimation(reduceMotion ? nil : MenuPanel.expand) { open.toggle() } } label: {
-                    HStack {
-                        Text("Previously").fontWeight(.medium).foregroundStyle(.secondary)
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(open ? 90 : 0))
-                    }
-                    .modifier(Lit())
+    }
+
+    /// The tabs, and three rows of the span at a time.
+    private var list: some View {
+        let shown = sessions.filter(span.holds)
+        return VStack(alignment: .leading, spacing: 8) {
+            // The span as the section's header, one word and a chevron, its menu the others: as quiet as a header.
+            Menu {
+                Picker("Sessions", selection: $span) { ForEach(Span.allCases, id: \.self) { Text($0.rawValue) } }
+                    .pickerStyle(.inline).labelsHidden()
+            } label: {
+                HStack(spacing: 4) {
+                    Text(span.rawValue).fontWeight(.medium)
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).opacity(overSpan ? 1 : 0) // a header till it's pointed at
                 }
-                .buttonStyle(.plain)
-                .accessibilityValue(open ? "Expanded" : "Collapsed")
-                if open {
-                    // ponytail: every session in the log, built at once; page it once that's slow
-                    Capped(cap: before.contains { picked.contains($0.start) } ? 380 : 240, focus: focus) { // room for an open one
-                        ForEach(days(before), id: \.day) { day in
-                            Text(header(day.day)).font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .onHover { over in withAnimation(.easeOut(duration: 0.15)) { overSpan = over } }
+            .accessibilityLabel("Sessions from: " + span.rawValue)
+            if shown.isEmpty {
+                Text(span == .today ? "No sessions yet today" : "No sessions").foregroundStyle(.secondary).frame(height: 26)
+            } else {
+                // ponytail: every session in the span, built at once; page it once that's slow
+                Capped(cap: 5 * 26 + 4 * 8 + 6) { // five rows, near a session's own height, so diving in barely grows it
+                    if span == .today {
+                        ForEach(shown.reversed(), id: \.start) { row($0) }
+                    } else {
+                        ForEach(days(shown), id: \.day) { day in
+                            Text(header(day.day)).font(.caption).foregroundStyle(.secondary).padding(.top, 2)
                             ForEach(day.sessions, id: \.start) { row($0) }
                         }
                     }
                 }
             }
-            .onChange(of: model.popoverOpen) { _, open in if !open { collapse() } }
         }
+        .transition(.opacity)
     }
 
-    /// Closes every session and Previously as the popover closes, so it always opens collapsed, as the system's own
-    /// menus start fresh. Each section asks, so it's done twice when both are there, which changes nothing.
+    /// One session, dived into: back, its lunte big, its name and day, then its story (`SessionCard`), which comes in
+    /// once the lunte has grown. Laid out to keep the popover near the list's height: the lunte shares its row.
+    private func deep(_ s: Sitting) -> some View {
+        let name = model.names[s.start] ?? "Session", telling = tellings.of(s.start), (levels, boomed) = (levels(s), s.boom != nil)
+        let day = header(Calendar.current.startOfDay(for: Date(timeIntervalSince1970: s.start)))
+        return VStack(alignment: .leading, spacing: 14) {
+            // Its header is the way back, as a Control Center module's is.
+            Button(action: back) {
+                HStack(spacing: 10) {
+                    Told(telling: telling, levels: levels, boomed: boomed, unplayed: false)
+                        .matchedGeometryEffect(id: s.start, in: hero)
+                        .frame(width: 2 * SessionFuse.width, height: 52)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(name).fontWeight(.medium).lineLimit(1)
+                        Text(day + (s.aura > 0 ? " · +\(s.aura)" : "")).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    .transition(.opacity.animation(reduceMotion ? nil : .easeOut(duration: 0.2).delay(0.12))) // only the pill grows; the words come after
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(name + ", back to your sessions")
+            SessionCard(model: model, sitting: s, telling: telling)
+                .transition(.opacity.animation(reduceMotion ? nil : .easeOut(duration: 0.25).delay(0.15))) // once it's grown
+        }
+        .padding(.bottom, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(name + ", " + clock(s.start))
+    }
+
+    /// Dives into a session: its pill grows into the big one and runs the session back, up to the prompt it opens on.
+    private func open(_ s: Sitting) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) { opened = s.start }
+        if !reduceMotion { tellings.of(s.start).opening = true; _ = replay(s, to: SessionCard.goal(model, s)) }
+        model.opened(s)
+    }
+
+    /// Back out to the list: the pill shrinks into its row at its end, with nothing playing on.
+    private func back() {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) { opened = nil }
+    }
+
+    /// As the popover closes: out of any session, onto the first tab with sessions in it, so it always opens the same,
+    /// as the system's own menus start fresh. Each section asked twice changes nothing.
     private func collapse() {
-        for start in picked { tellings.of(start).still() }
-        (picked, focus, open) = ([], nil, false)
+        opened = nil
+        span = Span.allCases.first { span in sessions.contains(where: span.holds) } ?? .today
+    }
+
+    /// Runs a session back in its pill, after `wait`, up to `goal`, and says when it's done.
+    private func replay(_ s: Sitting, after wait: Double = 0, to goal: Double = 1) -> Double {
+        let telling = tellings.of(s.start), d = SessionFuse.duration(levels(s), boomed: s.boom != nil) * goal, cut = telling.cut
+        telling.goal = goal
+        telling.story = 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+            guard telling.cut == cut else { return } // closed before it began
+            withAnimation(.linear(duration: d)) { telling.story = goal }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait + d) { if telling.cut == cut { telling.opening = false } } // told
+        return wait + d
+    }
+
+    /// A session's fuse line, as its pill draws it.
+    private func levels(_ s: Sitting) -> [Double] {
+        Game.fuseLine(s, model.messages(in: s), now: Date().timeIntervalSince1970).dropLast().map(\.left)
     }
 
     /// Newest day first, and newest session first within it.
@@ -554,69 +662,55 @@ struct History: View {
             .map { ($0.key, $0.value) }
     }
 
-    /// "Yesterday", or the weekday and date.
+    /// "Today", "Yesterday", or the weekday and date.
     private func header(_ day: Date) -> String {
-        Calendar.current.isDateInYesterday(day) ? "Yesterday" : day.formatted(.dateTime.weekday(.wide).day().month())
+        let calendar = Calendar.current
+        return calendar.isDateInToday(day) ? "Today" : calendar.isDateInYesterday(day) ? "Yesterday" : day.formatted(.dateTime.weekday(.wide).day().month())
     }
 
     /// A session as a row, like a network in Wi-Fi: its own fuse in a pill, its name, the aura it earned, a dot while
-    /// the newest waits to be opened, and a chevron that turns as it opens, with the session under it.
+    /// the newest waits to be opened, and a chevron to dive in.
     private func row(_ s: Sitting) -> some View {
-        let opened = picked.contains(s.start), name = model.names[s.start] ?? "Session"
-        let newest = s.start == sessions.last?.start && s.start > model.seen
-        let levels = Game.fuseLine(s, model.messages(in: s), now: Date().timeIntervalSince1970).dropLast().map(\.left), boomed = s.boom != nil
+        let name = model.names[s.start] ?? "Session", newest = s.start == sessions.last?.start && s.start > model.seen
         let unplayed = s.start > model.played && Calendar.current.isDateInToday(Date(timeIntervalSince1970: s.start)) && !reduceMotion
-        let telling = tellings.of(s.start)
-        /// Runs the session back in its pill, after `wait`, up to `goal`.
-        func replay(after wait: Double = 0, to goal: Double = 1) -> Double {
-            let d = SessionFuse.duration(levels, boomed: boomed) * goal, cut = telling.cut
-            telling.goal = goal
-            telling.story = 0
-            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
-                guard telling.cut == cut else { return } // closed before it began
-                withAnimation(.linear(duration: d)) { telling.story = goal }
-            }
-            return wait + d
-        }
-        return VStack(alignment: .leading, spacing: 8) {
-            Button {
-                // Closed, a session stops where it is and its pill snaps to its end: nothing more moves.
-                for start in picked { tellings.of(start).still() }
-                withAnimation(reduceMotion ? nil : MenuPanel.expand) { picked = opened ? [] : [s.start] } // one open at a time
-                focus = opened ? nil : s.start
-                // Each time it's opened, its pill runs the session back, up to the prompt it opens on.
-                if !opened, !reduceMotion { telling.opening = true; _ = replay(to: SessionCard.goal(model, s)) }
-                model.opened(s)
-            } label: {
+        return Button { open(s) } label: {
+            Hovering { over in
                 HStack(spacing: 9) {
-                    Told(telling: telling, levels: levels, boomed: boomed, unplayed: unplayed)
+                    Told(telling: tellings.of(s.start), levels: levels(s), boomed: s.boom != nil, unplayed: unplayed)
+                        .matchedGeometryEffect(id: s.start, in: hero)
+                        .frame(width: SessionFuse.width, height: 26)
                     Text(name).lineLimit(1)
                     Spacer(minLength: 0)
-                    if s.aura > 0 { Text("+\(s.aura)").monospacedDigit().foregroundStyle(.secondary) }
                     if newest { Circle().fill(Color.accentColor).frame(width: 7, height: 7) }
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(opened ? 90 : 0))
+                    // Its aura, and under the pointer the chevron in its place: the way in shows when it's wanted.
+                    ZStack(alignment: .trailing) {
+                        if over { Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).transition(.opacity) }
+                        else if s.aura > 0 { Text("+\(s.aura)").monospacedDigit().foregroundStyle(.secondary).transition(.opacity) }
+                    }
+                    .animation(.easeOut(duration: 0.12), value: over)
                 }
                 .modifier(Lit())
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(name + ", " + clock(s.start) + (s.boom != nil ? ", it went boom" : "") + (s.aura > 0 ? ", plus \(s.aura) aura" : ""))
-            .accessibilityValue(opened ? "Expanded" : "Collapsed")
-            .accessibilityAddTraits(opened ? .isSelected : [])
-            if opened {
-                SessionCard(model: model, sitting: s, telling: telling).padding(.top, 2).padding(.bottom, 10)
-                    .transition(.asymmetric(insertion: .opacity, removal: .identity)) // closed, it's gone at once, nothing playing on
-            }
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(name + ", " + clock(s.start) + (s.boom != nil ? ", it went boom" : "") + (s.aura > 0 ? ", plus \(s.aura) aura" : ""))
         .id(s.start)
         // Not yet watched, it runs back once at your next look, a beat after the popover opens. Closed before its end,
         // it runs back again next time.
         // Why: the session's story is there when you next look (docs/why.md#session-replay)
         .onChange(of: model.popoverOpen) { _, open in
             guard open, unplayed else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + replay(after: 0.3)) { if model.popoverOpen { model.played(s) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + replay(s, after: 0.3)) { if model.popoverOpen { model.played(s) } }
         }
     }
+}
+
+/// Whether the pointer's on a row, kept in the row, so moving it from row to row redraws those two rows, not the list.
+private struct Hovering<Content: View>: View {
+    @ViewBuilder let content: (Bool) -> Content
+    @State private var on = false
+
+    var body: some View { content(on).onHover { on = $0 } }
 }
 
 /// How far a session's pill has run it back, 0 to 1, or nil at rest. Only its pill and its opened card watch it, so
@@ -653,7 +747,7 @@ private struct Told: View {
     let levels: [Double], boomed: Bool, unplayed: Bool
 
     var body: some View {
-        SessionFuse(levels: levels, boomed: boomed, replay: telling.story ?? (unplayed ? 0 : 1)) // unplayed: fresh
+        SessionFuse(levels: levels, boomed: boomed, replay: telling.story ?? (unplayed ? 0 : 1), width: nil) // unplayed: fresh; as big as its frame
             .id(telling.cut)
             .transaction(value: telling.cut) { $0.animation = nil } // stilled: it jumps to its end, with no fade or replay
     }
