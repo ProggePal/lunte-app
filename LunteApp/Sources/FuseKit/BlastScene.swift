@@ -127,8 +127,11 @@ public struct BlastScene {
         ]),
         .kaboom: Recipe(fireball: 105, fireLife: 0.6, lobes: 3, smoke: 1.1, ring: 1.3, reach: 500, flash: 0.48, sparks: [
             Sparks(count: 300, speed: 520, drag: 2, gravity: 600, life: 1.4, lifeSpread: 0.5, width: 1.1),
-            Sparks(count: 90, speed: 190, spread: 0.7, drag: 1.3, gravity: 80, life: 2.8, width: 1.4, shutter: 0.02,
+            Sparks(count: 90, speed: 190, spread: 0.7, drag: 1.3, gravity: 80, life: 3.6, width: 1.4, shutter: 0.02,
                    twinkle: 0.35, hot: 0.7, delay: 0.25), // embers
+            // Why: the aftermath lingers, so the Boom keeps on after the bang without getting louder (docs/why.md#boom-in-the-stillness)
+            Sparks(count: 45, speed: 110, spread: 0.9, drag: 0.9, gravity: 28, life: 5, lifeSpread: 0.35, width: 1.2, shutter: 0.02,
+                   twinkle: 0.6, hot: 0.62, delay: 0.5), // cinders, drifting down long after, glowing out
         ]),
     ]
 

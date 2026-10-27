@@ -11,6 +11,7 @@ What changed for you in each version of Lunte.
 - **Hear it again.** Diving into a session plays its fuse and its Boom out loud as it runs back, quieter than the real thing and as your sound effects say. Point along the line and it goes quiet.
 - **Invite in one paste.** Copy invite in your Club puts a line on your clipboard. Your friend pastes it into Claude Code, and Claude installs Lunte and joins your Club, asking only their name once setup is done.
 - **Your vibe chip.** Setup ends by telling you who you are with your agent, from your AI's own ratings: The Roaster, Short Fuse, Best Bud or Ice Cold. It sits at the foot of every session you dive into, too.
+- **The Boom keeps on.** After the fireball, embers and cinders drift down your screen and glow out, so a Boom lingers a few seconds longer. It's no louder.
 
 ## 0.4.1
 
