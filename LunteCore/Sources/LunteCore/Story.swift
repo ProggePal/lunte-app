@@ -41,40 +41,31 @@ public enum Story {
         return hour < 8 ? "early" : "day"
     }
 
-    /// The session's shape in one kind line, from the facts: "Up, down, and up again." Sessions with the same shape
-    /// take turns with the wordings, by when they started.
-    public static func arc(_ s: Sitting, _ line: [(ts: Double, left: Double)]) -> String {
-        let (low, peak, end) = shape(s, line), grew = peak >= 1.1
-        let pick = { (lines: [String]) in lines[Int(s.start / 1800) % lines.count] }
-        if let boom = s.boom {
-            if grew { return pick(["Flew a little close to the sun.", "Up, up, and away."]) }
-            let slow = boom.ts - (boom.litBy.first?.ts ?? boom.ts) >= Game.slowBurn
-            return slow ? pick(["Built up to a big finish.", "A long fuse, then a bang."]) : pick(["Went out with a bang.", "Short and loud."])
-        }
-        if !s.closeCalls.isEmpty { return pick(["Down to the wire, then back.", "Close, but not quite."]) }
-        if grew { return low >= 0.85 ? pick(["Better and better.", "Only up from here."]) : "Up, down, and up again." }
-        // 85 %: where the bars turn orange, so the words never call a burned session smooth.
-        if low < 0.85 { return end >= 0.9 ? pick(["A wobble, then a strong finish.", "Bumps, then smooth."]) : "A bumpy ride." }
-        return pick(["Steady all the way.", "Smooth from start to finish.", "Not a bump in sight."])
+    /// A prompt that turned the session, and what it did to the fuse: a share of the stick, burnt (below 0) or brought
+    /// back (above), or for the one that set it off, all that was left.
+    public struct Move: Equatable, Sendable {
+        public enum Kind: String, Sendable { case setItOff = "Set it off", burnt = "Burnt the most", back = "Brought it back" }
+        public let kind: Kind
+        public let event: Event
+        public let change: Double
     }
 
-    /// What its aura was for, said plainly, or nil with none.
-    public static func auraLine(_ s: Sitting) -> String? {
-        if s.aura == Game.closeCallAura { return "+\(s.aura) aura for holding it together" }
-        if s.aura == Game.coolSittingAura { return "+\(s.aura) aura for a cool session, your first today" }
-        return nil
+    // Why: your own words at the turns are what you'll recall (docs/why.md#session-story)
+    /// At most three prompts that turned the session, in the order they came: the one that set off its Boom, the one
+    /// that burnt the most, and the one that brought it back the most, each only if it moved the fuse by `moveSize` or
+    /// more. Picked by what the fuse did, so a steady session has none. `line` is its fuse line (`Game.fuseLine`).
+    public static func moves(_ s: Sitting, _ events: [Event], _ line: [(ts: Double, left: Double)]) -> [Move] {
+        let before = { (t: Double) in line.last { $0.ts < t }?.left ?? 1 }
+        let turns = events.map { e in (e, (line.last { $0.ts <= e.ts }?.left ?? 1) - before(e.ts)) }.filter { $0.0.ts != s.boom?.ts }
+        var moves: [Move] = []
+        if let boom = s.boom, let e = events.first(where: { $0.ts == boom.ts }) { moves.append(Move(kind: .setItOff, event: e, change: -before(e.ts))) }
+        if let (e, change) = turns.min(by: { $0.1 < $1.1 }), change <= -moveSize { moves.append(Move(kind: .burnt, event: e, change: change)) }
+        if let (e, change) = turns.max(by: { $0.1 < $1.1 }), change >= moveSize { moves.append(Move(kind: .back, event: e, change: change)) }
+        return moves.sorted { $0.event.ts < $1.event.ts }
     }
 
-    /// When you were cool: each cool prompt for as long as its mend counts (`Game.cooling`, 30 minutes), run together
-    /// where they overlap.
-    public static func coolStretches(_ events: [Event]) -> [ClosedRange<Double>] {
-        var out: [ClosedRange<Double>] = []
-        for t in events.filter({ $0.burn != .heat && ($0.cool ?? 0) >= Game.coolPrompt }).map(\.ts).sorted() {
-            if let last = out.last, t <= last.upperBound { out[out.count - 1] = last.lowerBound...(t + Game.cooling) }
-            else { out.append(t...(t + Game.cooling)) }
-        }
-        return out
-    }
+    /// How far a prompt has to move the fuse to turn the session: about what an orange dot burns.
+    public static let moveSize = 0.12
 
     /// A session to name: its facts, its prompts, and its fuse line.
     public typealias Told = (sitting: Sitting, events: [Event], line: [(ts: Double, left: Double)])

@@ -193,7 +193,8 @@ enum PopoverPreviews {
 }
 
 /// `Lunte -PopoverShots DIR`: draws every preview state and the Club's window, light and dark, to DIR/<state>-light.png
-/// and -dark.png, then quits. Nothing is watched, polled or sent.
+/// and -dark.png, then quits. Nothing is watched, polled or sent. `-PopoverOnly "9b pill"` draws just the states whose
+/// names start with those; the lab's replay frames only so ("replay"), as they take minutes.
 @MainActor
 enum PopoverShots {
     static func render(to dir: String) {
@@ -203,12 +204,13 @@ enum PopoverShots {
         let last = PopoverPreviews.lastSession
         let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, open: true).padding(14).frame(width: 308))),
                        ("9b-opened", AnyView(History(model: last, sessions: last.past, open: true, picked: Set(last.past.suffix(1).map(\.start))).padding(14).frame(width: 308))),
-                       ("pill-lab", AnyView(PillLab())),
+                       ("pill-lab", AnyView(PillLab())), ("heat-lab", AnyView(HeatLab())),
                        ] + (0..<120).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) } + [
                        ("club", AnyView(ClubView(model: PopoverPreviews.club))), ("club-none", AnyView(ClubView(model: fresh))),
                        ("settings", AnyView(SettingsView(model: fresh, updater: nil)))]
         Task {
-            for (name, content) in popovers + windows {
+            let only = (UserDefaults.standard.string(forKey: "PopoverOnly") ?? "").split(separator: " ")
+            for (name, content) in popovers + windows where only.isEmpty ? !name.hasPrefix("replay-") : only.contains(where: { name.hasPrefix($0) }) {
                 for dark in [false, true] {
                     let view = NSHostingView(rootView: content.background(Color(nsColor: .windowBackgroundColor)))
                     let window = NSWindow(contentRect: NSRect(x: 40, y: 40, width: 290, height: 400), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -227,6 +229,32 @@ enum PopoverShots {
             }
             NSApp.terminate(nil)
         }
+    }
+}
+
+// ponytail: a lab to see the heat line at every length; delete it with the pill lab.
+/// The opened session's heat line for sessions from one prompt to five hours, all starting at 14:05, and one with a
+/// prompt pointed at.
+struct HeatLab: View {
+    var body: some View {
+        let start = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970 + 14 * 3600 + 5 * 60
+        let made = { (minutes: Double, count: Int) in
+            (0..<count).map { i in
+                Event(ts: start + (count > 1 ? Double(i) / Double(count - 1) : 0) * minutes * 60, burn: .none,
+                      heat: [0.1, 0.05, 0.4, 0.1, 0, 0.7, 0.2, 0.05, 0.95, 0.1][i % 10], cool: i % 7 == 3 ? 0.8 : 0)
+            }
+        }
+        let rows = [("One prompt", made(0, 1), nil), ("10 min", made(10, 6), nil), ("30 min", made(30, 12), nil),
+                    ("2 h", made(120, 40), nil), ("5 h", made(300, 100), nil), ("2 h, pointing at one", made(120, 40), 15)]
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(rows.indices, id: \.self) { i in
+                Text(rows[i].0).font(.caption).foregroundStyle(.secondary)
+                HeatLine(events: rows[i].1, moves: [], now: Date().timeIntervalSince1970, at: rows[i].1[rows[i].2 ?? 0].ts + 40, shown: rows[i].2 == nil ? 0 : 1)
+                    .frame(height: 36).padding(.bottom, 8)
+            }
+        }
+        .padding(14)
+        .frame(width: 308)
     }
 }
 

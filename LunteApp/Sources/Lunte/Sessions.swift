@@ -2,113 +2,230 @@ import FuseKit
 import LunteCore
 import SwiftUI
 
-/// A closed session, opened under its row: the shape of it in one kind line (`Story.arc`), what its aura was for, said
-/// plainly, and its fuse in bars. No prompts but your line about its Boom: the rest is history.
+/// A closed session, opened under its row: its heat over the clock in a small line, the prompts that turned it
+/// (`Story.moves`) in your own words, each with how far it moved the fuse, and your line about its Boom as your bubble,
+/// with the Club's reactions. Pointing along the line glides a hairline after the pointer, the prompts popping up as it
+/// passes; pointing at a move glides it there. The text is read from Claude Code's history as it shows, never stored.
 // Why: the peak-end rule, told kindly and at a glance (docs/why.md#session-story)
 struct SessionCard: View {
     @ObservedObject var model: GameModel
     let sitting: Sitting
+    let events: [Event], moves: [Story.Move], now: Double // worked out once, not on every move of the pointer
+    @State private var at = 0.0 // the moment pointed at, which the hairline glides after
+    @State private var shown = 0.0 // how much the hairline shows
+    @State private var holding: Double? // what the pointer's on, so leaving one move for the next doesn't fade it
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(model: GameModel, sitting: Sitting) {
+        self.model = model
+        self.sitting = sitting
+        events = model.messages(in: sitting)
+        now = sitting.end + 3600 // any time after it closed: its ratings are all in
+        moves = Story.moves(sitting, events, Game.fuseLine(sitting, events, now: now))
+    }
 
     var body: some View {
-        let events = model.messages(in: sitting)
-        let line = Game.fuseLine(sitting, events, now: Date().timeIntervalSince1970)
         VStack(alignment: .leading, spacing: 3) {
-            Text(Story.arc(sitting, line)).foregroundStyle(.secondary)
-            if let aura = Story.auraLine(sitting) { Text(aura) } // the reward, so it never hides behind a hover
-            SessionChart(story: Array(line.dropLast()), cool: Story.coolStretches(events), boomed: sitting.boom != nil)
-                .frame(height: 132).padding(.top, 10)
-            if let boom = sitting.boom, let mine = model.justifications[model.litID(boom)] { Text("“\(mine)”").padding(.top, 6) }
+            HeatLine(events: events, moves: moves, now: now, at: at, shown: shown, point: point).frame(height: 36).padding(.bottom, 8)
+            ForEach(moves, id: \.event.ts) { m in
+                HStack(spacing: 8) {
+                    Mark(move: m, now: now).frame(width: 12)
+                    PromptText(model: model, event: m.event, lines: 1, gone: m.kind.rawValue)
+                    Spacer(minLength: 6)
+                    if m.kind == .setItOff { Text(tier(sitting.tier).name).foregroundStyle(.secondary) }
+                    else {
+                        HStack(spacing: 2) {
+                            Image(systemName: m.change > 0 ? "arrow.up" : "arrow.down").font(.system(size: 9, weight: .semibold))
+                            Text("\(Int((abs(m.change) * 100).rounded()))").monospacedDigit()
+                        }
+                        .foregroundStyle(.secondary)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(m.change > 0 ? "grew it" : "burnt") \(Int((abs(m.change) * 100).rounded())) %")
+                    }
+                }
+                .frame(height: 22)
+                .contentShape(Rectangle())
+                .onHover { point($0 ? m.event.ts : nil) }
+            }
+            if let boom = sitting.boom { Said(model: model, boom: model.litID(boom)).padding(.top, 4) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    /// Glides the hairline to a moment, appearing there if it wasn't showing, or lets it fade once nothing holds it.
+    private func point(_ t: Double?) {
+        holding = t
+        guard let t else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { // the next move's hover may come right after
+                if holding == nil { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { shown = 0 } }
+            }
+            return
+        }
+        if shown == 0 { at = t } // it appears where you point, rather than sliding in from the last
+        withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86)) { at = t; shown = 1 }
+    }
 }
 
-/// The fuse across a session in bars, like Battery's level chart: a bar per slice of the session (2 to 30 minutes, so it
-/// gets about 48), as low as the fuse got in it (or as high, once cool grew it past 100 %), with round ends. Grey down
-/// to 85 % so a calm session reads calm, green above 100 %, orange as it burns, red in the last third. 0 % is always
-/// there, and 125 % only once it got there. Clock hours run underneath. When you were cool shows like Battery's
-/// charging: a light overlay on the bars and a line under the axis, with one symbol on the longest. Nothing else is
-/// marked: the bars show where it blew.
-struct SessionChart: View {
-    let story: [(ts: Double, left: Double)] // the fuse line up to its close, a fresh fuse that isn't the story
-    let cool: [ClosedRange<Double>]
-    let boomed: Bool
-    static let margin = 38.0
+/// A prompt that turned the session: the Boom's burst, or its dot as the live session draws it.
+private struct Mark: View {
+    let move: Story.Move
+    let now: Double
 
     var body: some View {
-        Canvas { ctx, size in draw(&ctx, size) }
-            .accessibilityElement()
-            .accessibilityLabel(summary)
+        if move.kind == .setItOff { Image(systemName: "burst.fill").font(.system(size: 11)).foregroundStyle(.red) }
+        else { Circle().fill(color).frame(width: 9, height: 9).shadow(color: move.kind == .back ? .green.opacity(0.7) : .clear, radius: 2) }
     }
 
-    private func level(_ t: Double) -> Double { story.last { $0.ts <= t }?.left ?? 1 }
+    var color: Color { move.kind == .back ? .green.opacity(0.6) : dotColor(move.event.heat(at: now)) }
+}
 
-    private var summary: String {
-        let peak = story.map(\.left).max() ?? 1, low = story.map(\.left).min() ?? 1
-        return "The fuse across the session: " + (peak > 1.001 ? "grew to \(Int((peak * 100).rounded(.down))) %, " : "")
-            + (boomed ? "then blew" : "lowest \(Int((low * 100).rounded(.down))) %")
-            + (cool.isEmpty ? "" : ", cool " + (cool.count == 1 ? "once" : "\(cool.count) times"))
+/// A session's heat as one small line over the clock, an hour at least, so a short one reads short: each prompt's heat
+/// a soft rise from the base, grey, then orange, red at the top as the dots go, and cool a soft green dip under it.
+/// Its start time, clock hours (dotted, like Battery's) and how many prompts it had run under it (`Hills` draws the
+/// line). Pointing along it says when (`point`); at `at` a hairline shows as much as `shown`, with its time, and the
+/// prompts near it pop up as their dots, a move as its mark, growing as it comes close.
+struct HeatLine: View, Animatable {
+    let events: [Event]
+    let moves: [Story.Move]
+    let now: Double
+    var at: Double
+    var shown: Double
+    var point: (Double?) -> Void = { _ in }
+    @State private var width = 0.0
+
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(at, shown) }
+        set { (at, shown) = (newValue.first, newValue.second) }
     }
 
-    private func draw(_ ctx: inout GraphicsContext, _ size: CGSize) {
-        guard let first = story.first?.ts, let last = story.last?.ts, last > first else { return }
-        let step = [120.0, 300, 600, 900, 1800].first { (last - first) / $0 <= 48 } ?? 1800
-        let count = max(1, Int(((last - first) / step).rounded(.up))), end = first + Double(count) * step
-        let top = story.contains { $0.left > 1.001 } ? Game.full : 1.0
-        let right = size.width - Self.margin, plotTop = 6.0, plotBottom = size.height - 32, marks = plotBottom + 10
-        let x = { (t: Double) in (t - first) / (end - first) * right }
-        let y = { (l: Double) in plotBottom - l / top * (plotBottom - plotTop) }
-        let grid = Color.secondary.opacity(0.35), dotted = StrokeStyle(lineWidth: 1, dash: [1.5, 2.5])
-        // The levels, labelled in the margin.
-        for (l, label) in [(0.0, "0 %"), (0.5, "50 %"), (1.0, "100 %")] + (top > 1 ? [(Game.full, "125 %")] : []) {
-            ctx.stroke(Path { $0.move(to: CGPoint(x: 0, y: y(l))); $0.addLine(to: CGPoint(x: right, y: y(l))) },
-                       with: .color(grid), style: l == 0 ? StrokeStyle(lineWidth: 1) : dotted)
-            ctx.draw(Text(label).font(.caption2.monospacedDigit()).foregroundStyle(.secondary), at: CGPoint(x: size.width, y: y(l)), anchor: .trailing)
+    /// The session from its first prompt, over an hour at least.
+    private var span: (first: Double, last: Double, length: Double) {
+        let first = events.first?.ts ?? 0, last = events.last?.ts ?? first
+        return (first, last, max(last - first, 3600))
+    }
+
+    /// Where a moment sits along a line `width` wide.
+    private func x(_ t: Double, _ width: Double) -> Double { 5 + (width - 10) * (t - span.first) / span.length }
+
+    var body: some View {
+        // The hills, drawn once; over them only what follows the pointer draws again as it moves.
+        Hills(events: events, now: now, span: span).equatable().overlay {
+            Canvas { ctx, size in
+                guard !events.isEmpty else { return }
+                let (first, _, length) = span, base = Hills.base, rise = Hills.rise, dip = Hills.dip
+                let x = { (t: Double) in self.x(t, size.width) }, rest = 1 - shown
+                let calendar = Calendar.current
+                let hhmm = { (t: Double) in let c = calendar.dateComponents([.hour, .minute], from: Date(timeIntervalSince1970: t)); return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0) }
+                func label(_ text: String, _ at: Double, _ anchor: UnitPoint = .bottom, _ opacity: Double) {
+                    var c = ctx
+                    c.opacity = opacity
+                    c.draw(Text(text).font(.caption2.monospacedDigit()).foregroundStyle(.secondary),
+                           at: CGPoint(x: anchor == .bottom ? min(size.width - 14, max(14, at)) : at, y: size.height), anchor: anchor)
+                }
+                // When it started, the clock hours, and how many prompts, fading while the hairline shows.
+                if rest > 0.01 {
+                    label(hhmm(first), 0, .bottomLeading, rest)
+                    label(events.count == 1 ? "1 prompt" : "\(events.count) prompts", size.width, .bottomTrailing, rest)
+                    var hour = calendar.nextDate(after: Date(timeIntervalSince1970: first), matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime)
+                    while let h = hour, h.timeIntervalSince1970 < first + length {
+                        let hx = x(h.timeIntervalSince1970)
+                        if hx > 44, hx < size.width - 70 { label(String(format: "%02d", calendar.component(.hour, from: h)), hx, .bottom, rest) } // clear of the ends
+                        hour = calendar.date(byAdding: .hour, value: 1, to: h)
+                    }
+                }
+                // The hairline, its time, and the prompts near it popping up, the nearest on top.
+                guard shown > 0.01 else { return }
+                let px = x(at)
+                var line = ctx
+                line.opacity = shown
+                line.stroke(Path { $0.move(to: CGPoint(x: px, y: 0)); $0.addLine(to: CGPoint(x: px, y: base + dip)) },
+                            with: .color(.secondary.opacity(0.6)), lineWidth: 1)
+                label(hhmm(at), px, .bottom, shown)
+                let reach = min(14, max(7, 3 * size.width / Double(events.count))) // closer in where the prompts crowd
+                let near = events.indices.map { i in (i, shown * ease(1 - abs(x(events[i].ts) - px) / reach)) }.filter { $0.1 > 0.02 }.sorted { $0.1 < $1.1 }
+                let paper = Color(nsColor: .windowBackgroundColor)
+                for (i, grow) in near {
+                    let e = events[i], heat = e.heat(at: now), cooled = isCool(e) && heat < 0.35
+                    let p = CGPoint(x: x(e.ts), y: cooled ? base + dip * (e.cool ?? 0) : base - rise * heat)
+                    if let k = moves.firstIndex(where: { $0.event.ts == e.ts }), let mark = ctx.resolveSymbol(id: k) {
+                        var c = ctx
+                        c.translateBy(x: p.x, y: p.y)
+                        c.scaleBy(x: grow, y: grow)
+                        c.draw(mark, at: .zero)
+                    } else {
+                        let r = 4 * grow
+                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - r - 1.5, y: p.y - r - 1.5, width: 2 * r + 3, height: 2 * r + 3)), with: .color(paper))
+                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
+                                 with: .color(cooled ? .green.opacity(0.6) : dotColor(heat)))
+                    }
+                }
+            } symbols: {
+                ForEach(Array(moves.enumerated()), id: \.offset) { k, m in
+                    Mark(move: m, now: now).padding(1.5).background(Circle().fill(Color(nsColor: .windowBackgroundColor))).tag(k)
+                }
+            }
         }
-        // Clock hours, dotted, labelled underneath; a session inside one hour gets its start time instead.
-        let calendar = Calendar.current
-        var hour = calendar.nextDate(after: Date(timeIntervalSince1970: first), matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime)
-        var labelled = false
-        while let h = hour, h.timeIntervalSince1970 < end {
-            let hx = x(h.timeIntervalSince1970)
-            ctx.stroke(Path { $0.move(to: CGPoint(x: hx, y: plotTop)); $0.addLine(to: CGPoint(x: hx, y: plotBottom)) }, with: .color(grid), style: dotted)
-            ctx.draw(Text(String(format: "%02d", calendar.component(.hour, from: h))).font(.caption2.monospacedDigit()).foregroundStyle(.secondary),
-                     at: CGPoint(x: hx, y: size.height), anchor: .bottom)
-            labelled = true
-            hour = calendar.date(byAdding: .hour, value: 1, to: h)
+        .onGeometryChange(for: Double.self) { $0.size.width } action: { width = $0 }
+        .contentShape(Rectangle())
+        .onContinuousHover { phase in
+            guard case .active(let p) = phase, width > 10 else { return point(nil) }
+            point(min(span.last, max(span.first, span.first + (p.x - 5) / (width - 10) * span.length)))
         }
-        if !labelled {
-            ctx.draw(Text(clock(first)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary), at: CGPoint(x: 0, y: size.height), anchor: .bottomLeading)
-        }
-        // When you were cool: a light overlay on the bars.
-        let lines = cool.map { c in (a: x(max(c.lowerBound, first)), b: max(x(min(c.upperBound, end)), x(max(c.lowerBound, first)) + 4)) }
-        for l in lines {
-            ctx.fill(Path(CGRect(x: l.a, y: plotTop, width: l.b - l.a, height: plotBottom - plotTop)), with: .color(.green.opacity(0.13)))
-        }
-        // The bars, round at the ends.
-        let width = right / Double(count), gap = width > 5 ? 1.5 : 1.0
-        for i in 0..<count {
-            let a = first + Double(i) * step, b = a + step
-            let levels = [level(a)] + story.filter { $0.ts > a && $0.ts < b }.map(\.left)
-            let low = levels.min() ?? 1, v = low < 0.999 ? low : (levels.max() ?? 1)
-            guard v > 0.001 else { continue } // blown: nothing left
-            // A scratch or two isn't a burn: grey down to 85 %, as `Story.arc` calls it, so a calm session reads calm.
-            let color: Color = v > 1.001 ? .green : v >= 0.85 ? .gray.opacity(0.55) : Game.inLastThird(v) ? .red : .orange
-            let w = max(1, width - gap)
-            ctx.fill(Path(roundedRect: CGRect(x: x(a) + gap / 2, y: y(v), width: w, height: plotBottom - y(v)), cornerRadius: min(w / 2, 3)),
-                     with: .color(color.opacity(0.9)))
-        }
-        // Under the axis, like Battery's charging: a line for each cool stretch, the symbol cut into the longest.
-        for l in lines {
-            ctx.fill(Path(roundedRect: CGRect(x: l.a, y: marks - 2, width: l.b - l.a, height: 4), cornerRadius: 2), with: .color(.green.opacity(0.8)))
-        }
-        if let longest = lines.max(by: { $0.b - $0.a < $1.b - $1.a }) {
-            var image = ctx.resolve(Image(systemName: "face.smiling.inverse"))
-            image.shading = .color(.green)
-            let p = CGPoint(x: min(right - 8, max(8, (longest.a + longest.b) / 2)), y: marks), side = 11.0
-            let rect = CGRect(x: p.x - side / 2, y: p.y - side / 2, width: side, height: side)
-            ctx.fill(Path(ellipseIn: rect.insetBy(dx: -2.5, dy: -2.5)), with: .color(Color(nsColor: .windowBackgroundColor)))
-            ctx.draw(image, in: rect)
+        .accessibilityElement()
+        .accessibilityLabel("The session's heat over the clock, \(events.count) prompts")
+    }
+
+    /// 0 to 1, eased in and out.
+    private func ease(_ v: Double) -> Double { let c = min(1, max(0, v)); return c * c * (3 - 2 * c) }
+}
+
+/// The heat line's still part: each prompt a soft hill as high as its heat, the line their skyline, so a hot prompt
+/// keeps its peak, grey, then orange, red at the top; cool a soft green dip under it; the base, dotted on past its end
+/// to the hour; and the clock hours, dotted.
+private struct Hills: View, Equatable {
+    let events: [Event]
+    let now: Double
+    let span: (first: Double, last: Double, length: Double)
+    static let base = 20.0, rise = 18.0, dip = 4.0
+
+    static func == (a: Self, b: Self) -> Bool { a.now == b.now && a.events == b.events }
+
+    var body: some View {
+        Canvas { ctx, size in
+            guard !events.isEmpty else { return }
+            let (first, last, length) = span, base = Self.base
+            let x = { (t: Double) in 5 + (size.width - 10) * (t - first) / length }
+            let calendar = Calendar.current
+            var hour = calendar.nextDate(after: Date(timeIntervalSince1970: first), matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime)
+            while let h = hour, h.timeIntervalSince1970 < first + length {
+                let hx = x(h.timeIntervalSince1970)
+                ctx.stroke(Path { $0.move(to: CGPoint(x: hx, y: 0)); $0.addLine(to: CGPoint(x: hx, y: base + Self.dip)) },
+                           with: .color(.secondary.opacity(0.35)), style: StrokeStyle(lineWidth: 1, dash: [1.5, 2.5]))
+                hour = calendar.date(byAdding: .hour, value: 1, to: h)
+            }
+            let width = min(9, max(4, size.width / Double(events.count)))
+            func area(_ value: (Event) -> Double, _ height: Double) -> Path {
+                let hills = events.map { (x: x($0.ts), v: value($0)) }.filter { $0.v > 0.001 }
+                return Path { p in
+                    p.move(to: CGPoint(x: 0, y: base))
+                    for px in stride(from: 0.0, through: size.width, by: 1) {
+                        let v = hills.reduce(0.0) { abs(px - $1.x) > 3 * width ? $0 : max($0, $1.v * exp(-pow((px - $1.x) / width, 2))) }
+                        p.addLine(to: CGPoint(x: px, y: base - height * v))
+                    }
+                    p.addLine(to: CGPoint(x: size.width, y: base))
+                    p.closeSubpath()
+                }
+            }
+            ctx.fill(area({ isCool($0) ? $0.cool ?? 0 : 0 }, -Self.dip), with: .color(.green.opacity(0.45)))
+            let grey = Color.secondary.opacity(0.45)
+            ctx.fill(area({ $0.heat(at: now) }, Self.rise), with: .linearGradient(
+                Gradient(stops: [.init(color: grey, location: 0), .init(color: grey, location: 0.3), .init(color: .orange, location: 0.4),
+                                 .init(color: .orange, location: 0.78), .init(color: .red, location: 0.9)]),
+                startPoint: CGPoint(x: 0, y: base), endPoint: CGPoint(x: 0, y: base - Self.rise)))
+            ctx.stroke(Path { $0.move(to: CGPoint(x: 0, y: base)); $0.addLine(to: CGPoint(x: x(last), y: base)) },
+                       with: .color(.secondary.opacity(0.3)), lineWidth: 1)
+            ctx.stroke(Path { $0.move(to: CGPoint(x: x(last), y: base)); $0.addLine(to: CGPoint(x: size.width, y: base)) },
+                       with: .color(.secondary.opacity(0.3)), style: StrokeStyle(lineWidth: 1, dash: [1.5, 2.5]))
         }
     }
 }
@@ -121,7 +238,7 @@ struct History: View {
     @ObservedObject var model: GameModel
     let sessions: [Sitting] // oldest first
     @State var open = false
-    @State var picked: Set<Double> = [] // the opened sessions, by start: each opens and closes on its own, so none moves another
+    @State var picked: Set<Double> = [] // the opened session, by start: one at a time, so the panel never fills with them
     @State private var focus: Double? // the one opened last, to show whole
     @State private var replays: [Double: Double] = [:] // a pill as it replays, by start
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -194,7 +311,7 @@ struct History: View {
         }
         return VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(reduceMotion ? nil : MenuPanel.expand) { if opened { picked.remove(s.start) } else { picked.insert(s.start) } }
+                withAnimation(reduceMotion ? nil : MenuPanel.expand) { picked = opened ? [] : [s.start] } // one open at a time
                 focus = opened ? nil : s.start
                 if !opened, !reduceMotion { _ = replay() } // each time it's opened, its pill runs the session back
                 model.opened(s)

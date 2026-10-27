@@ -395,12 +395,14 @@ struct PromptText: View {
     @ObservedObject var model: GameModel
     let event: Event
     var lines = 2
+    var gone: String? = nil // shown in grey once Claude's history has lost it, in place of saying so
     @State private var texts: [Double: String] = [:]
     @State private var missing: Set<Double> = []
 
     var body: some View {
         Group {
             if let text = texts[event.ts] { Text("“\(text)”") }
+            else if missing.contains(event.ts), let gone { Text(gone).foregroundStyle(.secondary) }
             else { Text(missing.contains(event.ts) ? "Couldn’t find this message in Claude’s history." : "…") }
         }
         .lineLimit(lines).truncationMode(.tail)
@@ -498,13 +500,40 @@ private struct BoomRow: View {
     let boom: String // the id its fuse was lit for
     @State private var line = ""
     @State private var sending = false
+
+    var body: some View {
+        let mine = model.justifications[boom]
+        VStack(alignment: .trailing, spacing: 5) {
+            if mine == nil { LineField(line: $line, send: send).transition(.opacity) }
+            Said(model: model, boom: boom) // sent: your bubble, as the Club sees it, and it stays
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.vertical, 4)
+        .animation(MenuPanel.expand, value: mine)
+        .animation(.spring(duration: 0.35, bounce: 0.3), value: model.reactions[boom]?.count)
+    }
+
+    private func send() {
+        guard !line.trimmingCharacters(in: .whitespaces).isEmpty, !sending else { return }
+        sending = true
+        Task {
+            if let error = await model.justify(boom, line) { Alerts.tell("Saved, but your Club didn't get it", error) }
+            sending = false
+        }
+    }
+}
+
+/// Your line about a Boom as your bubble, blue and on the right like a message you sent, and the Club's reactions under
+/// it, counted; pointing at one says who threw it. In the dots while you're blown, and in the session after.
+struct Said: View {
+    @ObservedObject var model: GameModel
+    let boom: String // the id its fuse was lit for
     @State private var pointed: String? // the reaction pointed at, whose names show
 
     var body: some View {
-        let mine = model.justifications[boom], reacted = model.reacted(boom)
+        let reacted = model.reacted(boom)
         VStack(alignment: .trailing, spacing: 5) {
-            if let mine {
-                // Sent: your bubble, as the Club sees it, and it stays.
+            if let mine = model.justifications[boom] {
                 Text(mine).foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 11).padding(.vertical, 6)
@@ -512,8 +541,6 @@ private struct BoomRow: View {
                                                                                bottomTrailingRadius: 4, topTrailingRadius: 14, style: .continuous))
                     .padding(.leading, 40) // a long one still keeps to the right
                     .transition(.scale(scale: 0.5, anchor: .bottomTrailing).combined(with: .opacity))
-            } else {
-                LineField(line: $line, send: send).transition(.opacity)
             }
             if let reacted {
                 HStack(spacing: 4) {
@@ -535,18 +562,6 @@ private struct BoomRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.vertical, 4)
-        .animation(MenuPanel.expand, value: mine)
-        .animation(.spring(duration: 0.35, bounce: 0.3), value: model.reactions[boom]?.count)
-    }
-
-    private func send() {
-        guard !line.trimmingCharacters(in: .whitespaces).isEmpty, !sending else { return }
-        sending = true
-        Task {
-            if let error = await model.justify(boom, line) { Alerts.tell("Saved, but your Club didn't get it", error) }
-            sending = false
-        }
     }
 }
 
