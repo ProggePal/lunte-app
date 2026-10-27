@@ -194,11 +194,13 @@ final class GameTests: XCTestCase {
             }
         }
         let furious = (heat: 1.0, cool: 0.0), tell = (heat: 0.6, cool: 0.0), calm = (heat: 0.0, cool: 0.0)
-        let banter = (heat: 0.0, cool: 0.67), mild = (heat: 0.0, cool: 0.4), bud = (heat: 0.0, cool: 1.0)
+        let banter = (heat: 0.0, cool: 0.67), mild = (heat: 0.0, cool: 0.5), bud = (heat: 0.0, cool: 1.0)
+        let friendly = (heat: 0.0, cool: 0.4)
         XCTAssertEqual(left([calm, furious]), [1, 0]) // a fresh stick still Booms on one furious prompt
         XCTAssertEqual(left([banter, banter, furious]).last!, 0.2245, accuracy: 1e-3) // banter first: a close shave
-        XCTAssertEqual(left(Array(repeating: mild, count: 6)).last!, 1.24, accuracy: 1e-9) // mild cool: 4 % a prompt
-        XCTAssertEqual(left(Array(repeating: mild, count: 8)).last!, Game.full) // and no further than full
+        XCTAssertEqual(left(Array(repeating: friendly, count: 6)).last!, 1) // friendly isn't cool: it does nothing
+        XCTAssertEqual(left(Array(repeating: mild, count: 3)).last!, 1.1875, accuracy: 1e-9) // just cool: 6.25 % a prompt
+        XCTAssertEqual(left(Array(repeating: mild, count: 5)).last!, Game.full) // and no further than full
         XCTAssertEqual(left([bud]), [Game.full]) // one perfect prompt fills it
         XCTAssertEqual(left([tell, tell, tell]).last!, 0) // three tellings-off Boom a fresh stick
         XCTAssertEqual(left([banter, banter, tell, tell, tell]).last!, 0.1445, accuracy: 1e-3) // but not a grown one
@@ -285,7 +287,7 @@ final class GameTests: XCTestCase {
         let first = s.sittings[0]
         XCTAssertEqual([first.start, first.end], [t0, t0 + 300])
         XCTAssertEqual(first.prompts, 6)
-        XCTAssertEqual(first.coolPrompts, 2) // 0.2 is under a third
+        XCTAssertEqual(first.coolPrompts, 2) // 0.2 is under a half
         XCTAssertEqual(first.peakHeat, 0.1)
         XCTAssertEqual(first.tier, 0)
         XCTAssertNil(first.boom)

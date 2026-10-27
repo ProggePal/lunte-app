@@ -23,7 +23,8 @@ public enum Game {
     // Why: competence, and relief right after the act (docs/why.md#close-call)
     public static let closeCallLeft = 1.0 / 3   // a close call dips into the last third of the stick
     static let epsilon = 1e-9                   // float slack: a heat-1 burn on a 1.5 stick leaves 0.33333333333333337
-    public static let coolPrompt = 1.0 / 3      // a prompt counts as cool from here: your AI's 1 of 3
+    // Why: cool is a best bud, not a polite one, and only what you can see moves the fuse (docs/why.md#cool-mends)
+    public static let coolPrompt = 0.5          // a prompt counts as cool from here, halfway from your AI's friendly (1 of 3) to buddy (2); under it, cool does nothing
     public static let ratingWait: Double = 90   // how long a rated message waits for the model before the word list decides
     static let spark = 0.01                     // heat² or cool² below this does nothing: a neutral message
     public static let slowBurn: Double = 600    // a Boom whose burns built up over 10 minutes or more is a slow burn
@@ -46,10 +47,10 @@ public enum Game {
         return (heat >= spark ? heat : 0) - mend(e)
     }
 
-    /// What one message's cool mends: `coolMend` × cool², or 0 when cool² is below 0.01.
+    /// What one message's cool mends: `coolMend` × cool², or 0 under `coolPrompt`, where it isn't cool.
     public static func mend(_ e: Event) -> Double {
-        let cool = pow(e.cool ?? 0, 2)
-        return cool >= spark ? coolMend * cool : 0
+        let cool = e.cool ?? 0
+        return cool >= coolPrompt ? coolMend * cool * cool : 0
     }
 
     /// `timeZone` sets where the local days that shorten the fuse begin and end.

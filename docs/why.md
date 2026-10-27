@@ -53,9 +53,10 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Hutto & Gilbert 2014](https://doi.org/10.1609/icwsm.v8i1.14550)
 
 ## cool-mends
-- **Rule:** Cool grows the fuse back. A cool prompt mends some of what's burning, never below zero, and a prompt that's hot and cool at once, roasting your agent live, burns less than the heat alone. What it has spare grows the stick ([cool-grows](#cool-grows)).
+- **Rule:** Cool grows the fuse back. A cool prompt mends some of what's burning, never below zero, and a prompt that's hot and cool at once, roasting your agent live, burns less than the heat alone. What it has spare grows the stick ([cool-grows](#cool-grows)). Cool counts only from halfway between your AI's friendly and buddy: a best bud, not a polite one. Under that it does nothing, so the fuse only grows where a green dot shows.
 - **Principle:** Humour as reappraisal. Good-natured humour lowered negative feeling more than mean humour did. Lunte rewards what you do with the anger, not the anger.
-- **Evidence:** mixed: small samples.
+- **Evidence:** mixed: small samples. Where cool starts was set on 27 Oct from one player's 300 setup ratings, which held 81 % with no cool, 12 % friendly, 6 % buddy and under 1 % best bud: with cool from friendly, 4 of the first 9 rated prompts went green. It wasn't replayed, since the log held only 9 prompts with cool and Booms run on heat; the thermostat holds their rate ([rare-booms](#rare-booms)).
+- **Tried:** cool from your AI's friendly (1 of 3), with anything over a tenth mending: a green dot came far too easily, and cool too faint to show still grew the fuse, so a quiet session drifted up toward full and two calm players would tie.
 - **Source:** [Samson & Gross 2012](https://doi.org/10.1080/02699931.2011.585069)
 
 ## close-call
