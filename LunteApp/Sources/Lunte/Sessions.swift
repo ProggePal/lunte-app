@@ -522,6 +522,7 @@ struct History: View {
     @Binding var opened: Double? // the session dived into, by start, which takes the whole popover
     @State private var tellings = Tellings() // each session's replay, which only its pill and card watch
     @Namespace private var hero // a row's pill and the same grown, so one becomes the other
+    @State private var closings = 0.0 // closed out of a session, so its pill and its row's don't match with nothing on screen
     @State private var overSpan = false // the pointer's on the span's header, which shows its chevron
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -606,7 +607,7 @@ struct History: View {
             Button(action: back) {
                 HStack(spacing: 10) {
                     Told(telling: telling, levels: levels, boomed: boomed, unplayed: false)
-                        .matchedGeometryEffect(id: s.start, in: hero)
+                        .matchedGeometryEffect(id: [s.start, closings], in: hero)
                         .frame(width: 2 * SessionFuse.width, height: 52)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(name).fontWeight(.medium).lineLimit(1)
@@ -641,6 +642,9 @@ struct History: View {
 
     /// As the popover closes: out of any session, nothing left playing, onto the first span with sessions in it.
     private func collapse() {
+        // SwiftUI traps (MatchedGeometryScope.sourceViewIndex) matching the pill to its row in a panel that's ordered
+        // out, as a desktop swipe or a click elsewhere leaves it: a new id leaves the two nothing to match.
+        if opened != nil { closings += 1 }
         opened = nil
         tellings.still()
         span = first
@@ -707,7 +711,7 @@ struct History: View {
             Hovering { over in
                 HStack(spacing: 9) {
                     Told(telling: tellings.of(s.start), levels: levels(s), boomed: s.boom != nil, unplayed: unplayed)
-                        .matchedGeometryEffect(id: s.start, in: hero)
+                        .matchedGeometryEffect(id: [s.start, closings], in: hero)
                         .frame(width: SessionFuse.width, height: 26)
                     Text(name).lineLimit(1)
                     Spacer(minLength: 0)

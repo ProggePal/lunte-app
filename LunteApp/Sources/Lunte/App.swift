@@ -340,13 +340,16 @@ func installPlugin() async -> (ok: Bool, output: String) {
 
 @MainActor
 enum Alerts {
-    /// "Submit a prompt…": your name and your idea, written as the prompt an agent would build it from.
-    /// Returns them trimmed, or nil on Cancel. An empty prompt says so instead of sending nothing.
-    static func submitPrompt() -> (name: String, prompt: String)? {
+    /// "Submit a prompt…": your name and your idea, written as the prompt an agent would build it from. A crash report
+    /// comes in the same, already filled in. Returns them trimmed, or nil on Cancel. An empty prompt says so instead of
+    /// sending nothing.
+    static func submitPrompt(_ title: String = "Something you want to see in Lunte?",
+                             _ info: String = "Write your prompt and your name. Agents will build it, and if it's good, we keep it. Credits in the changelog.",
+                             text filled: String = "", send: String = "Submit") -> (name: String, prompt: String)? {
         let alert = NSAlert()
-        alert.messageText = "Something you want to see in Lunte?"
-        alert.informativeText = "Write your prompt and your name. Agents will build it, and if it's good, we keep it. Credits in the changelog."
-        alert.addButton(withTitle: "Submit")
+        alert.messageText = title
+        alert.informativeText = info
+        alert.addButton(withTitle: send)
         alert.addButton(withTitle: "Cancel")
         let width: CGFloat = 320
         let box = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 160))
@@ -360,6 +363,7 @@ enum Alerts {
         text.font = .systemFont(ofSize: NSFont.systemFontSize)
         text.autoresizingMask = [.width]
         text.isAutomaticQuoteSubstitutionEnabled = false
+        text.string = filled
         scroll.documentView = text
         box.addSubview(name)
         box.addSubview(scroll)
