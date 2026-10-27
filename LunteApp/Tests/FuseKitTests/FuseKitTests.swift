@@ -80,4 +80,13 @@ final class FuseKitTests: XCTestCase {
         XCTAssertEqual(scene.width(at: 700.5), wide)
         XCTAssertEqual(scene.width(at: 705), FuseScene.fuseWidth)
     }
+
+    /// A session's pill replays every swing of 15 % or more, and always ends where the session did.
+    func testReplaySwings() {
+        XCTAssertEqual(Replay.swings([1, 0.6, 1, 0.5, 1.2]), [1, 0.6, 1, 0.5, 1.2])
+        XCTAssertEqual(Replay.swings([1, 0.8, 0.5, 0.55, 0.3, 1.1, 1.2]), [1, 0.3, 1.2]) // a wobble on the way is no swing
+        XCTAssertEqual(Replay.swings([1, 0.9, 1]), [1])                                   // a scratch
+        XCTAssertEqual(Replay.swings([1, 0.4, 0.5]), [1, 0.4, 0.5])                       // but where it ended is shown
+        XCTAssertEqual(Replay.swings([]), [])
+    }
 }

@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// A session's fuse in a pill, ash and all, drawn by the menu bar fuse itself: the fuse it ended with, as long or as
-/// short, as tight or as loose as the lunte would be, what cool grew still green at its start, and what its worst burn
-/// took as dots past its tip. A Boom leaves a blast mark: scorch where the fuse began, soot streaks, and the ash flung
-/// wide. `replay` runs the session back, from a fresh fuse at 0, with the menu bar's own feeds, burns and bang, and
-/// settles on the pill at rest at 1.
+/// A session's fuse in a pill, drawn by the menu bar fuse itself, as one coil: the fuse it ended with, what cool grew
+/// still green at its start, and what burnt as dots, right where the flame turned it to ash. The ash holds the coil's
+/// shape, so it's as tight as all the fuse the session was ever fed: the more, the tighter, squeezed up to fit the pill,
+/// and past the tightest it goes, trailing off its end. A Boom leaves a blast mark where the fuse began, with the ash
+/// flung out of it. `replay` runs the session back, from a fresh fuse at 0, with the menu bar's own feeds, burns and
+/// bang, and settles on the pill at rest at 1. With `breeze`, while the pointer's on its row, a breeze runs through it,
+/// as while a prompt is rated, stirring the ash and fanning the embers.
 // Why: heat burns the tip and cool feeds the start (docs/why.md#burn-tip-feed-start)
 public struct SessionFuse: View, Animatable {
     let levels: [Double] // the fuse line, in order, 0...`FuseScene.full`
@@ -12,134 +14,204 @@ public struct SessionFuse: View, Animatable {
     public var replay: Double
     public var animatableData: Double { get { replay } set { replay = newValue } }
     let green: Bool // ponytail: the lab's neutral alternative; goes once one is picked
+    let breeze: Bool
+    let gustAt: Double? // ponytail: the lab's moment into a breeze, for its stills
+    @State private var hover: (on: Date, off: Date?)?
     @Environment(\.colorScheme) private var scheme
-    static let zoom = 1.2, pad = 7.0
+    static let width = 64.0, zoom = 1.2, pad = 7.0
+    static let room = (width - 2 * pad) / zoom - 3.3 - FuseScene.radius - 1 // how far the coil can reach inside the pill
+    static let ground = CGPoint(x: FuseScene.start + 7, y: 9.5) // where a Boom leaves its mark: a little in, to fit
 
-    public init(levels: [Double], boomed: Bool, replay: Double = 1, green: Bool = true) {
-        self.levels = levels; self.boomed = boomed; self.replay = replay; self.green = green
+    public init(levels: [Double], boomed: Bool, replay: Double = 1, green: Bool = true, breeze: Bool = false, gustAt: Double? = nil) {
+        self.levels = levels; self.boomed = boomed; self.replay = replay; self.green = green; self.breeze = breeze; self.gustAt = gustAt
     }
 
-    /// How long the replay takes on screen: as long as the fuse's moves, up to 3 seconds, then faster.
-    public static func duration(_ levels: [Double], boomed: Bool) -> Double { min(3, Replay(levels, boomed: boomed).end) }
+    /// How long the replay takes on screen: as long as the fuse's moves, up to 4 seconds, then faster.
+    public static func duration(_ levels: [Double], boomed: Bool) -> Double { min(4, Replay(levels, boomed: boomed).end) }
 
     public var body: some View {
-        Canvas { context, size in
-            let dark = scheme == .dark, ink = dark ? CGColor(gray: 1, alpha: 0.85) : FuseScene.ink
-            let play = Replay(levels, boomed: boomed), end = play.end
-            let settle = replay > 0.99 ? 1 : max(0, (replay - 0.9) / 0.1) // the last tenth lets the flame and sparks fade
-            let seed = Int(levels.reduce(0, +) * 1000) &+ levels.count
-            context.withCGContext { ctx in
-                // The fuse's own coordinates, its start a pad in from the left.
-                ctx.translateBy(x: Self.pad + (3.3 - FuseScene.start) * Self.zoom, y: size.height / 2 + 9.5 * Self.zoom)
-                ctx.scaleBy(x: Self.zoom, y: -Self.zoom)
-                let right = (size.width - 2 * Self.pad) / Self.zoom - (3.3 - FuseScene.start)
-                // The replay at `t`, or, long after its end, the pill at rest: the same fuse, every flame out. A Boom
-                // rests as its blast mark, before the menu bar's word would come in.
-                let frame = { (t: Double, alpha: Double) in
-                    let scene = play.scene(at: t), left = scene.length(t), burnt = max(0, play.start + play.fed(at: t) - left)
-                    let blast = play.bang.map { min(1, max(0, (t - $0) / 0.35)) } ?? 0 // it comes in as the flash goes
-                    if blast > 0 { Self.blast(ctx, amount: burnt, seed: seed, dark: dark, ink: ink, alpha: alpha * blast) }
-                    ctx.setAlpha(alpha * (1 - blast))
-                    Self.ash(ctx, after: left, amount: burnt, right: right, ink: ink)
-                    ctx.setAlpha(alpha)
-                    guard left > 0.002 || t <= end else { return }
-                    scene.draw(ctx, at: t, ink: ink)
-                    // What cool grew past a fresh fuse stays green at the start, where it was fed in.
-                    if green, left > 1.005 { scene.stroke(ctx, scene.head.value(t), scene.head.value(t) + left - 1, t, Palette.green, width: 1.5) }
-                }
-                if settle > 0 { frame(boomed ? end + 1e6 : end + 20, 1) }
-                if settle < 1 { frame(min(end, replay / 0.9 * end), 1 - settle) } // over the rest, so it never dims
-            }
+        TimelineView(.animation(paused: hover == nil)) { timeline in
+            // How far into the breeze, and when it began to drop, in seconds.
+            let gust = gustAt.map { (in: $0, off: nil as Double?) }
+                ?? hover.map { h in (in: timeline.date.timeIntervalSince(h.on), off: h.off?.timeIntervalSince(h.on)) }
+            Canvas { context, size in draw(context, size, gust: gust) }
         }
-        .frame(width: 64, height: 26)
+        .frame(width: Self.width, height: 26)
         .background(Color.primary.opacity(0.08), in: Capsule())
         .clipShape(Capsule())
+        .onChange(of: breeze) { _, on in
+            let now = Date()
+            if on { hover = (now, nil) } else if let h = hover {
+                hover = (h.on, now)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { if hover?.off == now { hover = nil } } // once it's dropped
+            }
+        }
         .accessibilityHidden(true)
     }
 
-    /// What burnt, as dots on a coil running on from the tip of a fuse `left` long, as loose as the lunte's at first and
-    /// squeezed tighter once there's more than fits before `right`.
-    static func ash(_ ctx: CGContext, after left: Double, amount: Double, right: Double, ink: CGColor) {
-        guard amount > 0.005 else { return }
-        let full = FuseScene.full, share = min(1, left / full)
-        let tip = FuseScene.start + FuseScene.pitch * (1 + FuseScene.stretch * (1 - share)) * share + 2
-        let natural = FuseScene.pitch / full, pitch = min(natural, max(2, right - tip) / amount)
-        let r = FuseScene.radius, rx = min(r, pitch * full / 3 * 0.62), n = max(2, Int(amount * 200))
-        ctx.saveGState()
-        ctx.beginPath()
-        for i in 0...n {
-            let a = amount * Double(i) / Double(n), angle = 6 * .pi * (left + a) / full
-            let p = CGPoint(x: tip + pitch * a + rx * sin(angle), y: 9.5 - r * cos(angle))
-            if i == 0 { ctx.move(to: p) } else { ctx.addLine(to: p) }
+    private func draw(_ context: GraphicsContext, _ size: CGSize, gust: (in: Double, off: Double?)?) {
+        let dark = scheme == .dark, ink = dark ? CGColor(gray: 1, alpha: 0.85) : FuseScene.ink
+        let play = Replay(levels, boomed: boomed), end = play.end, rest = end + 20
+        let settle = replay > 0.99 ? 1 : max(0, (replay - 0.9) / 0.1) // the last tenth lets the flame and sparks fade
+        let seed = Int(levels.reduce(0, +) * 1000) &+ levels.count
+        context.withCGContext { ctx in
+            // The fuse's own coordinates, its start a pad in from the left.
+            ctx.translateBy(x: Self.pad + (3.3 - FuseScene.start) * Self.zoom, y: size.height / 2 + 9.5 * Self.zoom)
+            ctx.scaleBy(x: Self.zoom, y: -Self.zoom)
+            // The replay at `t`, or, long after its end, the pill at rest: the same fuse, every flame out, and a Boom
+            // only its mark, before the menu bar's word would come in.
+            let frame = { (t: Double, alpha: Double, wind: (on: Double, off: Double?)?) in
+                let scene = play.scene(at: t, wind: wind), blow = wind.map { Self.blow(t, on: $0.on, off: $0.off) } ?? 0
+                let left = scene.length(t), head = scene.head.value(t)
+                ctx.setAlpha(alpha)
+                if let bang = play.bang, t > bang { Self.blast(ctx, since: t - bang, seed: seed, ink: ink, blow: blow, t: t) }
+                Self.ash(ctx, play, scene, t, ink: ink, blow: blow)
+                guard left > 0.002 || t <= end else { return }
+                scene.draw(ctx, at: t, ink: ink)
+                // What cool grew past a fresh fuse stays green at the start, where it was fed in.
+                if green, left > 1.005 { scene.stroke(ctx, head, head + left - 1, t, Palette.green, width: 1.5) }
+            }
+            if settle > 0 { frame(rest + (gust?.in ?? 0), 1, gust.map { (rest, $0.off.map { rest + $0 }) }) }
+            if settle < 1 { frame(min(end, replay / 0.9 * end), 1 - settle, nil) } // over the rest, so it never dims
         }
-        ctx.setStrokeColor(ink.copy(alpha: ink.alpha * 0.3)!)
-        ctx.setLineWidth(1.2)
-        ctx.setLineCap(.round)
-        ctx.setLineDash(phase: 0, lengths: [0.01, 2 + 1.5 * (1 - pitch / natural)])
-        ctx.strokePath()
-        ctx.restoreGState()
     }
 
-    /// A Boom's mark, where the fuse began: scorch, darkest in the middle and ragged at the edge, soot streaks thrown out
-    /// from it, and what burnt flung wide as debris. The same session always leaves the same mark.
-    static func blast(_ ctx: CGContext, amount: Double, seed: Int, dark: Bool, ink: CGColor, alpha: Double) {
-        let c = CGPoint(x: FuseScene.start + 8, y: 9.5) // a little in, so the whole blast lands inside the pill
-        let random = { (i: Int, k: Int) -> Double in
-            let x = sin(Double(seed &* 7919 &+ i &* 127 &+ k &* 311) * 12.9898) * 43758.5453
-            return x - x.rounded(.down)
+    /// How hard the breeze blows at `t`, as the menu bar eases its own: up from `on`, and down from `off`.
+    static func blow(_ t: Double, on: Double, off: Double?) -> Double {
+        let up = Tween(0, 1, at: on, over: 0.5, Ease.inOutCubic)
+        guard let off else { return up.value(t) }
+        return Tween(up.value(off), 0, at: off, over: 0.6, Ease.inOutCubic).value(t)
+    }
+
+    /// What burnt, as dots along the coil it was, from the flame out to where the fuse ended when the session began,
+    /// and a Boom flings them out.
+    static func ash(_ ctx: CGContext, _ play: Replay, _ scene: FuseScene, _ t: Double, ink: CGColor, blow: Double) {
+        let front = scene.head.value(t) + scene.length(t) // the flame, along the fuse
+        let fling = play.bang.map { Ease.outCubic(min(1, max(0, (t - $0) / 0.8))) } ?? 0
+        for (i, s) in play.ash.enumerated() where s > front + 0.001 {
+            var p = scene.point(s, t)
+            var alpha = 0.34 * min(1, (s - front) / 0.03)
+            alpha *= min(1, max(0, (room + 9 - (p.x - FuseScene.start)) / 6)) // trailing off past the coil's room
+            alpha *= 0.65 + 0.35 * cos(6 * .pi * s / FuseScene.full) // fainter where it turns back over the top, so it reads as a coil
+            if fling > 0 {
+                // Blown out from the mark, along the pill, what was in the blast itself gone, and stirred by a breeze,
+                // as the fuse's own breeze stirs the rest.
+                let a = atan2(p.y - ground.y, p.x - ground.x) + 0.8 * (noise(i, 1, 40) - 0.5), out = (3 + 13 * noise(i, 2, 40)) * fling
+                alpha *= 1 - fling * max(0, 1 - hypot((p.x - ground.x) / 1.5, p.y - ground.y) / 6)
+                p = CGPoint(x: p.x + out * cos(a) + 0.3 * blow * sin(t * 2.3 + s * 4),
+                            y: ground.y + (p.y - ground.y) * (1 - 0.5 * fling) + 0.45 * out * sin(a) + 0.6 * blow * sin(2 * .pi * 1.4 * s - t * 5.5))
+            }
+            dot(ctx, p, 0.6, ink.copy(alpha: ink.alpha * alpha)!)
+        }
+    }
+
+    /// A Boom's mark, `since` seconds after the bang: the ground singed, a scorch splashed out along the pill in two
+    /// layers, a soft wide one under a ragged black heart, mottled, with streaks thrown out from under it, a spray of soot,
+    /// and embers that cool from white to a dull red and glow up again in a breeze. The same session always leaves the
+    /// same mark.
+    static func blast(_ ctx: CGContext, since: Double, seed: Int, ink: CGColor, blow: Double, t: Double) {
+        let c = ground, rand = { (i: Int, k: Int) in noise(seed, i, k) }
+        let grow = Ease.outCubic(min(1, since / 0.45)), space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let black = { (a: Double) in CGColor(gray: 0, alpha: a) }, brown = { (a: Double) in Palette.soot.copy(alpha: a)! }
+        let gradient = { (colours: [CGColor], at: [CGFloat]) in CGGradient(colorsSpace: space, colors: colours as CFArray, locations: at)! }
+        // Wider than tall, as a pill would let it spread.
+        let along = { (a: Double, d: Double) in CGPoint(x: c.x + 1.5 * d * cos(a), y: c.y + 0.75 * d * sin(a)) }
+        let spread = { (draw: () -> Void) in
+            ctx.saveGState()
+            ctx.translateBy(x: c.x, y: c.y)
+            ctx.scaleBy(x: 1.5 * grow, y: 0.75 * grow)
+            draw()
+            ctx.restoreGState()
         }
         ctx.saveGState()
-        ctx.setAlpha(alpha)
-        // Scorch: a few soft blobs, so its edge isn't a circle.
-        let colours = [CGColor(gray: 0, alpha: dark ? 0.65 : 0.5), Palette.soot.copy(alpha: dark ? 0.4 : 0.28)!, Palette.soot.copy(alpha: 0)!]
-        let scorch = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colours as CFArray, locations: [0, 0.55, 1])!
-        for i in 0..<5 {
-            let at = CGPoint(x: c.x + 14 * random(i, 1) - 3, y: c.y + 4 * random(i, 2) - 2)
-            ctx.drawRadialGradient(scorch, startCenter: at, startRadius: 0, endCenter: at, endRadius: 6 + 6 * random(i, 3), options: [])
+        spread { // the ground around it, singed
+            ctx.drawRadialGradient(gradient([brown(0.4), brown(0.16), brown(0)], [0, 0.5, 1]), startCenter: .zero, startRadius: 0,
+                                   endCenter: .zero, endRadius: 16, options: [])
         }
-        // Streaks, thrown out along the pill.
-        ctx.setLineCap(.round)
-        ctx.setStrokeColor(CGColor(gray: 0, alpha: dark ? 0.55 : 0.32))
-        for i in 0..<11 {
-            let a = 2 * .pi * (Double(i) + 0.6 * random(i, 4)) / 11, reach = 7 + 12 * random(i, 5)
+        // Streaks thrown out from under it, tapering away.
+        for i in 0..<9 {
+            let a = 2 * .pi * (Double(i) + 0.8 * rand(i, 1)) / 9, reach = (8 + 13 * pow(rand(i, 2), 0.8)) * grow
+            let w = 0.25 + 0.45 * rand(i, 3), d = CGPoint(x: 1.5 * cos(a), y: 0.75 * sin(a))
+            let n = hypot(d.x, d.y), u = CGPoint(x: d.x / n, y: d.y / n), far = reach * n / 1.5 // shorter up and down
+            let base = CGPoint(x: c.x + 3 * u.x, y: c.y + 3 * u.y), end = CGPoint(x: c.x + far * u.x, y: c.y + far * u.y)
+            ctx.saveGState()
             ctx.beginPath()
-            ctx.move(to: CGPoint(x: c.x + 2.5 * cos(a), y: c.y + 2.5 * sin(a)))
-            ctx.addLine(to: CGPoint(x: c.x + reach * 1.5 * cos(a), y: c.y + reach * 0.6 * sin(a)))
-            ctx.setLineWidth(0.5 + 0.6 * random(i, 6))
-            ctx.strokePath()
+            ctx.move(to: CGPoint(x: base.x - w * u.y, y: base.y + w * u.x))
+            ctx.addLine(to: end)
+            ctx.addLine(to: CGPoint(x: base.x + w * u.y, y: base.y - w * u.x))
+            ctx.closePath()
+            ctx.clip()
+            ctx.drawLinearGradient(gradient([black(0.55), black(0.22), black(0)], [0, 0.5, 1]), start: base, end: end, options: [])
+            ctx.restoreGState()
         }
-        // Debris: the ash, flung wide, more the more burnt.
-        for i in 0..<Int(16 + 12 * amount) {
-            let a = 2 * .pi * random(i, 7), d = 3 + 26 * pow(random(i, 8), 0.8), r = 0.35 + 0.35 * random(i, 9)
-            let p = CGPoint(x: c.x + d * cos(a) * 1.3, y: c.y + min(8, d * 0.45) * sin(a))
-            ctx.setFillColor(ink.copy(alpha: ink.alpha * (0.25 + 0.25 * random(i, 10)))!)
-            ctx.fillEllipse(in: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r))
+        // The scorch: a ragged ring of spikes of every length and width, filled dark to the middle.
+        let splash = { (layer: Int, count: Int, width: Double, reach: Double, colours: [CGColor], radius: Double) in
+            spread {
+                let spikes = (0..<count).map { k in
+                    (a: 2 * .pi * (Double(k) + 0.9 * rand(k, 4 + 10 * layer)) / Double(count), len: reach * pow(rand(k, 5 + 10 * layer), 1.5),
+                     w: width * (0.5 + rand(k, 6 + 10 * layer)))
+                }
+                ctx.beginPath()
+                for j in 0...240 {
+                    let a = 2 * .pi * Double(j) / 240
+                    var r = 4.5 + 0.5 * sin(5 * a + rand(layer, 7) * 6) + 0.35 * sin(13 * a + rand(layer, 8) * 6)
+                    for s in spikes { let x = max(0, 1 - abs(remainder(a - s.a, 2 * .pi)) / s.w); r += s.len * x * x }
+                    if j == 0 { ctx.move(to: CGPoint(x: r * cos(a), y: r * sin(a))) } else { ctx.addLine(to: CGPoint(x: r * cos(a), y: r * sin(a))) }
+                }
+                ctx.closePath()
+                ctx.clip()
+                ctx.drawRadialGradient(gradient(colours, [0, 0.3, 0.65, 1]), startCenter: .zero, startRadius: 0, endCenter: .zero,
+                                       endRadius: radius, options: [])
+            }
+        }
+        splash(0, 12, 0.5, 9, [black(0.38), black(0.28), brown(0.14), brown(0)], 15) // soft and wide
+        splash(1, 19, 0.2, 5.5, [black(0.9), black(0.8), black(0.4), black(0)], 10) // the black heart
+        // Mottled, so it reads as soot, not paint.
+        for i in 0..<14 {
+            let p = along(2 * .pi * rand(i, 40), (0.5 + 6 * rand(i, 41)) * grow), r = 1.2 + 2.3 * rand(i, 42)
+            let dark = rand(i, 43) < 0.6
+            ctx.drawRadialGradient(gradient([dark ? black(0.3) : brown(0.35), brown(0), brown(0), brown(0)], [0, 1, 1, 1]),
+                                   startCenter: p, startRadius: 0, endCenter: p, endRadius: r, options: [])
+        }
+        // A spray of soot, thickest at the scorch's edge, flying out with the blast.
+        for i in 0..<130 {
+            let fly = Ease.outCubic(min(1, since / (0.3 + 0.6 * rand(i, 10)))), d = (3.5 + 15 * pow(rand(i, 11), 1.3)) * fly
+            let r = 0.12 + 0.34 * rand(i, 12) * rand(i, 12)
+            dot(ctx, along(2 * .pi * rand(i, 13), d), r, black((0.85 - 0.035 * d) * (0.35 + 0.65 * rand(i, 14))))
+        }
+        // Embers in the scorch: white-hot, cooling to a dull red, and fanned back up by a breeze.
+        for i in 0..<4 {
+            let p = along(2 * .pi * rand(i, 30), 1 + 5 * rand(i, 31))
+            let fan = blow * (0.55 + 0.45 * sin(t * (7 + 6 * rand(i, 32)) + 6 * rand(i, 33)))
+            let heat = min(1, max(0, 1 - since / (0.8 + 0.8 * rand(i, 34))) + 0.75 * fan)
+            let colour = heat > 0.5 ? Palette.mix(Palette.orange, Palette.yellow, 2 * heat - 1)
+                : Palette.mix(Palette.mix(Palette.red, Palette.soot, 0.45), Palette.orange, 2 * heat)
+            glow(ctx, p, radius: 1.2 + 1.8 * heat, Palette.orange, alpha: 0.12 + 0.5 * heat)
+            dot(ctx, p, 0.32 + 0.16 * rand(i, 35), colour)
         }
         ctx.restoreGState()
     }
 }
 
-/// The session as the menu bar showed it, each move given as long as the fuse takes to make it, in at most three: fed
-/// up to its high, burnt down to its low, and fed on to how it ended, in the order they happened. A dip that stays at
-/// 85 % or more is a scratch, not a burn, and isn't shown. A Boom is fed to its peak, burnt to where it caught, then
-/// the race, the silence and the bang.
-// Why: the peak-end rule, and the words and the bars use the same thresholds (docs/why.md#session-story)
+/// The session as the menu bar showed it, every swing of 15 % or more, in the order they happened, each given as long
+/// as the fuse takes to make it: fed in, burnt down, fed back. A smaller swing is a scratch, and isn't shown. A Boom
+/// swings the same way to where it caught, then the race, the silence and the bang.
+// Why: the words and the bars use the same thresholds (docs/why.md#session-story)
 struct Replay {
     let start: Double
     var steps: [(at: Double, look: FuseLook)] = []
-    var grows: [(at: Double, mend: Double)] = []
+    var ash: [Double] = [] // where along the fuse a dot of ash goes
     var bang: Double?
     var end = 0.0
 
     init(_ levels: [Double], boomed: Bool) {
         start = levels.first ?? 1
-        let last = levels.last ?? start, low = levels.indices.min { levels[$0] < levels[$1] } ?? 0
-        let moves = boomed ? [levels.max() ?? 1, levels.dropLast().last ?? start, 0]
-            : levels[low] < 0.85 ? [levels[...low].max() ?? start, levels[low], last] : last > start ? [last] : []
-        var t = 0.15, now = start
+        let moves = Self.swings(boomed ? Array(levels.dropLast()) : levels).dropFirst() + (boomed ? [0] : [])
+        var t = 0.15, now = start, head = 0.0 // where the fuse starts, along it: what's fed in runs it back
         for l in moves where abs(l - now) > 0.01 {
             if boomed, l < 0.001 {
                 steps.append((t, FuseLook(phase: .fusing, left: 0)))
+                lay(head: head, to: head)
                 t += FuseScene.raceFor + 0.5
                 steps.append((t, FuseLook(phase: .blown, left: 0)))
                 bang = t
@@ -148,7 +220,7 @@ struct Replay {
             }
             steps.append((t, FuseLook(left: l)))
             if l > now {
-                grows.append((t, l - now))
+                head -= l - now
                 t += 1 + 0.8 * (l - now) // the feed, and a beat
             } else {
                 // The burn: quick, then a crawl through the last third, as `FuseScene.burn` times it.
@@ -157,18 +229,45 @@ struct Replay {
             }
             now = l
         }
+        lay(head: head, to: head + now)
         end = t + 0.3
     }
 
-    func scene(at t: Double) -> FuseScene {
-        var scene = FuseScene()
-        scene.update(FuseLook(left: start), at: -10, animated: false)
-        for s in steps where s.at <= t { scene.update(s.look, at: s.at) }
-        return scene
+    /// A dot of ash every so often along the coil, as it rests at the end, from where the fuse first ended back to the
+    /// lowest the flame got: evenly along it, so a tight turn has no more than a loose one.
+    private mutating func lay(head: Double, to low: Double) {
+        var last: CGPoint?, run = 2.4
+        for s in stride(from: start, through: low, by: -0.002) {
+            let p = FuseScene.restingPoint(s, head: head, tail: start, room: SessionFuse.room)
+            if let q = last { run += hypot(p.x - q.x, p.y - q.y) }
+            last = p
+            if run >= 2.4 { ash.append(s); run = 0 }
+        }
     }
 
-    /// The fuse fed in by `t`, as the scene feeds it.
-    func fed(at t: Double) -> Double {
-        grows.reduce(0) { $0 + $1.mend * Ease.inOutCubic(min(1, max(0, (t - $1.at) / (0.8 + 0.8 * $1.mend)))) }
+    /// The line's turning points, from its start to its end, leaving out every swing smaller than 15 %.
+    static func swings(_ line: [Double]) -> [Double] {
+        guard let first = line.first else { return [] }
+        var points = [first], turn = first, way = 0.0 // the furthest it's gone since the last turning point, and which way
+        for l in line.dropFirst() {
+            if way == 0 { if abs(l - first) >= 0.15 { (turn, way) = (l, l > first ? 1 : -1) }; continue }
+            if (l - turn) * way > 0 { turn = l } else if abs(l - turn) >= 0.15 { points.append(turn); (turn, way) = (l, -way) }
+        }
+        if way != 0 { points.append(turn) }
+        if let last = line.last, abs(last - (points.last ?? last)) > 0.01 { points.append(last) } // where it really ended
+        return points
+    }
+
+    /// The fuse at `t`, with a breeze through it from `wind.on` till `wind.off`.
+    func scene(at t: Double, wind: (on: Double, off: Double?)? = nil) -> FuseScene {
+        var scene = FuseScene()
+        scene.held = (start, SessionFuse.room)
+        scene.update(FuseLook(left: start), at: -10, animated: false)
+        for s in steps where s.at <= t { scene.update(s.look, at: s.at) }
+        if let wind, bang == nil, wind.on <= t {
+            scene.update(FuseLook(left: scene.look.left, rating: true), at: wind.on)
+            if let off = wind.off, off <= t { scene.update(FuseLook(left: scene.look.left), at: off) }
+        }
+        return scene
     }
 }

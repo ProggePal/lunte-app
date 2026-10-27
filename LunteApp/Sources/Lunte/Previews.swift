@@ -204,7 +204,7 @@ enum PopoverShots {
         let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, open: true).padding(14).frame(width: 308))),
                        ("9b-opened", AnyView(History(model: last, sessions: last.past, open: true, picked: Set(last.past.suffix(1).map(\.start))).padding(14).frame(width: 308))),
                        ("pill-lab", AnyView(PillLab())),
-                       ] + (0..<66).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) } + [
+                       ] + (0..<120).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) } + [
                        ("club", AnyView(ClubView(model: PopoverPreviews.club))), ("club-none", AnyView(ClubView(model: fresh))),
                        ("settings", AnyView(SettingsView(model: fresh, updater: nil)))]
         Task {
@@ -235,7 +235,7 @@ enum PopoverShots {
 /// without its green.
 struct PillLab: View {
     static let frames = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0]
-    var replay: Double? // just a few, this many seconds into their replay, both ways: a frame of a GIF
+    var replay: Double? // just a few, this many seconds into their replay, then a breeze: a frame of a GIF
 
     var body: some View {
         let made = { (name: String, levels: [Double]) in
@@ -249,10 +249,10 @@ struct PillLab: View {
              made("Burnt out", [1, 0.7, 0.4, 0.2, 0]), made("Long and churny", [1, 0.4, 1, 0.4, 1, 0.4, 1, 0.4, 1, 0.4, 1, 0.6, 1.1])]
         if let replay {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(rows.indices.filter { ["Kept its cool", "Good company", "Full throttle", "Kaboom", "Close call", "Up and down"].contains(rows[$0].name) }, id: \.self) { i in
+                ForEach(rows.indices.filter { ["Kept its cool", "Good company", "Kaboom", "Burnt out", "Close call", "Up and down", "Long and churny"].contains(rows[$0].name) }, id: \.self) { i in
                     HStack(spacing: 9) {
-                        let levels = rows[i].story.map(\.left), boomed = rows[i].boomed
-                        SessionFuse(levels: levels, boomed: boomed, replay: min(1, replay / SessionFuse.duration(levels, boomed: boomed)))
+                        let levels = rows[i].story.map(\.left), boomed = rows[i].boomed, d = SessionFuse.duration(levels, boomed: boomed)
+                        SessionFuse(levels: levels, boomed: boomed, replay: min(1, replay / d), gustAt: replay > 4.6 ? replay - 4.6 : nil)
                         Text(rows[i].name)
                     }
                 }

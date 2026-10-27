@@ -124,6 +124,7 @@ struct History: View {
     @State var picked: Set<Double> = [] // the opened sessions, by start: each opens and closes on its own, so none moves another
     @State private var focus: Double? // the one opened last, to show whole
     @State private var replays: [Double: Double] = [:] // a pill as it replays, by start
+    @State private var hovered: Double? // the row the pointer's on, whose pill the breeze runs through
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -198,7 +199,8 @@ struct History: View {
                 model.opened(s)
             } label: {
                 HStack(spacing: 9) {
-                    SessionFuse(levels: levels, boomed: boomed, replay: replays[s.start] ?? (s.start > model.seen ? 0 : 1)) // unopened: fresh
+                    SessionFuse(levels: levels, boomed: boomed, replay: replays[s.start] ?? (s.start > model.seen ? 0 : 1), // unopened: fresh
+                                breeze: hovered == s.start && !reduceMotion)
                     Text(name).lineLimit(1)
                     Spacer(minLength: 0)
                     if s.aura > 0 { Text("+\(s.aura)").monospacedDigit().foregroundStyle(.secondary) }
@@ -207,6 +209,7 @@ struct History: View {
                         .rotationEffect(.degrees(opened ? 90 : 0))
                 }
                 .modifier(Lit())
+                .onHover { hovered = $0 ? s.start : hovered == s.start ? nil : hovered }
             }
             .buttonStyle(.plain)
             .help(Game.sessionLine(s))

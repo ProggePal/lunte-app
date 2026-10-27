@@ -70,6 +70,9 @@ public struct FuseScene {
     private(set) var look = FuseLook()
     /// No motion: Reduce Motion, or a still preview.
     var still = false
+    /// In a session's pill, the coil keeps its shape out to `end` along it, burnt or not, as the ash holds it, and
+    /// squeezes up to fit `room`.
+    var held: (end: Double, room: Double)?
 
     // The fuse is material from `head` (its start, where cool feeds it in) to `tail` (its burning tip).
     private(set) var head = Tween(0)
@@ -638,25 +641,28 @@ public struct FuseScene {
     static let pitch = 26.0   // how far a whole stick of fuse reaches, squeezed tight
     static let stretch = 0.9  // how much wider the coils spread as the fuse runs out
     static let radius = 3.0
+    static let tightest = 12.0 // as far as a whole stick reaches, squeezed up as tight as it goes
 
     /// Where the bit of fuse at `s` sits when the fuse runs from `head` to `tail`, at rest. Three coils to a stick. Each
     /// coil keeps its own small quirks as it moves, since they belong to the fuse, not to the spot.
-    public static func restingPoint(_ s: Double, head: Double, tail: Double, spring: Double = 0) -> CGPoint {
-        let s = s / full, head = head / full, tail = tail / full // as a share of full
-        let reach = pitch * (1 + stretch * (1 - min(1, max(0, tail - head)))) * (1 + spring)
+    /// To fit `room`, a longer one squeezes up, its coils narrower too, as far as `tightest`.
+    public static func restingPoint(_ s: Double, head: Double, tail: Double, spring: Double = 0, room: Double = .infinity) -> CGPoint {
+        let s = s / full, head = head / full, tail = tail / full, length = max(0, tail - head) // as a share of full
+        let natural = pitch * (1 + stretch * (1 - min(1, length))), reach = min(natural, max(tightest, room / max(1e-6, length)))
         let r = radius * (1 + 0.11 * quirk(s, 1)), angle = 6 * .pi * s + 0.22 * quirk(s, 2)
-        return CGPoint(x: start + reach * (s - head) + r * sin(angle), y: 9.5 - r * cos(angle) + 0.4 * quirk(s, 3))
+        let rx = reach < natural ? min(r, reach / 3 * 0.42) : r
+        return CGPoint(x: start + reach * (1 + spring) * (s - head) + rx * sin(angle), y: 9.5 - r * cos(angle) + 0.4 * quirk(s, 3))
     }
 
     /// The same bit at `t`, as the coils spring and flinch: the start stays put, the tip moves most. In the last third
     /// the fuse trembles a little.
-    private func point(_ s: Double, _ t: Double) -> CGPoint {
+    func point(_ s: Double, _ t: Double) -> CGPoint {
         let h = head.value(t), l = max(1e-6, tail.value(t) - h)
         var spring = 0.0
         if !still {
             for e in effects { if case .spring(let t0, let a) = e, t >= t0, t < t0 + 1.2 { let x = t - t0; spring += a * exp(-5 * x) * sin(13 * x) } }
         }
-        var p = Self.restingPoint(s, head: h, tail: h + l, spring: spring)
+        var p = Self.restingPoint(s, head: h, tail: held?.end ?? h + l, spring: spring, room: held?.room ?? .infinity)
         guard !still else { return p }
         let u = min(1.5, max(0, (s - h) / l))
         for e in effects {
@@ -700,18 +706,18 @@ public struct FuseScene {
 
 // MARK: - Drawing helpers
 
-private func dot(_ ctx: CGContext, _ at: CGPoint, _ r: Double, _ colour: CGColor) {
+func dot(_ ctx: CGContext, _ at: CGPoint, _ r: Double, _ colour: CGColor) {
     ctx.setFillColor(colour)
     ctx.fillEllipse(in: CGRect(x: at.x - r, y: at.y - r, width: 2 * r, height: 2 * r))
 }
 
-private func glow(_ ctx: CGContext, _ at: CGPoint, radius: Double, _ colour: CGColor, alpha: Double) {
+func glow(_ ctx: CGContext, _ at: CGPoint, radius: Double, _ colour: CGColor, alpha: Double) {
     guard let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [colour.copy(alpha: alpha)!, colour.copy(alpha: 0)!] as CFArray, locations: [0, 1]) else { return }
     ctx.drawRadialGradient(gradient, startCenter: at, startRadius: 0, endCenter: at, endRadius: radius, options: [])
 }
 
 /// The same random number for the same seed, index and channel, so every frame agrees on where a spark is.
-private func noise(_ seed: Int, _ i: Int, _ channel: Int) -> Double {
+func noise(_ seed: Int, _ i: Int, _ channel: Int) -> Double {
     var x = UInt64(truncatingIfNeeded: seed &* 73_856_093 ^ i &* 19_349_663 ^ channel &* 83_492_791)
     x ^= x >> 33; x &*= 0xff51_afd7_ed55_8ccd; x ^= x >> 33; x &*= 0xc4ce_b9fe_1a85_ec53; x ^= x >> 33
     return Double(x % 10_000) / 10_000
