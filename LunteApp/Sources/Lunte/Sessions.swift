@@ -20,6 +20,7 @@ struct SessionCard: View {
     let sitting: Sitting
     @ObservedObject var telling: Telling // how far the row's pill has run the session back
     let events: [Event], impacts: [Double], peak: Int?, now: Double // worked out once, not on every move of the pointer
+    let comeback: Int? // the cool prompt that brought it back after the peak burnt it
     let ranking: [Int] // its prompts by what they did, the one that set off a Boom first
     let levels: [Double], times: [Double] // the fuse line, as the pill has it
     @State private var at = 0.0 // the moment pointed at, which the hairline glides after
@@ -38,6 +39,7 @@ struct SessionCard: View {
         let line = Game.fuseLine(sitting, events, now: now)
         impacts = Story.impacts(events, line)
         peak = Story.peak(sitting, events, impacts)
+        comeback = Story.comeback(events, impacts, after: peak)
         ranking = Self.ranked(sitting, events, impacts)
         (levels, times) = Self.pill(line)
         _reading = State(initialValue: telling.opening ? nil : peak) // opening, it's read once it's told
@@ -89,15 +91,7 @@ struct SessionCard: View {
                             PromptText(model: model, event: e, lines: 3, gone: Game.heatWord(e.heat(at: now)).capitalized)
                             Spacer(minLength: 6)
                             if e.ts == sitting.boom?.ts { Text(tier(sitting.tier).name).foregroundStyle(.secondary) }
-                            else if abs(change) >= 0.005 {
-                                HStack(spacing: 2) {
-                                    Image(systemName: change > 0 ? "arrow.up.right" : "arrow.down.right").font(.system(size: 9, weight: .semibold)) // on, in time
-                                    Text("\(Int((abs(change) * 100).rounded()))").monospacedDigit()
-                                }
-                                .foregroundStyle(.secondary)
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel("\(change > 0 ? "grew it" : "burnt") \(Int((abs(change) * 100).rounded())) %")
-                            }
+                            else if abs(change) >= 0.005 { moved(change) }
                         }
                         .id(i)
                         // A beat after its dot: the dot says where, then the words say what.
@@ -107,6 +101,21 @@ struct SessionCard: View {
                 }
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: reading == lead)
                 .frame(maxWidth: .infinity, minHeight: 50, maxHeight: 50, alignment: .topLeading) // three lines, so pointing along never moves what's under it
+                .modifier(Revealed(story: intro))
+            }
+            if let back = comeback {
+                // At rest, under the burn, the prompt that brought it back: the turn, then the comeback. Its room stays
+                // while you point along the line, so nothing under it moves.
+                let resting = picked == nil && reading == peak
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Circle().fill(dotTint(events[back], boom: false, now: now)).frame(width: 9, height: 9)
+                    PromptText(model: model, event: events[back], lines: 2)
+                    Spacer(minLength: 6)
+                    moved(impacts[back])
+                }
+                .opacity(resting ? 1 : 0)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25).delay(resting ? 0.3 : 0), value: resting)
+                .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34, alignment: .topLeading)
                 .modifier(Revealed(story: intro))
             }
             if let boom = sitting.boom { Said(model: model, boom: model.litID(boom)).padding(.top, 6).modifier(Revealed(story: intro)) }
@@ -126,6 +135,17 @@ struct SessionCard: View {
             (picked, left, shown) = (nil, nil, 0)
             if aim != peak { (aim, reading) = (peak, peak) }
         }
+    }
+
+    /// What a prompt did to the fuse, on in time: "↘ 36" or "↗ 25".
+    private func moved(_ change: Double) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: change > 0 ? "arrow.up.right" : "arrow.down.right").font(.system(size: 9, weight: .semibold))
+            Text("\(Int((abs(change) * 100).rounded()))").monospacedDigit()
+        }
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(change > 0 ? "grew it" : "burnt") \(Int((abs(change) * 100).rounded())) %")
     }
 
     /// The pointer along the line, at moment `t`, or gone: the hairline and the pill glide there, and the strongest
@@ -621,6 +641,17 @@ struct History: View {
             .accessibilityLabel(name + ", back to your sessions")
             SessionCard(model: model, sitting: s, telling: telling)
                 .transition(.opacity.animation(reduceMotion ? nil : .easeOut(duration: 0.25).delay(0.15))) // once it's grown
+            // Its foot, like a sticker's: your Club, and Lunte's name, so a screenshot says where it's from.
+            // Why: the session card is the screenshot (docs/why.md#session-story)
+            HStack(spacing: 4) {
+                if let club = model.clubName { Image(systemName: "house.fill").font(.system(size: 9)); Text(club).lineLimit(1) }
+                Spacer(minLength: 8)
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 14, height: 14)
+                Text("Lunte").fontWeight(.semibold)
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+            .transition(.opacity.animation(reduceMotion ? nil : .easeOut(duration: 0.25).delay(0.15)))
         }
         .padding(.bottom, 4)
         .accessibilityElement(children: .contain)

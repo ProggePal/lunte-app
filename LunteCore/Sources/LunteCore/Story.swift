@@ -55,6 +55,16 @@ public enum Story {
         return events.indices.max { (abs(impacts[$0]), events[$0].cool ?? 0) < (abs(impacts[$1]), events[$1].cool ?? 0) }
     }
 
+    /// The prompt that brought the fuse back after the peak burnt it: the cool one after it that grew the fuse most.
+    /// Nil when the peak didn't burn, or nothing cool came after, as after a Boom, where the fuse stays blown.
+    // Why: the turn, then the comeback, so the story ends on the recovery (docs/why.md#session-story)
+    // ponytail: a comeback bigger than the burn is the peak itself, so that session opens on it alone
+    public static func comeback(_ events: [Event], _ impacts: [Double], after peak: Int?) -> Int? {
+        guard let peak, impacts[peak] < 0 else { return nil }
+        return events.indices.filter { $0 > peak && impacts[$0] > 0.005 && (events[$0].cool ?? 0) >= Game.coolPrompt }
+            .max { impacts[$0] < impacts[$1] }
+    }
+
     /// A session to name: its facts, its prompts, and its fuse line.
     public typealias Told = (sitting: Sitting, events: [Event], line: [(ts: Double, left: Double)])
 

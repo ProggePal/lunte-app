@@ -429,7 +429,7 @@ struct PromptText: View {
 
     var body: some View {
         Group {
-            if let text = texts[event.ts] ?? model.cachedPrompt(event) { Text("“\(text)”") }
+            if let text = texts[event.ts] ?? model.cachedPrompt(event) { Text("“\(Classifier.bleep(text))”") } // safe to screenshot
             else if missing.contains(event.ts), let gone { Text(gone).foregroundStyle(.secondary) }
             else { Text(missing.contains(event.ts) ? "Couldn’t find this message in Claude’s history." : "…") }
         }

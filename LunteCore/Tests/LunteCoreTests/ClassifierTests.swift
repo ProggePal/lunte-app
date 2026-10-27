@@ -64,6 +64,13 @@ final class ClassifierTests: XCTestCase {
     }
 
     /// Setup asks your AI to rate messages that look like banter, so the cool model has some to learn from.
+    func testBleep() {
+        XCTAssertEqual(Classifier.bleep("WHY THE FUCK DID YOU DELETE MY MIGRATIONS"), "WHY THE F*** DID YOU DELETE MY MIGRATIONS")
+        XCTAssertEqual(Classifier.bleep("faen, det funker ikke. jævla greie"), "f***, det funker ikke. j**** greie")
+        XCTAssertEqual(Classifier.bleep("hello shell, rename foo to bar"), "hello shell, rename foo to bar") // words, not letters
+        XCTAssertEqual(Classifier.bleep("wtf 😂 shit"), "w** 😂 s***")
+    }
+
     func testLooksCool() {
         for text in ["lets fucking go!", "nice one bro", "haha nailed it", "sykt bra 🔥", "good job on the close call"] {
             XCTAssertTrue(Classifier.looksCool(text), text)

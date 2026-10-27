@@ -99,6 +99,18 @@ enum PopoverPreviews {
         return GameModel(preview: s.events, texts: s.texts, line: "it rewrote my README as a pirate")
     }
 
+    /// A session that closed an hour ago: a burn into the last third, then the comeback.
+    static var comeback: GameModel {
+        var s = Session()
+        s.calm(150, 121)
+        s.add(120, .tell, "this is the third time I've asked")
+        s.add(118, heat: 0.75, "WHY THE FUCK DID YOU DELETE MY MIGRATIONS")
+        s.calm(117, 112)
+        s.add(111, cool: 1, "ok king, you nailed it 🫡 thank you")
+        s.calm(110, 95)
+        return GameModel(preview: s.events, texts: s.texts)
+    }
+
     /// Three hours and 150 prompts: the oldest fold into a heat line.
     static var long: GameModel {
         var s = Session()
@@ -201,9 +213,10 @@ enum PopoverShots {
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let popovers = PopoverPreviews.all.map { ($0.name, AnyView(PopoverView(model: $0.model, updater: nil))) }
         let fresh = PopoverPreviews.fresh
-        let last = PopoverPreviews.lastSession
+        let last = PopoverPreviews.lastSession, back = PopoverPreviews.comeback
         let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, span: .all, opened: .constant(nil)).padding(14).frame(width: 308))),
                        ("9b-opened", AnyView(History(model: last, sessions: last.past, opened: .constant(last.past.last?.start)).padding(14).frame(width: 308))),
+                       ("9c-comeback", AnyView(History(model: back, sessions: back.past, opened: .constant(back.past.last?.start)).padding(14).frame(width: 308))),
                        ("pill-lab", AnyView(PillLab())), ("heat-lab", AnyView(HeatLab())),
                        ] + (0..<120).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) } + [
                        ("club", AnyView(ClubView(model: PopoverPreviews.club))), ("club-none", AnyView(ClubView(model: fresh))),

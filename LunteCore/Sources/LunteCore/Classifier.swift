@@ -48,6 +48,19 @@ public enum Classifier {
         return has(happyWords, in: text) || has(buddyWords, in: text) || text.range(of: "\\p{Extended_Pictographic}", options: .regularExpression) != nil
     }
 
+    /// A prompt with its swears starred out past their first letter ("WHY THE F*** DID YOU"), for display, so a
+    /// screenshot of it is safe to post.
+    // Why: the session card is the screenshot (docs/why.md#session-story)
+    public static func bleep(_ prompt: String) -> String {
+        let out = NSMutableString(string: prompt)
+        let swear = try! NSRegularExpression(pattern: swears, options: .caseInsensitive)
+        for m in swear.matches(in: prompt, range: NSRange(location: 0, length: out.length)).reversed() { // back to front, so earlier ranges hold
+            let word = out.substring(with: m.range)
+            out.replaceCharacters(in: m.range, with: word.prefix(1) + String(repeating: "*", count: word.count - 1))
+        }
+        return out as String
+    }
+
     static func clean(_ prompt: String) -> String {
         prompt.replacingOccurrences(of: "(?s)```.*?(```|$)", with: " ", options: .regularExpression)
             .precomposedStringWithCanonicalMapping // so "rått" matches however å was typed

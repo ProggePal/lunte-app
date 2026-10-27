@@ -45,6 +45,18 @@ final class StoryTests: XCTestCase {
         XCTAssertEqual(peak([at(0), at(1, cool: 0.6), at(2)]).0, t0 + 60) // steady: the coolest
     }
 
+    func testTheComebackIsTheCoolPromptAfterTheBurn() {
+        func comeback(_ events: [Event]) -> Double? {
+            let s = Game.replay(events, now: events.last!.ts + 100_000, timeZone: utc.timeZone).sittings[0]
+            let impacts = Story.impacts(events, Game.fuseLine(s, events, now: events.last!.ts + 100_000))
+            return Story.comeback(events, impacts, after: Story.peak(s, events, impacts)).map { events[$0].ts }
+        }
+        XCTAssertEqual(comeback([at(0), at(1, heat: 0.5), at(2, heat: 0.8), at(3, cool: 0.6), at(4, cool: 1)]), t0 + 240) // the one that grew it most
+        XCTAssertNil(comeback([at(0, cool: 1), at(1, heat: 0.8)])) // cool before the burn isn't a comeback
+        XCTAssertNil(comeback([at(0), at(1, cool: 0.6), at(2)])) // the peak didn't burn
+        XCTAssertNil(comeback([at(0, heat: 0.7), at(1, heat: 0.75), at(2, cool: 1)])) // after a Boom it stays blown
+    }
+
     func testTheActivityIsTheTopicElseTheTime() {
         let design = (0..<5).map { at(Double($0), topic: $0 < 4 ? "design" : "code") }
         XCTAssertEqual(Story.activity(told(design).sitting, design, calendar: utc), "design")
