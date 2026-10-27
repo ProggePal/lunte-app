@@ -1,41 +1,32 @@
-<h1 align="center">Dynamite in your menu bar</h1>
+# Yell at your AI. Your Mac goes boom.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/clips/menubar-dark.gif">
-    <img src="docs/clips/menubar.gif" alt="Lunte in a Mac menu bar: a fresh one lays itself out, burns, crawls through its last third, and grows back green">
-  </picture>
-</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/clips/menubar-dark.gif">
+  <img src="docs/clips/menubar.gif" alt="Lunte in a Mac menu bar: a fresh one lays itself out, burns, crawls through its last third, and grows back green">
+</picture>
 
-<p align="center"><b>Lunte</b> is lit by how you talk to your agent. Keep it cool and it grows. Turn up the heat, and it blows.</p>
+Lunte is a fuse in your menu bar. Angry prompts burn it, chill ones grow it back.
 
-<p align="center">
-  <a href="https://github.com/ProggePal/lunte-app/releases/latest"><img src="https://img.shields.io/github/v/release/ProggePal/lunte-app?label=Download%20for%20Mac&logo=apple&style=for-the-badge&color=e8590c" alt="Download for Mac"></a>
-</p>
+[![Download for Mac](https://img.shields.io/github/v/release/ProggePal/lunte-app?label=Download%20for%20Mac&logo=apple&style=for-the-badge&color=e8590c)](https://github.com/ProggePal/lunte-app/releases/latest)
 
-<p align="center"><sub>Lunte never stores or sends your prompts.</sub></p>
+**Your prompts are never stored or shared.**
 
-Ask your agent to install it:
+However, if you start a Club with your friends, they'll get pinged every time someone blows up, but not who did it. Enjoy!
 
 ```
-Hey dude, please install this for me: https://github.com/ProggePal/lunte-app
+Hey Claude, install Lunte for me. It blows up my Mac if I get mad at you: https://github.com/ProggePal/lunte-app
+
+Don't worry, it's only for show. The Mac is safe.
 ```
 
 ## How it works
-<p align="center">
-  <img src="docs/clips/fuse.gif" alt="Lunte over Claude Code: two mean prompts burn it into its last third, two kind ones grow it back">
-  <br><sub>Burn through it, it goes boom.</sub>
-</p>
+![Lunte over Claude Code: two mean prompts burn it into its last third, two kind ones grow it back](docs/clips/fuse.gif)
 
-- **Heat and cool.** Frustration is heat. Casual is cool. Claude tunes this for you during setup.
-- **The Lunte.** Heat burns it, and cool grows it back.
-- **The Boom.** Burn through the Lunte and your Mac blows up a few seconds later. Keep the heat coming and it turns into a Chain reaction, then a Meltdown.
-- **Sessions.** A session closes after 30 minutes without a prompt. Then you get a fresh stick and see how the session went.
-- **Your Club.** Your Club gets a silent ping when you blow up, and you can comment if you want. Roasts, close calls and cool sessions earn your Club aura.
-- **Leagues.** Invite other Clubs, race them every day, and the most points wins the week.
-
-> [!NOTE]
-> Lunte is a prototype. Version 0.2.2 has heat, a Lunte tuned to you, the Boom, and Clubs with pings, reactions and comments. Cool, sessions, aura and Leagues are coming next.
+- **Heat burns, cool grows.** Get mad at your AI and the fuse burns. Talk to it like your best bud and it grows back. Setup tunes both to how you talk.
+- **Boom.** Burn through it, and a few seconds later your Mac blows up. Out loud. Keep the heat coming and it turns into a Chain reaction, then a Meltdown.
+- **Sessions.** After 30 minutes without a prompt, you get a fresh stick and see how the session went.
+- **Clubs.** Make a Club with your friends. Your explosions are shared anonymously. Comment to take the heat, and they'll roast your agent.
+- **Coming soon: Leagues.** Roasts, close calls and cool sessions earn your Club vibes, and Clubs race each other every day. Let the best vibes win.
 
 ## Install
 1. Ask your agent to install it, with the line at the top. Or download `Lunte-<version>.zip` from the [latest release](https://github.com/ProggePal/lunte-app/releases/latest), unzip it, and drag Lunte into Applications. It's signed and notarized, and it updates itself.
@@ -55,12 +46,25 @@ open /Applications/Lunte.app
 
 If Lunte is in Applications already, just open it: it updates itself. Then tell them to click Lunte in the menu bar and follow the three steps.
 
-## Privacy
-Lunte reads your prompts on your Mac and never stores or sends them. Only your Booms, reactions and comments go to your Club.
-- The Heat Detector is a small model that runs on your Mac. Setup asks before downloading it, once, from Hugging Face (483 MB).
-- During setup, one prompt asks your own AI to rate your recent messages, so Lunte learns how you normally talk. Those messages go to your AI provider like any other chat. Lunte keeps only the ratings.
+## Questions
+**Do you sell my prompts?**
+No, we never even see them. Lunte scores each prompt on your Mac and keeps only the scores. The text is never saved, and it never goes anywhere it wasn't already going.
 
-Read [the promise](docs/adr/0001-everything-runs-on-your-computer.md).
+That includes setup: your own AI rates your recent prompts so Lunte learns how you talk, and that's just another chat with your AI. Read [the promise](docs/adr/0001-everything-runs-on-your-computer.md).
+
+**So what does get shared?**
+Nothing, unless you join a Club. Then your Club sees:
+- your name
+- anonymous Booms
+- your comments and emoji
+- the vibes you add
+
+Never your prompts, their scores, or how long you work. Later, a Club can go public and put its name and vibes on a public board.
+
+Oh, and the whole room hears the boom.
+
+**How does it work?**
+Lunte plugs into Claude Code as a hook. Every prompt you send is scored by the Heat Detector, a small model running on your Mac (483 MB, downloaded once from Hugging Face during setup), and the scores move your fuse. Nothing ever shows up in your chat.
 
 ## Ideas
 Something you want in Lunte? Choose Submit a prompt… in Lunte's settings and it comes straight to us. You can also open an issue here with the prompt you'd give an agent to build it. If we keep it, you're credited in the [changelog](CHANGELOG.md).
