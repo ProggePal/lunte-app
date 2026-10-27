@@ -610,7 +610,7 @@ struct History: View {
                         .frame(width: 2 * SessionFuse.width, height: 52)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(name).fontWeight(.medium).lineLimit(1)
-                        Text(day + (s.aura > 0 ? " · +\(s.aura)" : "")).foregroundStyle(.secondary).lineLimit(1)
+                        Text(day + (s.aura > 0 ? " · +\(s.aura) vibes" : "")).foregroundStyle(.secondary).lineLimit(1)
                     }
                     .transition(.opacity.animation(reduceMotion ? nil : .easeOut(duration: 0.2).delay(0.12))) // only the pill grows; the words come after
                     Spacer(minLength: 0)
@@ -723,7 +723,7 @@ struct History: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(name + ", " + clock(s.start) + (s.boom != nil ? ", it went boom" : "") + (s.aura > 0 ? ", plus \(s.aura) aura" : ""))
+        .accessibilityLabel(name + ", " + clock(s.start) + (s.boom != nil ? ", it went boom" : "") + (s.aura > 0 ? ", plus \(s.aura) vibes" : ""))
         .id(s.start)
     }
 }

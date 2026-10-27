@@ -6,6 +6,7 @@ What changed for you in each version of Lunte.
 
 ### Improvements
 - **Cool means cool.** A prompt turns green when you talk to your agent like a buddy, not just politely, and only green prompts grow your fuse back. Friendly stays neutral, so a green dot is worth something.
+- **Aura is now vibes.** What a session earns says so: "+3 vibes".
 
 ## 0.4.1
 

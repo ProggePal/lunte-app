@@ -60,7 +60,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Samson & Gross 2012](https://doi.org/10.1080/02699931.2011.585069)
 
 ## close-call
-- **Rule:** When the fuse gets into its last third and climbs back out without a Boom, that's a close call: one per dip, credited the moment it climbs out, and worth aura. Exactly a third left counts, whatever the floating point says. It's never faked, and the fuse is never shown closer than it was.
+- **Rule:** When the fuse gets into its last third and climbs back out without a Boom, that's a close call: one per dip, credited the moment it climbs out, and worth vibes. Exactly a third left counts, whatever the floating point says. It's never faked, and the fuse is never shown closer than it was.
 - **Principle:** Competence and relief. "I held it together" feeds competence, one of the needs that predicts enjoyment, and a reward works best right after the act.
 - **Evidence:** strong for competence, mostly correlational. Tuned on a replay of 13 weeks of one player's real prompts: the last third gives 1.3 close calls a week (2 in the hot last month), about 1.3 per Boom, rare enough to mean something and common enough to happen. The last quarter gave 0.9 a week, and the last half 3.2, which is too cheap.
 - **Source:** [Ryan, Rigby & Przybylski 2006](https://doi.org/10.1007/s11031-006-9051-8)
@@ -73,7 +73,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Nunes & Drèze 2006](https://doi.org/10.1086/500480)
 
 ## session-names
-- **Rule:** A finished session gets a name for what you did and how it went ("Mad push to prod", "Business plan hours", "Kaboom"), never for what you did wrong or how the assistant took it: no blame and no anger words, because the aura already does the scoring. Facts pick the names that fit: the energy from what the fuse did, and the activity from the session's topic, or else the time of day. Then taste picks among them: the names your AI wrote at setup come first, a name never repeats in a day, and the one used longest ago comes round next. Without the Heat Detector there are no topics, so the time-of-day names stand in. Under three prompts gets a short name.
+- **Rule:** A finished session gets a name for what you did and how it went ("Mad push to prod", "Business plan hours", "Kaboom"), never for what you did wrong or how the assistant took it: no blame and no anger words, because the vibes already do the scoring. Facts pick the names that fit: the energy from what the fuse did, and the activity from the session's topic, or else the time of day. Then taste picks among them: the names your AI wrote at setup come first, a name never repeats in a day, and the one used longest ago comes round next. Without the Heat Detector there are no topics, so the time-of-day names stand in. Under three prompts gets a short name.
 - **Principle:** Identity and a laugh. "This is me" keeps a history worth opening, a benign joke turns a bad hour into a story, and variety in flavour keeps it fresh without putting chance in what you earn. Names are true or they aren't shown: a wrong name breaks trust the way a faked near-miss does.
 - **Evidence:** weak for names as such (craft), strong for the parts: peak-end, and good-natured humour as reappraisal. Replayed on one player's week: names from facts were all true; a model's or a rotation's were often false.
 - **Tried:** Laya picking a name from a text-free summary (it called 09:05 "Late-night grind" and a voice session "Pixel fussing", at 30–60 % sure); rotating names within a band (true only by luck); names that report behaviour ("A little prickly", "Mildly offended": they scold); clock times in the story ("held it together at 17:13": nobody remembers a time); prizes for prompts, best bud and hottest take (they didn't tell the line's story and put the model's misreads on show; parked for achievements; an opened session's prompt isn't a prize: it's picked by what the fuse did, the Boom's first, and a misread that burnt it is part of the story, as misfires stand); a last-session card pinned at the top (awkward; Today holds sessions now).
@@ -93,7 +93,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Kahneman et al. 1993](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x)
 
 ## fresh-start
-- **Rule:** Every session gets a fresh stick, when it closes after 30 quiet minutes. Aura starts at zero each day, and the League table each Monday.
+- **Rule:** Every session gets a fresh stick, when it closes after 30 quiet minutes. Vibes start at zero each day, and the League table each Monday.
 - **Principle:** New periods motivate. Gym visits rise after new weeks, months and birthdays.
 - **Evidence:** mixed.
 - **Source:** [Dai, Milkman & Riis 2014](https://faculty.wharton.upenn.edu/wp-content/uploads/2014/06/Dai_Fresh_Start_2014_Mgmt_Sci.pdf)
@@ -105,7 +105,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Rankin et al. 2009](https://doi.org/10.1016/j.nlm.2008.09.012)
 
 ## aura-not-work
-- **Rule:** Aura never tracks how much you work. A session earns one award, the best thing that happened: a roast 8, a close call 3, or a cool session 1, and only one cool session a day earns its point. A cool session earns the same at 5 prompts or 500, cool counts per session and not per prompt, nothing pays per Boom, and sessions and their lengths never leave the Mac.
+- **Rule:** Vibes (aura in code) never track how much you work. A session earns one award, the best thing that happened: a roast 8, a close call 3, or a cool session 1, and only one cool session a day earns its point. A cool session earns the same at 5 prompts or 500, cool counts per session and not per prompt, nothing pays per Boom, and sessions and their lengths never leave the Mac.
 - **Principle:** Overjustification. Across 128 studies, expected tangible rewards lowered free-choice interest, while positive feedback raised it. Points per prompt or per hour would also turn Lunte into a work tracker, something a boss could use.
 - **Evidence:** mixed: its breadth is disputed. Tuned on a replay of 13 weeks of one player's real prompts. Worth 1, 2 and 5 with no daily cap, cool sessions made 67% of aura, and daily aura tracked prompts per day at r = 0.75: a work tracker. At 1 once a day, 3 and 8, that falls to r = 0.49, near the floor of about 0.45 that aura from heat alone has, since more prompts give more chances. Its sources split 39% cool, 29% close calls and 32% roasts if half the Booms are roasted, and no source passes half at a quarter or three quarters.
 - **Source:** [Deci, Koestner & Ryan 1999](https://depts.washington.edu/techdocs/papers/deciExtrinsicRewardsAndIntrinsicMotivation99.pdf)
@@ -190,7 +190,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Kao 2020](https://doi.org/10.1016/j.entcom.2020.100359) · [Edworthy, Loxley & Dennis 1991](https://doi.org/10.1177/001872089103300206)
 
 ## summary-next-open
-- **Rule:** When a session closes, it waits in Today with its name, its aura, and a blue dot until you open it, there when you next look; opened, it tells its story (see [session-story](#session-story)). Nothing pops up when a session closes, and the top of the popover is only ever the session you're in.
+- **Rule:** When a session closes, it waits in Today with its name, its vibes, and a blue dot until you open it, there when you next look; opened, it tells its story (see [session-story](#session-story)). Nothing pops up when a session closes, and the top of the popover is only ever the session you're in.
 - **Principle:** The peak-end rule. We remember an experience by its peak and its end, so the story ends on the recovery and what it earned. A session closes after you've left, so its story is a memory device, there when you next look.
 - **Tried:** a last-session card pinned at the top the first time the popover opened after a session (awkward, and it pushed the live session away).
 - **Evidence:** strong, though in a meta-analysis the plain average predicted about as well.
@@ -204,7 +204,7 @@ The menu bar fuse's feel has entries too, from `just-the-fuse` on. Most of those
 - **Source:** [Rankin et al. 2009](https://doi.org/10.1016/j.nlm.2008.09.012)
 
 ## history-not-a-score
-- **Rule:** Your sessions show today's, or this week's, this month's or all of them from the header's menu, five rows at a time, each as its own fuse, its name and its aura, and you dive into any one for its story. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions. An opened session shows its own clock and how many prompts it had, to find your way along it; a row shows neither, so sessions are never set side by side by size. For now the footer counts today's prompts, a glance at the day: never kept, compared with another day or added up.
+- **Rule:** Your sessions show today's, or this week's, this month's or all of them from the header's menu, five rows at a time, each as its own fuse, its name and its vibes, and you dive into any one for its story. It's read from the log on this Mac and never sent. It never adds up how long you worked, and never ranks sessions. An opened session shows its own clock and how many prompts it had, to find your way along it; a row shows neither, so sessions are never set side by side by size. For now the footer counts today's prompts, a glance at the day: never kept, compared with another day or added up.
 - **Principle:** Being watched doesn't help. Across 94 samples, electronic performance monitoring didn't improve performance and went with more stress. Hours added up would turn Lunte into a work monitor, for you or for a boss.
 - **Evidence:** mixed: a meta-analysis, with small effects that vary with how the monitoring is done.
 - **Source:** [Ravid et al. 2023](https://doi.org/10.1111/peps.12514)
