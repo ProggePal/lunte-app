@@ -207,6 +207,35 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(left([bud, calm], every: Game.sittingGap).last!, 1) // until the session closes
     }
 
+    /// Guards docs/why.md#fuse-lately: every prompt pulls the fuse lately toward where the fuse is, by its share and not
+    /// its count; one Sitting takes 15 at most; a rest of 4 hours brings it two thirds of the way back up to 85, never down.
+    func testFuseLately() {
+        func lately(_ events: [Event], at now: Double) -> GameState { Game.replay(events, now: now, timeZone: utc) }
+        XCTAssertEqual(lately(log(Array(repeating: .none, count: 300)), at: t0 + 18_000).lately, 85, accuracy: 1e-9) // calm, however much you prompt
+        XCTAssertEqual(lately(log([.test, .test]), at: t0 + 120).lately, 85) // the onboarding phrase doesn't count
+
+        let boom = log([.lose] + Array(repeating: .none, count: 100)) // blown, then 100 minutes more in the same Sitting
+        let end = t0 + 100 * 60
+        XCTAssertEqual(lately(boom, at: end + 1).lately, 70, accuracy: 1e-9) // one Sitting takes 15 at most
+        XCTAssertEqual(lately(boom, at: end + 1).sittings[0].lately, -15, accuracy: 1e-9) // and says so
+        XCTAssertEqual(lately(boom, at: end + Game.restGap - 1).lately, 70, accuracy: 1e-9) // not rested yet
+        XCTAssertEqual(lately(boom, at: end + 1).latelyDayStart, 85) // the day it started
+        XCTAssertEqual(lately(boom, at: end + Game.restGap).lately, 80, accuracy: 1e-9) // a rest brings it two thirds of the way back up, before the next prompt
+        XCTAssertEqual(lately(boom, at: end + Game.restGap).latelyDayStart, 80, accuracy: 1e-9) // and starts a new day
+        let next = lately(boom + [Event(ts: end + Game.restGap, burn: .none)], at: end + Game.restGap + 1)
+        XCTAssertEqual(next.lately, 80.1, accuracy: 1e-9) // a fresh stick pulls it toward 85
+        XCTAssertEqual(next.sittings[1].lately, 0.1, accuracy: 1e-9) // the rest isn't the Sitting's doing
+        XCTAssertEqual(next.latelyDayStart, 80, accuracy: 1e-9) // today began where the rest left it
+
+        let buds = (0..<10).map { Event(ts: t0 + Double($0) * 60, burn: .none, cool: 1) }
+        let up = lately(buds, at: t0 + 600).lately
+        XCTAssertEqual(up, 100 - 15 * pow(0.98, 10), accuracy: 1e-9) // cool grows the stick to full, which pulls toward 100
+        XCTAssertEqual(lately(buds, at: t0 + 600 + Game.restGap).lately, up) // and a rest never lowers it
+        XCTAssertEqual([0, 19, 20, 40, 55, 69, 70, 84, 85, 94, 95, 100].map(Game.latelyWord),
+                       ["Short fuse", "Short fuse", "Rough", "Swinging", "Drifting", "Drifting", "Steady", "Steady", "In sync", "In sync", "Locked in", "Locked in"])
+        XCTAssertEqual(Game.latelyWord(Int(Game.latelyRest)), "In sync") // where a rest brings you
+    }
+
     /// Guards docs/why.md#one-boom-per-session.
     func testOneBoomPerSessionEscalatesTiers() {
         let s = Game.replay(log([.lose, .tell, .tell, .tell, .lose, .lose]), now: t0 + 400)

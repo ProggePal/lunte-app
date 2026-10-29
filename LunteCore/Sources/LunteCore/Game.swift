@@ -36,6 +36,14 @@ public enum Game {
     // Why: the rewards come from people (docs/why.md#feedback-not-reward)
     public static let roastAura = 8             // decided by the Club's reactions, in the app and relay; it replaces the rest
 
+    // The fuse lately: one number, 0–100, for how your fuse has run over days, shown in the popover's footer.
+    // Why: tracking helps when it's about what you did, survives a bad day and never costs a rest (docs/why.md#fuse-lately)
+    public static let latelyRest = 85.0         // where it starts, and where a rest brings it back up to
+    public static let latelyPull = 0.02         // each prompt pulls it this share of the way toward where the fuse is
+    public static let latelySittingDrop = 15.0  // one Sitting can take this much of it at most
+    public static let restGap: Double = 4 * 3600 // this long without a prompt is a rest
+    public static let restMend = 2.0 / 3        // a rest brings it this share of the way back up; it never lowers it
+
     // Why: venting feeds anger, so tiers escalate in flavour, not volume (docs/why.md#tiers-flavour-not-volume)
     /// The Boom tiers, by `Boom.tier`.
     public static let tiers: [(emoji: String, name: String)] = [("💥", "Boom"), ("💥💥", "Chain reaction"), ("☢️", "Meltdown")]
@@ -52,6 +60,11 @@ public enum Game {
         return cool >= spark ? coolMend * cool : 0
     }
 
+    /// Where the fuse is, on the scale of `GameState.lately`: a fresh stick is `latelyRest`, a full one 100, a blown one 0.
+    static func latelyTarget(_ left: Double) -> Double {
+        left <= 1 ? latelyRest * left : latelyRest + (100 - latelyRest) * (min(left, full) - 1) / (full - 1)
+    }
+
     /// `timeZone` sets where the local days that shorten the fuse begin and end.
     public static func replay(_ events: [Event], now: Double, timeZone: TimeZone = .current) -> GameState {
         var s = GameState(fuse: minFuse, burned: 0, boomed: false, sittingOpen: false, currentBurns: [], booms: [])
@@ -65,6 +78,8 @@ public enum Game {
         var burning: [Event] = []   // what burns or mends, from the last 30 minutes, and since the Boom
         var stick = minFuse         // the stick that blew: each further half of it is a tier
         var dip: Double?            // when the stick got into its last third
+        var lastScored: Double?     // the last prompt that moved the fuse lately
+        var latelyStart: Double?    // the fuse lately when the open Sitting began
 
         // Each message in turn adds its burn, never below 0, so cool can't be banked against heat to come: what it has
         // spare grows the stick instead. A dip into the last third that climbs back out without a Boom is a close call.
@@ -116,6 +131,13 @@ public enum Game {
             s.boomed = false
             s.currentBurns = []
             s.sittingStart = nil
+            latelyStart = nil
+        }
+        // A rest of `restGap` or more: the fuse lately comes most of the way back up.
+        // Why: a bad day mostly heals, and a rest never costs you (docs/why.md#fuse-lately)
+        func rested() {
+            if s.lately < latelyRest { s.lately += (latelyRest - s.lately) * restMend }
+            s.latelyDayStart = s.lately // and a new day starts
         }
 
         for e in events.sorted(by: { $0.ts < $1.ts }) where e.burn != .heat {
@@ -134,6 +156,17 @@ public enum Game {
             sitting!.prompts += 1
             expire(to: e.ts)
             guard e.burn != .test else { continue }
+            if let last = lastScored, e.ts - last >= restGap { rested() }
+            // Every prompt pulls the fuse lately a little toward where the fuse is once it's landed, by its share
+            // rather than its count, so it never tracks how much you work; one Sitting can only take so much.
+            // Why: feedback about what you did, that survives a bad day (docs/why.md#fuse-lately)
+            defer {
+                let start = latelyStart ?? s.lately
+                latelyStart = start
+                s.lately = max(start - latelySittingDrop, s.lately + latelyPull * (latelyTarget(s.left) - s.lately))
+                sitting!.lately = s.lately - start
+                lastScored = e.ts
+            }
             if today == nil {
                 let start = calendar.startOfDay(for: Date(timeIntervalSince1970: e.ts))
                 today = start.timeIntervalSince1970..<calendar.date(byAdding: .day, value: 1, to: start)!.timeIntervalSince1970
@@ -190,6 +223,7 @@ public enum Game {
         }
         dayEnds(by: now)
         if !s.sittingOpen || s.boomed { s.fuse = thermostat }
+        if let last = lastScored, now - last >= restGap { rested() } // the morning shows the rest before its first prompt
         return s
     }
 
@@ -234,6 +268,15 @@ public enum Game {
         if state.boomed { return "💥" }
         return "🧨" + (inLastThird(state.left) ? "✨" : String(repeating: "━", count: Int((state.left * 3).rounded(.up))))
     }
+
+    /// The fuse lately's steps, from the top, each from its lowest score: how in sync you and your agent have been. A
+    /// rest brings you back to In sync.
+    public static let latelySteps: [(from: Int, word: String)] = [
+        (95, "Locked in"), (85, "In sync"), (70, "Steady"), (55, "Drifting"), (40, "Swinging"), (20, "Rough"), (0, "Short fuse"),
+    ]
+    /// Which of `latelySteps` a score is on, 0 at the top.
+    public static func latelyStep(_ score: Int) -> Int { latelySteps.firstIndex { score >= $0.from } ?? latelySteps.count - 1 }
+    public static func latelyWord(_ score: Int) -> String { latelySteps[latelyStep(score)].word }
 
     /// cool, mild, warm, hot, boiling.
     public static func heatWord(_ heat: Double) -> String {
