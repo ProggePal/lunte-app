@@ -90,6 +90,8 @@ public struct Sitting: Equatable, Sendable {
     public var isOpen = false
     /// Its one award, without roasts (`Game.aura`): set by the replay, which knows the other Sittings that day.
     public var aura = 0
+    /// What it did to the fuse lately (`GameState.lately`): never below −`Game.latelySittingDrop`.
+    public var lately = 0.0
 
     /// 0 without a Boom, else `boom.tier`.
     public var tier: Int { boom?.tier ?? 0 }
@@ -121,6 +123,13 @@ public struct GameState: Equatable, Sendable {
     /// How far cool has grown the open Sitting's stick past whole, 0...`Game.full` − 1. Burns heal; this stays until
     /// the Sitting closes or Booms.
     public var grown = 0.0
+    /// The fuse lately, 0...100: how your fuse has run over days. Each prompt pulls it `Game.latelyPull` of the way
+    /// toward where the fuse is (a fresh stick is `Game.latelyRest`), one Sitting takes `Game.latelySittingDrop` at most,
+    /// and a rest of `Game.restGap` brings it `Game.restMend` of the way back up to `Game.latelyRest`, never down.
+    public var lately = Game.latelyRest
+    /// The fuse lately when the day began: after the rest before its first prompt, or after the one still going at
+    /// `now`. A rest of `Game.restGap` starts a new day.
+    public var latelyDayStart = Game.latelyRest
 
     /// The share of the stick that's left, 0...`Game.full`: 1 is a fresh stick, and past it is what cool grew.
     public var left: Double { boomed ? 0 : max(0, 1 + grown - burned / fuse) }

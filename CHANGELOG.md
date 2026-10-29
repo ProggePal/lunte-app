@@ -2,6 +2,14 @@
 
 What changed for you in each version of Lunte.
 
+## Unreleased
+
+### Improvements
+- **Your alignment score.** At the bottom of the popover, you and your agent as two rings: they slide into one as you get along and apart as you don't, with a word for where you stand, from Locked in to Short fuse. Every session moves it a little, and a few hours off bring you most of the way back. Each time you open Lunte the rings show how today went, and pointing at them counts the score from this morning to now. Each session in your list says what it did to it.
+
+  ![Your alignment score](https://raw.githubusercontent.com/ProggePal/lunte-app/main/docs/clips/alignment.png)
+- **A quieter footer.** The Club and Settings are a house and a gear, with more room to click.
+
 ## 0.4.1
 
 ### Improvements

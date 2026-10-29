@@ -57,6 +57,7 @@ final class MenuBar: NSObject, NSApplicationDelegate {
         render()
         #if DEBUG
         if let path = UserDefaults.standard.string(forKey: "PanelShot") { panelShot(path) }
+        if UserDefaults.standard.bool(forKey: "PanelCycle") { panelCycle() }
         #endif
     }
 
@@ -72,6 +73,24 @@ final class MenuBar: NSObject, NSApplicationDelegate {
             view.cacheDisplay(in: view.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
             print("panel", panel.frame, "item", item.button?.window?.frame ?? .zero, "highlighted", item.button?.isHighlighted ?? false)
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// `Lunte -PanelCycle YES`: closed 6 s, open 5 s, closed 8 s, twice, then quits, printing each change with its time,
+    /// so a sampler can read what the app costs closed, open and after.
+    private func panelCycle() {
+        Task {
+            let t0 = Date()
+            func mark(_ what: String) { print(String(format: "%5.1f", Date().timeIntervalSince(t0)), what); fflush(stdout) }
+            mark("closed")
+            try? await Task.sleep(for: .seconds(6))
+            for _ in 0..<2 {
+                toggle(); mark("open")
+                try? await Task.sleep(for: .seconds(5))
+                panel.dismiss(); mark("closed")
+                try? await Task.sleep(for: .seconds(8))
+            }
             NSApp.terminate(nil)
         }
     }
@@ -279,7 +298,7 @@ final class MenuPanel: NSPanel {
     }
 
     /// A rounded rectangle that stretches, as the material's mask.
-    private static func rounded(_ radius: CGFloat) -> NSImage {
+    static func rounded(_ radius: CGFloat) -> NSImage {
         let side = 2 * radius + 1
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
             NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
