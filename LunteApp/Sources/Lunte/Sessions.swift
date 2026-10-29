@@ -712,10 +712,12 @@ struct History: View {
                     Text(name).lineLimit(1)
                     Spacer(minLength: 0)
                     if newest { Circle().fill(Color.accentColor).frame(width: 7, height: 7) }
-                    // Its aura, and under the pointer the chevron in its place: the way in shows when it's wanted.
+                    // What it did to the fuse lately, and under the pointer the chevron in its place: the way in shows
+                    // when it's wanted. Its aura shows once you're in.
+                    // Why: each point of the fuse lately traces back to a session (docs/why.md#fuse-lately)
                     ZStack(alignment: .trailing) {
                         if over { Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).transition(.opacity) }
-                        else if s.aura > 0 { Text("+\(s.aura)").monospacedDigit().foregroundStyle(.secondary).transition(.opacity) }
+                        else { LatelyMove(move: s.lately).transition(.opacity) }
                     }
                     .animation(.easeOut(duration: 0.12), value: over)
                 }
@@ -723,7 +725,7 @@ struct History: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(name + ", " + clock(s.start) + (s.boom != nil ? ", it went boom" : "") + (s.aura > 0 ? ", plus \(s.aura) aura" : ""))
+        .accessibilityLabel(name + ", " + clock(s.start) + (s.boom != nil ? ", it went boom" : "") + (Int(s.lately.rounded()) != 0 ? ", fuse lately \(Int(s.lately.rounded()) > 0 ? "plus" : "minus") \(abs(Int(s.lately.rounded())))" : ""))
         .id(s.start)
     }
 }
@@ -814,7 +816,7 @@ private struct Capped<Content: View>: View {
             }
         }
         .scrollIndicators(.never)
-        .modifier(EdgeFade())
+        .modifier(EdgeFade(overCard: true))
         .frame(height: min(height, cap))
         .padding(.horizontal, -7)
     }

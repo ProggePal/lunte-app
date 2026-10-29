@@ -204,8 +204,15 @@ enum PopoverShots {
         let last = PopoverPreviews.lastSession
         let windows = [("9-previously", AnyView(History(model: fresh, sessions: fresh.past, span: .all, opened: .constant(nil)).padding(14).frame(width: 308))),
                        ("9b-opened", AnyView(History(model: last, sessions: last.past, opened: .constant(last.past.last?.start)).padding(14).frame(width: 308))),
-                       ("pill-lab", AnyView(PillLab())), ("heat-lab", AnyView(HeatLab())),
-                       ] + (0..<120).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) } + [
+                       ("pill-lab", AnyView(PillLab())), ("heat-lab", AnyView(HeatLab())), ("lately-motion", AnyView(LatelyFilm())), ("lately-final", AnyView(LatelyFinal())),
+                       ("lately-scroll", AnyView(VStack(alignment: .leading, spacing: 10) { // every session, scrolling, over the card
+                           History(model: fresh, sessions: fresh.past, span: .all, opened: .constant(nil))
+                           LatelyFinal().footer(84).padding(.top, 4).overlay(alignment: .top) { Divider().offset(y: -3) } // as when it has more
+                       }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14).frame(width: 308))),
+                       ] + (0..<120).map { (String(format: "replay-%02d", $0), AnyView(PillLab(replay: Double($0) / 15))) }
+          + (0..<54).map { (String(format: "replay-lately-%02d", $0), AnyView(LatelyFilm(at: Double($0) / 30))) }
+          + (0..<105).map { (String(format: "replay-today-%03d", $0), AnyView(LatelyToday(at: Double($0) / 30))) }
+          + [("lately-today", AnyView(LatelyToday()))] + [
                        ("club", AnyView(ClubView(model: PopoverPreviews.club))), ("club-none", AnyView(ClubView(model: fresh))),
                        ("settings", AnyView(SettingsView(model: fresh, updater: nil)))]
         Task {
@@ -228,6 +235,149 @@ enum PopoverShots {
                 }
             }
             NSApp.terminate(nil)
+        }
+    }
+}
+
+// ponytail: sheets to check the fuse lately by eye, after a change to how it looks or moves.
+/// A session row and the footer as they sit in the popover, for the sheets below.
+private struct LatelyContext<Footer: View>: View {
+    var divider = true
+    @ViewBuilder let footer: Footer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 9) {
+                SessionFuse(levels: [1, 0.8, 1.05, 1.1], boomed: false).frame(width: SessionFuse.width, height: 26)
+                Text("Good company")
+                Spacer(minLength: 0)
+                LatelyMove(move: 1)
+            }
+            if divider { Divider() }
+            footer
+        }
+        .frame(width: 280)
+    }
+}
+
+/// The capsule that hugs what's on it, in each surface, in context: at a long word, a mid one, a short one, and under
+/// How wide the card is, in context: filling the row, hugging what's on it, hugging as a capsule, and hugging but
+/// never narrower than a row's pill and the start of its name. At a long word, a mid one, a short one, and under the
+/// The footer as it sits under a row, at five steps with what's hovered dashed, under the pointer, and the rings
+/// parting step by step.
+struct LatelyFinal: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 26) {
+            LatelyContext(divider: false) {
+                VStack(alignment: .leading, spacing: 8) {
+                    footer(97, outlined: true)
+                    ForEach([84, 62, 45, 20], id: \.self) { footer($0) }
+                    footer(84, pointed: true)
+                }
+            }
+        }
+        .padding(14).fixedSize()
+    }
+
+    func footer(_ score: Int, pointed: Bool = false, outlined: Bool = false) -> some View {
+        HStack(spacing: 2) {
+            LatelyGlance(score: score, open: true, film: (Double(score), 9), pointed: pointed)
+                .overlay { if outlined { Capsule().strokeBorder(Color.accentColor.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 3])) } }
+                .padding(.trailing, 4)
+            Spacer(minLength: 0)
+            ForEach(["house", "gearshape"], id: \.self) { icon in
+                Image(systemName: icon).font(.system(size: 14)).foregroundStyle(.secondary).frame(width: 30, height: 30)
+                    .overlay { if outlined { Circle().strokeBorder(Color.accentColor.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 3])) } }
+            }
+        }
+    }
+}
+
+// ponytail: the hover's frames; `scripts/render-popover.sh lately-today replay-today` draws them.
+/// Under the pointer, the number counting from where today began to now, and the card coming in with today's move: going
+/// down and going up. With `at`, one moment of both, magnified, for a clip; without, every 0.2 s side by side.
+struct LatelyToday: View {
+    var at: Double?
+    static let moves: [(name: String, from: Int, to: Int)] = [("down today, 88 → 80, In sync to Steady", 88, 80),
+                                                               ("up today, 66 → 74, Drifting to Steady", 66, 74)]
+
+    var body: some View {
+        if let at {
+            HStack(alignment: .bottom, spacing: 30) {
+                ForEach(Self.moves, id: \.name) { m in moment(m, at: at) }
+            }
+            .padding(14).scaleEffect(2, anchor: .topLeading).frame(width: 1040, height: 440, alignment: .topLeading)
+        } else {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(Self.moves, id: \.name) { m in
+                    HStack(alignment: .bottom, spacing: 12) {
+                        ForEach([0, 0.2, 0.4, 0.5, 0.55, 0.6, 0.7, 1.4, 1.9, 2.4, 3.3], id: \.self) { t in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(format: "%.1f s", t)).font(.caption2).foregroundStyle(.secondary)
+                                LatelyGlance(score: m.to, open: true, dayStart: m.from, script: t)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(14).fixedSize()
+        }
+    }
+
+    func moment(_ m: (name: String, from: Int, to: Int), at t: Double) -> some View {
+        let card = t < LatelyGlance.held ? min(1, max(0, (t - 0.3) / 0.1)) : 0 // as the card comes, 0.3 s in, and goes
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(m.name).font(.caption).foregroundStyle(.secondary)
+            LatelyAbout(today: m.to - m.from)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.1)))
+                .opacity(card)
+            LatelyGlance(score: m.to, open: true, dayStart: m.from, script: t)
+        }
+    }
+}
+
+// ponytail: the open move's frames; `scripts/render-popover.sh lately-motion replay-lately` draws them.
+/// The rings at every tenth of the way from 0 to 100, then each kind of move frame by frame, every 0.1 s: up, down,
+/// unchanged and a first look. With `at`, one frame of all four as the footer, magnified, for a clip at real speed.
+struct LatelyFilm: View {
+    var at: Double?
+    static let moves: [(name: String, from: Double, to: Double)] = [("up, 70 → 84", 70, 84), ("down, 84 → 70", 84, 70),
+                                                                   ("unchanged, 84", 84, 84), ("first look, 0 → 84", 0, 84)]
+
+    var body: some View {
+        if let at {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Self.moves, id: \.name) { m in
+                    HStack(spacing: 10) {
+                        Text(m.name).font(.caption).foregroundStyle(.secondary).frame(width: 110, alignment: .leading)
+                        LatelyGlance(score: Int(m.to), open: true, film: (m.from, at))
+                    }
+                }
+            }
+            .padding(10).scaleEffect(2, anchor: .topLeading).frame(width: 600, height: 300, alignment: .topLeading)
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 0) {
+                    ForEach(Array(stride(from: 0, through: 100, by: 10)), id: \.self) { score in
+                        VStack(spacing: 2) {
+                            LatelyGlance(score: score, open: true, film: (Double(score), 9)).frame(width: 64, height: 26).clipped()
+                            Text("\(score)").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                ForEach(Self.moves, id: \.name) { m in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(m.name).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 0) {
+                            ForEach(0..<16) { i in
+                                LatelyGlance(score: Int(m.to), open: true, film: (m.from, Double(i) / 10)).frame(width: 64, height: 26).clipped()
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(14).fixedSize()
         }
     }
 }
